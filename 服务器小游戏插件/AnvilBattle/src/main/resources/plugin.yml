@@ -1,0 +1,25 @@
+name: AnvilBattle
+version: '1.0.6'
+main: com.anvilbattle.AnvilBattlePlugin
+api-version: '1.21'
+description: 铁砧掘战：躲开随机落下的铁砧，活到最后
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+# ===== 给主城插件（HubCore）的标记：自动登记到 tab / 播报 =====
+minigame-game: true
+minigame:
+  name: 铁砧掘战
+  icon: ANVIL
+  color: '7'
+
+commands:
+  anvil:
+    description: 铁砧掘战小游戏
+    usage: /anvil help
+    aliases: [ab, anvilbattle]
+permissions:
+  anvil.use:
+    default: true
+  anvil.admin:
+    default: op

@@ -1,0 +1,25 @@
+name: Quark
+version: '1.0.2'
+main: com.quark.QuarkPlugin
+api-version: '1.21'
+description: 粒子枪战：右键发射直线粒子弹道，命中即击杀，限时积分
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+# ===== 给主城插件（HubCore）的标记：自动登记到 tab / 播报 =====
+minigame-game: true
+minigame:
+  name: 粒子枪战
+  icon: IRON_HOE
+  color: b
+
+commands:
+  quark:
+    description: 粒子枪战小游戏
+    usage: /quark help
+    aliases: [q]
+permissions:
+  quark.use:
+    default: true
+  quark.admin:
+    default: op

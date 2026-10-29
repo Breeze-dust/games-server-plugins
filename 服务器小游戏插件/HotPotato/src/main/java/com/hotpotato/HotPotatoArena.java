@@ -1,0 +1,147 @@
+package com.hotpotato;
+
+import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/** 一个烫手山芋场：范围 + 中央点。 */
+public class HotPotatoArena {
+
+    public enum State {
+        WAITING, RUNNING
+    }
+
+    private String name;
+    private Location pos1;
+    private Location pos2;
+    private Location center;
+    private Location lobbyPoint;
+
+    // 运行时
+    private State state = State.WAITING;
+    private final List<UUID> players = new ArrayList<>();       // 存活玩家
+    private final List<UUID> eliminated = new ArrayList<>();     // 已淘汰（观察者）
+    private final List<UUID> bombHolders = new ArrayList<>();   // 当前 TNT 持有者
+    private final List<UUID> elimOrder = new ArrayList<>();     // 淘汰顺序
+    private long roundEndMs;
+
+    public HotPotatoArena(String name) {
+        this.name = name;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    /** 改名（场地重命名时由管理器调用；倒计时任务内 getName() 会随之返回新名）。 */
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public Location getPos1() {
+        return pos1;
+    }
+
+    public void setPos1(Location pos1) {
+        this.pos1 = pos1;
+    }
+
+    public Location getPos2() {
+        return pos2;
+    }
+
+    public void setPos2(Location pos2) {
+        this.pos2 = pos2;
+    }
+
+    public Location getCenter() {
+        return center;
+    }
+
+    public void setCenter(Location center) {
+        this.center = center;
+    }
+
+    public Location getLobbyPoint() {
+        return lobbyPoint;
+    }
+
+    public void setLobbyPoint(Location lobbyPoint) {
+        this.lobbyPoint = lobbyPoint;
+    }
+
+    public boolean isReady() {
+        return pos1 != null && pos2 != null && center != null;
+    }
+
+    public boolean contains(Location loc) {
+        if (!isReady() || loc == null || !loc.getWorld().equals(pos1.getWorld())) {
+            return false;
+        }
+        int minX = Math.min(pos1.getBlockX(), pos2.getBlockX());
+        int maxX = Math.max(pos1.getBlockX(), pos2.getBlockX());
+        int minY = Math.min(pos1.getBlockY(), pos2.getBlockY());
+        int maxY = Math.max(pos1.getBlockY(), pos2.getBlockY());
+        int minZ = Math.min(pos1.getBlockZ(), pos2.getBlockZ());
+        int maxZ = Math.max(pos1.getBlockZ(), pos2.getBlockZ());
+        return loc.getBlockX() >= minX && loc.getBlockX() <= maxX
+                && loc.getBlockY() >= minY && loc.getBlockY() <= maxY
+                && loc.getBlockZ() >= minZ && loc.getBlockZ() <= maxZ;
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public void setState(State state) {
+        this.state = state;
+    }
+
+    public List<UUID> getPlayers() {
+        return players;
+    }
+
+    public List<UUID> getEliminated() {
+        return eliminated;
+    }
+
+    public List<UUID> getElimOrder() {
+        return elimOrder;
+    }
+
+    public List<UUID> getBombHolders() {
+        return bombHolders;
+    }
+
+    public boolean isBombHolder(UUID id) {
+        return bombHolders.contains(id);
+    }
+
+    public long getRoundEndMs() {
+        return roundEndMs;
+    }
+
+    public void setRoundEndMs(long roundEndMs) {
+        this.roundEndMs = roundEndMs;
+    }
+
+    /** 保存。 */
+    public void save(ConfigurationSection sec) {
+        sec.set("pos1", pos1);
+        sec.set("pos2", pos2);
+        sec.set("center", center);
+        sec.set("lobby", lobbyPoint);
+    }
+
+    public static HotPotatoArena load(String name, ConfigurationSection sec) {
+        HotPotatoArena a = new HotPotatoArena(name);
+        a.pos1 = (Location) sec.get("pos1");
+        a.pos2 = (Location) sec.get("pos2");
+        a.center = (Location) sec.get("center");
+        a.lobbyPoint = (Location) sec.get("lobby");
+        return a;
+    }
+}

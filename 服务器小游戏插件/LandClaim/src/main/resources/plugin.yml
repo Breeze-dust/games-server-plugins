@@ -1,0 +1,30 @@
+name: LandClaim
+version: '1.0.7'
+main: com.landclaim.LandClaimPlugin
+api-version: '26.2'
+description: battlefield 1 (占地1)：圆形场地，用锄头把准星指向的地面染成自己的颜色，占地最多者获胜
+author: example
+
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+commands:
+  land:
+    description: battlefield 1 (占地1)
+    usage: /land help
+    aliases: [lw, landclaim]
+
+permissions:
+  landclaim.play:
+    description: 允许加入划地为王
+    default: true
+  landclaim.admin:
+    description: 允许配置和管理划地为王
+    default: op
+
+# ===== 给 HubCore 的小游戏标记 =====
+minigame-game: true
+minigame:
+  name: 'battlefield 1 (占地1)'
+  icon: DIAMOND_HOE
+  color: 'a'

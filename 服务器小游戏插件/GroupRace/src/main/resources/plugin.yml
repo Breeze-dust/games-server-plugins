@@ -1,0 +1,25 @@
+name: GroupRace
+version: '1.0.10'
+main: com.grouprace.GroupRacePlugin
+api-version: '1.21'
+description: 群友竞速赛：骑飞猪穿过圆环，分数最高者获胜
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+# ===== 给主城插件（HubCore）的标记：自动登记到 tab / 播报 =====
+minigame-game: true
+minigame:
+  name: 群友竞速赛
+  icon: PIG_SPAWN_EGG
+  color: e
+
+commands:
+  race:
+    description: 群友竞速赛小游戏
+    usage: /race help
+    aliases: [gr]
+permissions:
+  race.use:
+    default: true
+  race.admin:
+    default: op

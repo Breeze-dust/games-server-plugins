@@ -1,0 +1,25 @@
+name: KnockbackBattle
+version: '1.0.9'
+main: com.knockback.KnockbackPlugin
+api-version: '1.21'
+description: 击退大战：击退镐与风弹把对手打下平台
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+# ===== 给主城插件（HubCore）的标记：自动登记到 tab / 播报 =====
+minigame-game: true
+minigame:
+  name: 击退大战
+  icon: WIND_CHARGE
+  color: b
+
+commands:
+  knockback:
+    description: 击退大战小游戏
+    usage: /kb help
+    aliases: [kb]
+permissions:
+  kb.use:
+    default: true
+  kb.admin:
+    default: op

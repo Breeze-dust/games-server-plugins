@@ -1,0 +1,147 @@
+package com.hillking;
+
+import com.hub.util.Chat;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.inventory.ItemStack;
+
+/** 高台之王事件：等待室道具、咸鱼击退、无伤、掉台回场、场地保护。 */
+public final class HillKingListener implements Listener {
+
+    private final HillKingManager manager;
+
+    public HillKingListener(HillKingManager manager) {
+        this.manager = manager;
+    }
+
+    /** 等待室：右键床退出、右键开始纸由管理员开局。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        Player player = event.getPlayer();
+        ItemStack item = event.getItem();
+        if (item == null) {
+            return;
+        }
+        if (manager.isReturnItem(item)) {
+            event.setCancelled(true);
+            manager.leave(player, false);
+            return;
+        }
+        if (manager.isStartItem(item)) {
+            event.setCancelled(true);
+            manager.handleStartPaper(player);
+        }
+    }
+
+    /** 场内玩家不掉血；咸鱼按配置击退。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player player && manager.isInGame(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onFishHit(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player victim)
+                || !(event.getDamager() instanceof Player attacker)) {
+            return;
+        }
+        if (manager.isInGame(victim)) {
+            event.setCancelled(true);
+        }
+        if (!manager.isPlaying(victim) || !manager.isPlaying(attacker)) {
+            return;
+        }
+        ItemStack main = attacker.getInventory().getItemInMainHand();
+        ItemStack off = attacker.getInventory().getItemInOffHand();
+        if (!manager.isFish(main) && !manager.isFish(off)) {
+            Chat.actionBar(attacker, "&e请手持咸鱼再左键拍人");
+            return;
+        }
+        if (manager.fishHit(attacker, victim)) {
+            Chat.actionBar(attacker, "&a拍飞！");
+        } else {
+            Chat.actionBar(attacker, "&c咸鱼冷却中…");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        if (!manager.isInGame(player)) {
+            return;
+        }
+        event.setCancelled(true);
+        player.setHealth(20.0);
+        player.setFoodLevel(20);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBlockBreak(BlockBreakEvent event) {
+        if (manager.isInGame(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (manager.isInGame(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onFood(FoodLevelChangeEvent event) {
+        if (event.getEntity() instanceof Player player && manager.isInGame(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDrop(PlayerDropItemEvent event) {
+        if (manager.isInGame(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onMove(PlayerMoveEvent event) {
+        if (event.getTo() != null) {
+            manager.handleMove(event.getPlayer(), event.getTo());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        manager.handleQuit(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        if (!manager.isInGame(player)) {
+            return;
+        }
+        if (manager.arena().getLobby() != null) {
+            event.setRespawnLocation(manager.arena().getLobby());
+        }
+    }
+}

@@ -1,0 +1,25 @@
+# ---- Build outputs ----
+**/target/
+服务器小游戏插件/.build/
+服务器小游戏插件/build/
+**/*.jar
+
+# ---- Server runtime (Paper server, worlds, plugin data) ----
+服务器小游戏插件/server/
+服务器小游戏插件/toolchain/
+
+# ---- Player data snapshots and release jars ----
+服务器小游戏插件/backups/
+新服务器小游戏插件/*.jar
+
+# ---- IDE / OS / logs ----
+.idea/
+*.iml
+.vscode/
+*.log
+logs/
+.DS_Store
+Thumbs.db
+
+# ---- Local agent settings ----
+.claude/

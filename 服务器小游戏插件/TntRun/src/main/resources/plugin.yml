@@ -1,0 +1,21 @@
+name: TntRun
+version: '1.0.1'
+main: com.tntrun.TntRunPlugin
+api-version: '1.21'
+description: 雪塔大作战（原 TNT Run）：踩雪层层塌、挖雪得雪球、雪球砸雪块
+minigame:
+  name: 雪塔大作战
+  icon: SNOWBALL
+  color: b
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+commands:
+  tntrun:
+    description: 雪塔大作战
+    usage: /tr help
+    aliases: [tr, tntrun]
+permissions:
+  tr.use:
+    default: true
+  tr.admin:
+    default: op

@@ -1,0 +1,107 @@
+# ================= GameWorlds 多世界配置 =================
+# 启动时自动创建/加载以下世界，并套用各自的规则（每次启动都会重新套用，确保与配置一致）。
+# 已存在的世界文件夹会直接加载（不重建，type/environment 仅用于首次生成）。
+#
+# 字段说明：
+#   enabled         是否管理该世界（false 则跳过）
+#   environment     NORMAL / NETHER / THE_END
+#   type            首次生成时的地形：FLAT（超平坦）/ NORMAL（普通地形）/ VOID（虚空）
+#   fixed-time      固定时间（0=午夜 6000=白天 12000=黄昏 18000=夜晚；-1=不固定随自然流逝）
+#   difficulty      PEACEFUL / EASY / NORMAL / HARD
+#   pvp             是否允许玩家互相伤害（单挑世界必须 true，其他建议 false 防误伤）
+#   mob-spawning    是否生成怪物（小游戏世界建议 false）
+#   weather-cycle   是否随时间变化天气（建议 false，固定晴天）
+#   fire-spread     火是否蔓延（TNT Run / 建筑世界建议 false）
+#   mob-griefing    苦力怕/末影人等是否破坏地形（建议 false）
+
+worlds:
+  world_gtb:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: false
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+
+  world_duel:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: true
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+
+  world_hp:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: false
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+
+  world_tr:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: false
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+
+  world_mm:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: true
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+
+  world_fb:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: false
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+
+  # LuckyPillar: one arena owns the whole world (a WorldBorder is per world).
+  # GameWorlds only supports FLAT / NORMAL, so use FLAT and keep the arena
+  # center at least 4 blocks above the ground (e.g. y=100).
+  world_lp:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: true
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
+    # Must be false: LuckyPillar wants death drops. GameWorlds defaults
+    # keep-inventory to true, and then the death event's drop list is empty,
+    # so setKeepInventory(false) in the game only deletes the items.
+    keep-inventory: false

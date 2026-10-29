@@ -1,0 +1,25 @@
+name: AnimalSlaughter
+version: '1.0.6'
+main: com.animalslaughter.AnimalSlaughterPlugin
+api-version: '1.21'
+description: 动物屠宰：圆形场地里限时抢分
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+minigame-game: true
+minigame:
+  name: 动物屠宰
+  icon: IRON_SWORD
+  color: 'c'
+
+commands:
+  animal:
+    description: 动物屠宰小游戏
+    usage: /animal help
+    aliases: [as, slaughter]
+
+permissions:
+  animal.use:
+    default: true
+  animal.admin:
+    default: op

@@ -1,0 +1,21 @@
+name: BuildRun
+version: '1.0.1'
+main: com.buildrun.BuildRunPlugin
+api-version: '1.21'
+description: 你建我跑：每人建一条跑酷，然后按顺序轮流让建造者和其他人跑
+minigame:
+  name: 你建我跑
+  icon: LADDER
+  color: '3'
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+commands:
+  buildrun:
+    description: 你建我跑
+    usage: /br help
+    aliases: [br]
+permissions:
+  br.use:
+    default: true
+  br.admin:
+    default: op

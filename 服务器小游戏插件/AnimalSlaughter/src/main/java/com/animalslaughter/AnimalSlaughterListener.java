@@ -1,0 +1,177 @@
+package com.animalslaughter;
+
+import org.bukkit.Location;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityDropItemEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.inventory.ItemStack;
+
+/** 动物屠宰事件：计分、逃跑、掉落物保护、玩家无伤、场地保护、等待室道具。 */
+public final class AnimalSlaughterListener implements Listener {
+
+    private final AnimalSlaughterManager manager;
+
+    public AnimalSlaughterListener(AnimalSlaughterManager manager) {
+        this.manager = manager;
+    }
+
+    /** 等待室：右键床退出、右键开始纸由管理员开局。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        Player player = event.getPlayer();
+        ItemStack item = event.getItem();
+        if (item == null) {
+            return;
+        }
+        if (manager.isReturnItem(item)) {
+            event.setCancelled(true);
+            manager.leave(player, false);
+            return;
+        }
+        if (manager.isStartItem(item)) {
+            event.setCancelled(true);
+            manager.handleStartPaper(player);
+        }
+    }
+
+    /**
+     * 玩家在场内不掉血；动物只吃玩家 1 点伤害（无武器加成），不挨其它伤害。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            if (manager.isInGame(player)) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+        Entity victim = event.getEntity();
+        if (!manager.isOurMob(victim)) {
+            return;
+        }
+        // 横扫之刃的溅射伤害直接丢掉，避免误伤旁边的干扰项
+        if (event.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) {
+            event.setCancelled(true);
+            return;
+        }
+        if (event instanceof EntityDamageByEntityEvent by && by.getDamager() instanceof Player attacker) {
+            if (manager.isPlaying(attacker) && manager.isRunning()) {
+                event.setDamage(1.0);
+                manager.onMobHit((LivingEntity) victim, attacker);
+                return;
+            }
+        }
+        event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onMobDeath(EntityDeathEvent event) {
+        LivingEntity entity = event.getEntity();
+        if (!manager.isOurMob(entity)) {
+            return;
+        }
+        event.setDroppedExp(0);
+        manager.onMobDeath(entity, entity.getKiller());
+    }
+
+    /** 动物的掉落物不能被捡，登记后到点自动清理。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDrop(EntityDropItemEvent event) {
+        if (manager.isOurMob(event.getEntity())) {
+            manager.markDrop(event.getItemDrop());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPickup(PlayerAttemptPickupItemEvent event) {
+        if (manager.isGameDrop(event.getItem())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        if (!manager.isInGame(player)) {
+            return;
+        }
+        event.setCancelled(true);
+        player.setHealth(20.0);
+        player.setFoodLevel(20);
+    }
+
+    @EventHandler
+    public void onMove(PlayerMoveEvent event) {
+        if (event.getTo() != null) {
+            manager.handleMove(event.getPlayer(), event.getTo());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        if (manager.isInGame(player) && manager.arena().contains(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        Player player = event.getPlayer();
+        if (manager.isInGame(player) && manager.arena().contains(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onFood(FoodLevelChangeEvent event) {
+        if (event.getEntity() instanceof Player player && manager.isInGame(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerDrop(PlayerDropItemEvent event) {
+        if (manager.isInGame(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        manager.handleQuit(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        if (!manager.isInGame(player)) {
+            return;
+        }
+        Location target = manager.arena().getLobby();
+        if (target != null) {
+            event.setRespawnLocation(target);
+        }
+    }
+}
