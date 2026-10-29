@@ -74,6 +74,7 @@ cd paper-hold-the-fort
 
 ## 文档入口
 
+- 仓库级约定（含子仓库分支流程）：[AGENTS.md](AGENTS.md)
 - 构建 / 部署 / 已知坑：`服务器小游戏插件/docs/`
 - 玩家记录与备份：`服务器小游戏插件/docs/玩家记录.md`
 - 接入新小游戏：`服务器小游戏插件/HubCore/docs/游戏插件接入指南.md`
@@ -90,3 +91,6 @@ git clone --recurse-submodules git@github.com:Breeze-dust/games-server-plugins.g
 # 已有克隆：
 git submodule update --init
 ```
+
+修改子仓库前先拉上游、再自建分支，不要在 `master` / `main` 上直接改；
+完整流程见 [AGENTS.md](AGENTS.md)。
