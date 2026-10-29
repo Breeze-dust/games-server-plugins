@@ -105,3 +105,16 @@ worlds:
     # keep-inventory to true, and then the death event's drop list is empty,
     # so setKeepInventory(false) in the game only deletes the items.
     keep-inventory: false
+
+  # Hold the Fort: dedicated arena world; the plugin builds the battlefield into it.
+  world_htf:
+    enabled: true
+    environment: NORMAL
+    type: FLAT
+    fixed-time: 6000
+    difficulty: NORMAL
+    pvp: true
+    mob-spawning: false
+    weather-cycle: false
+    fire-spread: false
+    mob-griefing: false
