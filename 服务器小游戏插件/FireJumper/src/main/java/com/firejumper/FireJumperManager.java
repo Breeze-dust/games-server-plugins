@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -408,12 +409,15 @@ public final class FireJumperManager {
         state = State.RUNNING;
 
         int level = jumpBoostLevel();
+        List<Location> spawnPoints = new ArrayList<>(arena.spawns());
+        Collections.shuffle(spawnPoints, random);
+        int spawnIndex = 0;
         for (UUID id : playing) {
             Player player = Bukkit.getPlayer(id);
             if (player == null || !player.isOnline()) {
                 continue;
             }
-            Location spawn = arena.randomSpawn(random);
+            Location spawn = spawnPoints.isEmpty() ? null : spawnPoints.get(spawnIndex++ % spawnPoints.size());
             clearPlayer(player);
             player.setGameMode(GameMode.SURVIVAL);
             player.setHealth(20.0);
@@ -606,20 +610,25 @@ public final class FireJumperManager {
         for (Wave wave : waves) {
             double along = wave.position;
             for (double across = wave.spanCenter - wave.spanHalf;
-                 across <= wave.spanCenter + wave.spanHalf; across += 1.0) {
+                 across <= wave.spanCenter + wave.spanHalf; across += 0.8) {
                 if (arena.travelX()) {
-                    world.spawnParticle(Particle.FLAME, along, y1, across, 1, 0, 0, 0, 0);
+                    flame(world, along, y1, across);
                     if (twoRows) {
-                        world.spawnParticle(Particle.FLAME, along, y2, across, 1, 0, 0, 0, 0);
+                        flame(world, along, y2, across);
                     }
                 } else {
-                    world.spawnParticle(Particle.FLAME, across, y1, along, 1, 0, 0, 0, 0);
+                    flame(world, across, y1, along);
                     if (twoRows) {
-                        world.spawnParticle(Particle.FLAME, across, y2, along, 1, 0, 0, 0, 0);
+                        flame(world, across, y2, along);
                     }
                 }
             }
         }
+    }
+
+    /** force = true：超过 32 格的玩家也能看到火线（大场地必需）。 */
+    private void flame(World world, double x, double y, double z) {
+        world.spawnParticle(Particle.FLAME, x, y, z, 1, 0.02, 0.02, 0.02, 0.01, true);
     }
 
     private double travelCenter() {

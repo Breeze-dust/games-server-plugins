@@ -75,6 +75,9 @@ arena:
   pos2: ''
   # 等待点（/firejumper setlobby 写）
   lobby: ''
+  # 固定出生点（/firejumper setspawn / addspawn 写）
+  # 开局会把这些点打乱后依次分配；人数多于出生点时循环复用
+  spawns: []
   # 地面高度（玩家站立时的脚部 Y）；-999 = 未设置，自动用 pos1 的 Y
   ground-y: -999
   # 线的移动方向：x+ / x- / z+ / z-

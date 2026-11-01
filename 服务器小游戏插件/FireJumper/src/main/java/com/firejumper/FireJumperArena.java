@@ -5,8 +5,9 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 
 /** 跃火者场地：矩形区域、等待点、地面高度、线的方向/长度/范围。 */
 public final class FireJumperArena {
@@ -18,6 +19,7 @@ public final class FireJumperArena {
     private Location pos1;
     private Location pos2;
     private Location lobby;
+    private final List<Location> spawns = new ArrayList<>();
     /** 玩家站立时的脚部 Y；/firejumper pos1 时自动记录。 */
     private int groundY = UNSET;
     /** x+ / x- / z+ / z-。 */
@@ -38,7 +40,18 @@ public final class FireJumperArena {
         pos1 = parse(cfg.getString("arena.pos1", ""));
         pos2 = parse(cfg.getString("arena.pos2", ""));
         lobby = parse(cfg.getString("arena.lobby", ""));
+        spawns.clear();
+        for (String raw : cfg.getStringList("arena.spawns")) {
+            Location location = parse(raw);
+            if (location != null) {
+                spawns.add(location);
+            }
+        }
         groundY = cfg.getInt("arena.ground-y", UNSET);
+        // 模板里的 -999 是"未设置"的占位值，不能当成真的 Y=-999（会让线画到世界外）
+        if (groundY == -999) {
+            groundY = UNSET;
+        }
         direction = normalizeDirection(cfg.getString("arena.direction", "x+"));
         lineLength = Math.max(0, cfg.getDouble("arena.line-length", 0));
         travelRange = Math.max(0, cfg.getDouble("arena.travel-range", 0));
@@ -54,6 +67,7 @@ public final class FireJumperArena {
         cfg.set("arena.pos1", format(pos1));
         cfg.set("arena.pos2", format(pos2));
         cfg.set("arena.lobby", format(lobby));
+        cfg.set("arena.spawns", formatAll(spawns));
         cfg.set("arena.ground-y", groundY);
         cfg.set("arena.direction", direction);
         cfg.set("arena.line-length", lineLength);
@@ -76,6 +90,28 @@ public final class FireJumperArena {
     public void setLobby(Location location) {
         lobby = location.clone();
         worldName = location.getWorld().getName();
+    }
+
+    /** 把当前位置设为唯一出生点（清空原有出生点）。 */
+    public void setSpawn(Location location) {
+        spawns.clear();
+        addSpawn(location);
+    }
+
+    public void addSpawn(Location location) {
+        Location loc = location.clone();
+        loc.setX(loc.getBlockX() + 0.5);
+        loc.setZ(loc.getBlockZ() + 0.5);
+        spawns.add(loc);
+    }
+
+    public void clearSpawns() {
+        spawns.clear();
+    }
+
+    /** 返回副本，避免调用方改动内部列表。 */
+    public List<Location> spawns() {
+        return new ArrayList<>(spawns);
     }
 
     public void setGround(int y) {
@@ -136,7 +172,16 @@ public final class FireJumperArena {
     }
 
     public boolean ready() {
-        return regionConfigured() && lobby != null && world() != null;
+        if (!regionConfigured() || lobby == null || world() == null || spawns.isEmpty()) {
+            return false;
+        }
+        String name = pos1.getWorld().getName();
+        for (Location spawn : spawns) {
+            if (spawn.getWorld() == null || !name.equals(spawn.getWorld().getName())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public String missing() {
@@ -146,6 +191,9 @@ public final class FireJumperArena {
         }
         if (lobby == null) {
             out.append("等待点 ");
+        }
+        if (spawns.isEmpty()) {
+            out.append("出生点 ");
         }
         if (world() == null) {
             out.append("世界未加载 ");
@@ -207,16 +255,6 @@ public final class FireJumperArena {
         return new Location(world(), (minX() + maxX() + 1) / 2.0, groundY(), (minZ() + maxZ() + 1) / 2.0);
     }
 
-    /** 随机出生点：XZ 在区域内缩进 1 格，Y 为地面高度。 */
-    public Location randomSpawn(Random random) {
-        if (!regionConfigured()) {
-            return null;
-        }
-        int x = minX() + 1 + random.nextInt(Math.max(1, maxX() - minX() - 1));
-        int z = minZ() + 1 + random.nextInt(Math.max(1, maxZ() - minZ() - 1));
-        return new Location(world(), x + 0.5, groundY(), z + 0.5);
-    }
-
     public Location lobby() {
         return lobby == null ? null : lobby.clone();
     }
@@ -265,6 +303,14 @@ public final class FireJumperArena {
         return String.format(Locale.ROOT, "%s,%.2f,%.2f,%.2f,%.2f,%.2f",
                 location.getWorld().getName(), location.getX(), location.getY(), location.getZ(),
                 location.getYaw(), location.getPitch());
+    }
+
+    private static List<String> formatAll(List<Location> locations) {
+        List<String> out = new ArrayList<>();
+        for (Location location : locations) {
+            out.add(format(location));
+        }
+        return out;
     }
 
     public static Location parse(String raw) {

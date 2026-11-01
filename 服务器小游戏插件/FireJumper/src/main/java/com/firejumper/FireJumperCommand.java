@@ -16,7 +16,7 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
             "join", "leave", "list", "help",
-            "pos1", "pos2", "setlobby", "setground", "setdirection",
+            "pos1", "pos2", "setspawn", "addspawn", "clearspawns", "setlobby", "setground", "setdirection",
             "setlength", "setrange", "setlineheight", "save",
             "start", "stop", "reload");
 
@@ -52,6 +52,9 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             case "pos1" -> setCorner(sender, 1);
             case "pos2" -> setCorner(sender, 2);
             case "setlobby" -> setLobby(sender);
+            case "setspawn" -> setSpawn(sender);
+            case "addspawn" -> addSpawn(sender);
+            case "clearspawns" -> clearSpawns(sender);
             case "setground" -> setGround(sender, args);
             case "setdirection" -> setDirection(sender, args);
             case "setlength" -> setLength(sender, args);
@@ -93,7 +96,8 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
                 + " &7| 轮次/时间: &f" + manager.roundText()
                 + " &7| 跳跃提升 &f" + manager.jumpBoostLevel());
         Chat.send(sender, "&7场地: &f" + arena.sizeText()
-                + " &7| 等待点 " + (arena.lobby() == null ? "&c未设置" : "&a已设置"));
+                + " &7| 等待点 " + (arena.lobby() == null ? "&c未设置" : "&a已设置")
+                + " &7| 出生点 &f" + arena.spawns().size() + " &7个");
         Chat.send(sender, "&7方向: &f" + manager.directionText()
                 + " &7| 线长: &f" + (arena.lineLength() <= 0 ? "自动" : arena.lineLength() + " 格")
                 + " &7| 移动范围: &f" + (arena.travelRange() <= 0 ? "自动" : arena.travelRange() + " 格")
@@ -135,6 +139,41 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
         manager.arena().setLobby(player.getLocation());
         manager.arena().save();
         Chat.send(player, "&a已设置等待点（已保存）。");
+    }
+
+    private void setSpawn(CommandSender sender) {
+        if (!admin(sender)) {
+            return;
+        }
+        Player player = player(sender);
+        if (player == null) {
+            return;
+        }
+        manager.arena().setSpawn(player.getLocation());
+        manager.arena().save();
+        Chat.send(player, "&a已把当前位置设为唯一起点（已保存，共 1 个）。要多个起点请用 /firejumper addspawn。");
+    }
+
+    private void addSpawn(CommandSender sender) {
+        if (!admin(sender)) {
+            return;
+        }
+        Player player = player(sender);
+        if (player == null) {
+            return;
+        }
+        manager.arena().addSpawn(player.getLocation());
+        manager.arena().save();
+        Chat.send(player, "&a已添加出生点，共 &f" + manager.arena().spawns().size() + " &a个（已保存）。");
+    }
+
+    private void clearSpawns(CommandSender sender) {
+        if (!admin(sender)) {
+            return;
+        }
+        manager.arena().clearSpawns();
+        manager.arena().save();
+        Chat.send(sender, "&a已清空全部出生点（已保存）。");
     }
 
     private void setGround(CommandSender sender, String[] args) {
@@ -292,6 +331,9 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&6-- 管理 --");
             Chat.send(sender, "&f/firejumper pos1 | pos2 &7- 站在地面两个对角设置区域（只取 XZ，地面 Y 取 pos1 脚下）");
             Chat.send(sender, "&f/firejumper setlobby &7- 设置等待点");
+            Chat.send(sender, "&f/firejumper setspawn &7- 把当前位置设为唯一起点（清空原有）");
+            Chat.send(sender, "&f/firejumper addspawn &7- 追加一个固定出生点（按人数循环使用）");
+            Chat.send(sender, "&f/firejumper clearspawns &7- 清空全部出生点");
             Chat.send(sender, "&f/firejumper setground [Y] &7- 设置地面高度（默认取当前位置）");
             Chat.send(sender, "&f/firejumper setdirection x+|x-|z+|z- &7- 线移动方向（线沿垂直方向展开）");
             Chat.send(sender, "&f/firejumper setlength <格|auto> &7- 线的长度（auto = 场地垂直方向总长）");
@@ -332,7 +374,8 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
 
     private boolean isAdmin(String sub) {
         return switch (sub) {
-            case "pos1", "pos2", "setlobby", "setground", "setdirection",
+            case "pos1", "pos2", "setspawn", "addspawn", "clearspawns",
+                    "setlobby", "setground", "setdirection",
                     "setlength", "setrange", "setlineheight", "save",
                     "start", "stop", "reload" -> true;
             default -> false;

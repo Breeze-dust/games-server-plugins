@@ -2,7 +2,8 @@
 
 - **一句话职责**：在划定的平台上一轮轮横扫出火焰线，玩家带**跳跃提升 II**跳过线；碰到线立即淘汰并转旁观，最后存活者获胜；时间到仍多人存活则并列获胜。
 - **核心规则**：
-  - 开局所有玩家随机落在平台内，获得**跳跃提升 II**（`jump-boost-level: 2`，无限时长，对局结束移除）。
+  - 开局所有玩家被分配到**固定出生点**（`arena.spawns`，`/firejumper setspawn` / `addspawn` 设置；开局打乱顺序分配，人数多于出生点时循环复用），获得**跳跃提升 II**（`jump-boost-level: 2`，无限时长，对局结束移除）。
+  - 没有出生点时场地不算配置完整，无法开局（不再随机落点）。
   - 每条线是一面**火焰粒子墙**：线沿一个轴展开，沿垂直方向从场地一侧扫到另一侧；玩家**脚部低于 `ground-y + line-height` 且在线的判定带内**即淘汰。
   - 一轮可以出 1 条或多条线（每条之间间隔可配），轮与轮之间停 `round-gap-min-seconds ~ round-gap-max-seconds` 的随机时间。
   - 线的出现方式写在 `line-types` 列表里，按 `from-round / to-round` 决定第几轮可能出现；默认：
@@ -27,6 +28,7 @@
   - 管理（OP 或 `firejumper.admin`）：
     - `/firejumper pos1` / `pos2`：站到平台两个对角执行（只取 XZ；pos1 的脚部 Y 记为地面高度）
     - `/firejumper setlobby`：等待点
+    - `/firejumper setspawn` / `addspawn` / `clearspawns`：固定出生点（setspawn = 清空后只留当前；addspawn = 追加；多点为人数上限准备，开局打乱分配）
     - `/firejumper setground [Y]`：改地面高度（不写 Y = 当前位置）
     - `/firejumper setdirection x+|x-|z+|z-`：线的移动方向（线沿垂直方向展开）
     - `/firejumper setlength <格|auto>`：线的长度（auto = 场地垂直方向总长）
@@ -39,7 +41,7 @@
   - 对局：`game-seconds`（180）、`start-delay-seconds`（3）、`jump-boost-level`（2）、`out-of-bounds-eliminate`（true）、`end-delay-seconds`（3）
   - 轮次：`round-gap-min-seconds`（1.5）、`round-gap-max-seconds`（3.0）
   - 线：`line-types` 列表（`id/enabled/from-round/to-round/lines/gap-seconds/speed`）
-  - 场地：`arena.direction / line-length / travel-range / line-height / ground-y / pos1 / pos2 / lobby`
+  - 场地：`arena.direction / line-length / travel-range / line-height / ground-y / pos1 / pos2 / lobby / spawns`
   - 等待室道具：`wait-items.return` / `wait-items.start`
   - 计分板：`sidebar.enabled` / `sidebar.title`
 - **常改文件**：
@@ -52,7 +54,7 @@
   | 配置模板 | `FireJumper/src/main/resources/config.yml` |
 - **建场步骤**：
   1. 搭好平台（建议平整），站到平台一角执行 `/firejumper pos1`，站到对角执行 `/firejumper pos2`。
-  2. `/firejumper setlobby` 设等待点。
+  2. `/firejumper setlobby` 设等待点；站到每个出生位置执行 `/firejumper addspawn`（或 `setspawn` 只留一个）。
   3. 可选：`/firejumper setdirection z+`（默认从左到右是 x+）、`setlength`、`setrange`、`setlineheight`。
   4. `/firejumper save`，`/firejumper list` 确认「可开局」。
   5. 至少 2 人 `/firejumper join` → `/firejumper start`（或有 OP 在队列时手动开始）。
