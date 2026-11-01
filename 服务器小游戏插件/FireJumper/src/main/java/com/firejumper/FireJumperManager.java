@@ -251,6 +251,7 @@ public final class FireJumperManager {
     // ---------- 生命周期 ----------
 
     public void load() {
+        ensureDefaults();
         arena.load();
         loadLineTypes();
         stats = PlayerStats.load("firejumper", new File(plugin.getDataFolder(), "data.yml"));
@@ -261,6 +262,29 @@ public final class FireJumperManager {
         plugin.getLogger().info("场地" + (arena.ready() ? "已配置" : "未配置（缺 " + arena.missing() + "）")
                 + "：方向 " + arena.direction() + "，地面 Y " + arena.groundY()
                 + "，线高 " + arena.lineHeight() + "。");
+    }
+
+    /** 旧配置缺少的键自动补上，保证 particles / debug-lines 能在配置文件里看到。 */
+    private void ensureDefaults() {
+        boolean changed = false;
+        changed |= setDefault("particles.type", "FLAME");
+        changed |= setDefault("particles.rows", 1);
+        changed |= setDefault("particles.row-gap", 0.6);
+        changed |= setDefault("particles.spacing", 1.0);
+        changed |= setDefault("particles.interval-ticks", 3);
+        changed |= setDefault("particles.count", 1);
+        changed |= setDefault("debug-lines", false);
+        if (changed) {
+            plugin.saveConfig();
+        }
+    }
+
+    private boolean setDefault(String path, Object value) {
+        if (plugin.getConfig().isSet(path)) {
+            return false;
+        }
+        plugin.getConfig().set(path, value);
+        return true;
     }
 
     public void reload() {
