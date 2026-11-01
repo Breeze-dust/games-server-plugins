@@ -581,6 +581,9 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             return;
         }
         stars.remove(id);
+        transitionParticipants.remove(id);
+        transitionSpectators.remove(id);
+        roundParticipants.remove(id);
         clearGameState(player);
         restoreSidebar(player);
         HubAPI.clearGame(id);
@@ -597,6 +600,20 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         reportArena();
     }
 
+    /**
+     * 派对进行中玩家主动 /hub 或右键回城道具：立即退出整个派对。
+     * 只处理玩家主动回城；小游戏结算时的 teleportToLobby 不会走这里。
+     */
+    public void handleHubCommand(Player player) {
+        if (!isInParty(player)) {
+            return;
+        }
+        if (state == State.WAITING) {
+            return; // 等待阶段交给 lobby 回调统一处理
+        }
+        leave(player, true);
+    }
+
     public void handleQuit(Player player) {
         UUID id = player.getUniqueId();
         boolean wasWaiting = waiting.remove(id);
@@ -605,6 +622,9 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             return;
         }
         stars.remove(id);
+        transitionParticipants.remove(id);
+        transitionSpectators.remove(id);
+        roundParticipants.remove(id);
         HubAPI.clearGame(id);
         if (state == State.WAITING) {
             updateCountdown();
@@ -823,6 +843,20 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         String start = plugin.getConfig().getString("games." + currentGameKey + ".start-command", "");
         if (currentArena != null) {
             start = start == null ? null : start.replace("{arena}", currentArena);
+        }
+        // 上一局结算后可能延迟把玩家传回主城，回城会触发各游戏的 lobby 回调，
+        // 把已经加入本局等待区的玩家踢掉。开局前重新 join 一次，确保队列里确实有人。
+        String join = plugin.getConfig().getString("games." + currentGameKey + ".join-command", "");
+        if (currentArena != null && join != null) {
+            join = join.replace("{arena}", currentArena);
+        }
+        if (join != null && !join.isBlank()) {
+            for (UUID id : roundParticipants) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) {
+                    p.performCommand(join);
+                }
+            }
         }
         if (roundParticipants.isEmpty() || start == null || start.isBlank()) {
             Chat.broadcast("&c小游戏 " + displayOf(currentGameKey) + " 启动失败，跳过本局。");
@@ -1046,6 +1080,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         if (state != State.PODIUM) {
             return;
         }
+        // 先切回 WAITING：本方法自己要把人送回主城，不能触发“派对进行中禁止回城传送”的保护
+        state = State.WAITING;
         broadcast("&6&l派对结束！");
         List<UUID> everyone = new ArrayList<>(playing);
         for (UUID id : everyone) {
@@ -1082,6 +1118,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         if (state == State.WAITING) {
             return;
         }
+        // 先切回 WAITING：中止要把人送回主城，不能被回城传送保护拦住
+        state = State.WAITING;
         broadcast(reason == null ? "&e派对已结束。" : reason);
         for (UUID id : new ArrayList<>(playing)) {
             Player p = Bukkit.getPlayer(id);
