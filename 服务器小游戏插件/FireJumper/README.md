@@ -34,7 +34,8 @@
     - `/firejumper setlength <格|auto>`：线的长度（auto = 场地垂直方向总长）
     - `/firejumper setrange <格|auto>`：线的移动距离（auto = 场地移动方向总长；以场地中心居中）
     - `/firejumper setlineheight <格>`：判定高度（默认 1.0）
-    - `/firejumper save`、`start`、`stop`、`reload`
+    - `/firejumper save`、`start`、`stop`、`reload`、`debug`
+    - `/firejumper debug`：打印场地与当前火线的实际坐标（排查「看不见线」用）。
   - **单人测试**：管理员可以 `/firejumper join` 后直接 `/firejumper start` 一人开局（自动倒计时仍需 `min-players`）；单人局不记录胜场、不向街机派对上报名次，结算显示「单人测试结束」。
 - **配置**：`server/plugins/FireJumper/config.yml`
   - 人数：`min-players`、`max-players`
@@ -59,7 +60,9 @@
   4. `/firejumper save`，`/firejumper list` 确认「可开局」。
   5. 至少 2 人 `/firejumper join` → `/firejumper start`（或有 OP 在队列时手动开始）。
 - **注意**：
-  - `ground-y` 是**玩家站立时的脚部 Y**；pos1 会自动记录，地形抬高/降低后要重新 pos1 或 `setground`。
+  - `ground-y` 是**玩家站立时的脚部 Y**；`/firejumper addspawn` 会用它记录地面，pos1 也会记录，所以正常按指令建场即可。地形抬高/降低后重新 pos1 或 setground。
+  - **看不到火线**：`/firejumper debug` 看「地面 Y」是否等于你站立的脚部 Y；打开 `debug-lines: true` 后每次出线会在控制台打印起点/终点/判定高度。
+  - 火线粒子现在**逐玩家发送**（不受 32 格视距限制），并画成 3 层火墙（地面 +0.2 / +0.8 / +1.4）。
   - `line-length` / `travel-range` 为 0 时自动用场地尺寸；自定义范围以场地中心居中。
   - 烟花/火焰粒子只用于显示，判定完全由插件计算，不受客户端粒子设置影响。
   - 已接入 ArcadeParty：`games.firejumper`（`fj join` / `fj start`），结算通过 `ArcadeBridge.report("firejumper", …)` 回报。

@@ -18,7 +18,7 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             "join", "leave", "list", "help",
             "pos1", "pos2", "setspawn", "addspawn", "clearspawns", "setlobby", "setground", "setdirection",
             "setlength", "setrange", "setlineheight", "save",
-            "start", "stop", "reload");
+            "start", "stop", "reload", "debug");
 
     private final FireJumperPlugin plugin;
     private final FireJumperManager manager;
@@ -64,6 +64,7 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             case "start" -> start(sender);
             case "stop" -> stop(sender);
             case "reload" -> reload(sender);
+            case "debug" -> debug(sender);
             default -> Chat.send(sender, "&c未知子指令，输入 &f/firejumper help &c查看帮助。");
         }
         return true;
@@ -322,6 +323,15 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&a配置已重新载入。");
     }
 
+    private void debug(CommandSender sender) {
+        if (!admin(sender)) {
+            return;
+        }
+        for (String line : manager.debugLines()) {
+            Chat.send(sender, "&7" + line);
+        }
+    }
+
     private void help(CommandSender sender) {
         Chat.send(sender, "&6" + FireJumperManager.GAME + " 指令:");
         Chat.send(sender, "&f/firejumper join &7- 加入等待队列");
@@ -342,6 +352,7 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&f/firejumper save &7- 保存场地");
             Chat.send(sender, "&f/firejumper start | stop &7- 开始 / 强制结束（管理员可 1 人开局测试，不计胜场）");
             Chat.send(sender, "&f/firejumper reload &7- 重新读取配置");
+            Chat.send(sender, "&f/firejumper debug &7- 打印场地/火线实际坐标（排查看不见线用）");
         }
     }
 
@@ -377,7 +388,7 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             case "pos1", "pos2", "setspawn", "addspawn", "clearspawns",
                     "setlobby", "setground", "setdirection",
                     "setlength", "setrange", "setlineheight", "save",
-                    "start", "stop", "reload" -> true;
+                    "start", "stop", "reload", "debug" -> true;
             default -> false;
         };
     }

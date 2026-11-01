@@ -103,6 +103,10 @@ public final class FireJumperArena {
         loc.setX(loc.getBlockX() + 0.5);
         loc.setZ(loc.getBlockZ() + 0.5);
         spawns.add(loc);
+        // 出生点是玩家站立位置，拿它当地面最可靠（避免手改 ground-y 差一格）
+        if (groundY == UNSET) {
+            groundY = loc.getBlockY();
+        }
     }
 
     public void clearSpawns() {
@@ -233,6 +237,9 @@ public final class FireJumperArena {
         if (groundY != UNSET) {
             return groundY;
         }
+        if (!spawns.isEmpty()) {
+            return spawns.get(0).getBlockY();
+        }
         return pos1 == null ? 64 : Math.min(pos1.getBlockY(), pos2 == null ? pos1.getBlockY() : pos2.getBlockY());
     }
 
@@ -257,6 +264,14 @@ public final class FireJumperArena {
 
     public Location lobby() {
         return lobby == null ? null : lobby.clone();
+    }
+
+    public Location pos1() {
+        return pos1 == null ? null : pos1.clone();
+    }
+
+    public Location pos2() {
+        return pos2 == null ? null : pos2.clone();
     }
 
     public Location spectatorSpot() {

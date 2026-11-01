@@ -536,6 +536,12 @@ public final class FireJumperManager {
         Wave wave = new Wave(arena.sign(), type.speed / 20.0, start, end,
                 spanCenter(), spanLength / 2.0);
         waves.add(wave);
+        if (plugin.getConfig().getBoolean("debug-lines", false)) {
+            plugin.getLogger().info("[火线] 第 " + round + " 轮 " + type.id
+                    + "：起点 " + fmt(start) + " → 终点 " + fmt(end)
+                    + "，跨度 " + fmt(spanLength) + "，地面 Y " + arena.groundY()
+                    + "，判定 Y≤" + fmt(arena.groundY() + arena.lineHeight()));
+        }
         World world = arena.world();
         if (world != null) {
             Location centerLoc = arena.center();
@@ -584,7 +590,7 @@ public final class FireJumperManager {
                 continue;
             }
             Location loc = player.getLocation();
-            if (loc.getY() >= lineTop) {
+            if (loc.getY() > lineTop) {
                 continue;
             }
             double along = arena.travelX() ? loc.getX() : loc.getZ();
@@ -604,31 +610,32 @@ public final class FireJumperManager {
         if (world == null || waves.isEmpty()) {
             return;
         }
-        double y1 = arena.groundY() + 0.15;
-        double y2 = arena.groundY() + Math.max(0.55, arena.lineHeight() * 0.85);
-        boolean twoRows = arena.lineHeight() >= 0.6;
+        double bottom = arena.groundY() + 0.2;
+        double top = arena.groundY() + Math.max(1.0, arena.lineHeight()) + 0.6;
         for (Wave wave : waves) {
             double along = wave.position;
             for (double across = wave.spanCenter - wave.spanHalf;
-                 across <= wave.spanCenter + wave.spanHalf; across += 0.8) {
-                if (arena.travelX()) {
-                    flame(world, along, y1, across);
-                    if (twoRows) {
-                        flame(world, along, y2, across);
-                    }
-                } else {
-                    flame(world, across, y1, along);
-                    if (twoRows) {
-                        flame(world, across, y2, along);
+                 across <= wave.spanCenter + wave.spanHalf; across += 1.0) {
+                for (double y = bottom; y <= top; y += 0.6) {
+                    if (arena.travelX()) {
+                        flame(world, along, y, across);
+                    } else {
+                        flame(world, across, y, along);
                     }
                 }
             }
         }
     }
 
-    /** force = true：超过 32 格的玩家也能看到火线（大场地必需）。 */
+    /**
+     * 逐玩家发送，保证不受 32 格视距限制；也只发本世界的玩家。
+     * 不用带 force 的重载：那个重载第 9 个参数是粒子 data，FLAME 没有 data，
+     * 传 double 会被当成 data 处理，部分版本会直接不显示。
+     */
     private void flame(World world, double x, double y, double z) {
-        world.spawnParticle(Particle.FLAME, x, y, z, 1, 0.02, 0.02, 0.02, 0.01, true);
+        for (Player player : world.getPlayers()) {
+            player.spawnParticle(Particle.FLAME, x, y, z, 1, 0.02, 0.02, 0.02, 0.01);
+        }
     }
 
     private double travelCenter() {
@@ -906,8 +913,34 @@ public final class FireJumperManager {
         }
     }
 
-    public void updateSidebar() {
-        if (!plugin.getConfig().getBoolean("sidebar.enabled", true)) {
+    /** 排查用：把场地/火线的实际坐标打出来（/firejumper debug）。 */
+    public List<String> debugLines() {
+        List<String> out = new ArrayList<>();
+        out.add("状态 " + state + "，剩余 " + secondsLeft + "s，轮次 " + round
+                + "，存活 " + playing.size() + "，火线 " + waves.size() + " 条");
+        out.add("世界 " + arena.worldName() + "，区域 " + arena.sizeText()
+                + "，方向 " + arena.direction() + "，线高 " + arena.lineHeight()
+                + "，地面 Y " + arena.groundY());
+        Location p1 = arena.pos1();
+        Location p2 = arena.pos2();
+        out.add("pos1Y=" + (p1 == null ? "-" : p1.getBlockY())
+                + " pos2Y=" + (p2 == null ? "-" : p2.getBlockY())
+                + " 出生点=" + arena.spawns().size()
+                + " 首个出生点Y=" + (arena.spawns().isEmpty() ? "-" : arena.spawns().get(0).getBlockY()));
+        for (int i = 0; i < waves.size(); i++) {
+            Wave wave = waves.get(i);
+            out.add("火线" + (i + 1) + " 当前位置 " + fmt(wave.position)
+                    + "，本段 " + fmt(Math.min(wave.previous, wave.position))
+                    + ".." + fmt(Math.max(wave.previous, wave.position)));
+        }
+        return out;
+    }
+
+    private static String fmt(double value) {
+        return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    public void updateSidebar() {        if (!plugin.getConfig().getBoolean("sidebar.enabled", true)) {
             return;
         }
         Set<UUID> viewers = allPlayers();

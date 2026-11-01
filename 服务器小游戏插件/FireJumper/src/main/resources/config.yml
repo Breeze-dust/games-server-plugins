@@ -21,6 +21,8 @@ jump-boost-level: 2
 out-of-bounds-eliminate: true
 # 结算后等待多少秒回大厅
 end-delay-seconds: 3
+# true = 每次出线在控制台打印起点/终点/判定高度（排查看不见线用）
+debug-lines: false
 
 # ---------- 轮次 ----------
 # 一轮结束到下一轮开始之间的随机间隔（秒）
