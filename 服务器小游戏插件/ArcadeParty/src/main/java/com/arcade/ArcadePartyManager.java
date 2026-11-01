@@ -357,6 +357,12 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         changed |= setDefault("games.oneshot.max-players", 16);
         changed |= setDefault("games.oneshot.join-command", "oneshot join");
         changed |= setDefault("games.oneshot.start-command", "oneshot start");
+        changed |= setDefault("games.firejumper.display", "跃火者");
+        changed |= setDefault("games.firejumper.enabled", true);
+        changed |= setDefault("games.firejumper.arena-aware", false);
+        changed |= setDefault("games.firejumper.max-players", 16);
+        changed |= setDefault("games.firejumper.join-command", "fj join");
+        changed |= setDefault("games.firejumper.start-command", "fj start");
         // 1.0.3：多场地游戏改用带 {arena} 的命令；旧配置一次性迁移
         if (plugin.getConfig().getInt("config-version", 0) < 1) {
             plugin.getConfig().set("games.digtobottom.arena-aware", true);
