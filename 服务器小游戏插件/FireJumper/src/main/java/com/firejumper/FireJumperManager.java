@@ -107,6 +107,8 @@ public final class FireJumperManager {
     private int spawnCooldownTicks;
     private int roundGapTicks = -1;
     private LineType currentType;
+    /** 管理员单人开局测试：不记录胜场、不向街机派对上报名次。 */
+    private boolean soloTest;
 
     public FireJumperManager(FireJumperPlugin plugin) {
         this.plugin = plugin;
@@ -379,7 +381,7 @@ public final class FireJumperManager {
             broadcastWaiting("&c场地未配置完整（缺 " + arena.missing() + "），无法开始。");
             return;
         }
-        int need = force ? 2 : minPlayers();
+        int need = force ? 1 : minPlayers();
         if (waiting.size() < need) {
             broadcastWaiting("&c至少需要 " + need + " 名玩家才能开始。");
             return;
@@ -393,6 +395,7 @@ public final class FireJumperManager {
         winners.clear();
         playing.addAll(waiting);
         waiting.clear();
+        soloTest = force && playing.size() == 1 && !ArcadeBridge.isActive();
         waves.clear();
         secondsLeft = gameSeconds();
         tickCount = 0;
@@ -424,7 +427,7 @@ public final class FireJumperManager {
                     PotionEffect.INFINITE_DURATION, level - 1, false, false, false));
             HubAPI.setPlaying(id, GAME);
             Chat.title(player, "&6&l" + GAME,
-                    "&f跳跃提升 " + level + " &7· &f跳过火焰线，活到最后", 2);
+                    soloTest ? "&e单人测试模式 &7· &f跳过火焰线" : "&f跳跃提升 " + level + " &7· &f跳过火焰线，活到最后", 2);
         }
         gameTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
         updateSidebar();
@@ -702,7 +705,9 @@ public final class FireJumperManager {
         } else {
             broadcastGame("&6&l" + winnerNames() + " &f获得了胜利！");
         }
-        if (award) {
+        if (award && soloTest) {
+            broadcastGame("&e单人测试结束（不记录胜场）。");
+        } else if (award) {
             for (UUID id : winners) {
                 recordFirst(id);
             }
@@ -736,6 +741,7 @@ public final class FireJumperManager {
         eliminated.clear();
         winners.clear();
         waves.clear();
+        soloTest = false;
         state = State.WAITING;
         liveSidebar.hide("firejumper");
         countdown.update();

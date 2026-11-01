@@ -298,7 +298,7 @@ public final class FireJumperCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&f/firejumper setrange <格|auto> &7- 线的移动距离（auto = 场地移动方向总长）");
             Chat.send(sender, "&f/firejumper setlineheight <格> &7- 线的判定高度（默认 1.0）");
             Chat.send(sender, "&f/firejumper save &7- 保存场地");
-            Chat.send(sender, "&f/firejumper start | stop &7- 开始 / 强制结束");
+            Chat.send(sender, "&f/firejumper start | stop &7- 开始 / 强制结束（管理员可 1 人开局测试，不计胜场）");
             Chat.send(sender, "&f/firejumper reload &7- 重新读取配置");
         }
     }

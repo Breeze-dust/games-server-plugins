@@ -33,6 +33,7 @@
     - `/firejumper setrange <格|auto>`：线的移动距离（auto = 场地移动方向总长；以场地中心居中）
     - `/firejumper setlineheight <格>`：判定高度（默认 1.0）
     - `/firejumper save`、`start`、`stop`、`reload`
+  - **单人测试**：管理员可以 `/firejumper join` 后直接 `/firejumper start` 一人开局（自动倒计时仍需 `min-players`）；单人局不记录胜场、不向街机派对上报名次，结算显示「单人测试结束」。
 - **配置**：`server/plugins/FireJumper/config.yml`
   - 人数：`min-players`、`max-players`
   - 对局：`game-seconds`（180）、`start-delay-seconds`（3）、`jump-boost-level`（2）、`out-of-bounds-eliminate`（true）、`end-delay-seconds`（3）
