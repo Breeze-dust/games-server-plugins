@@ -2,10 +2,10 @@
 
 - **一句话职责**：每回合场地随机位置刷新**橡木半砖掩体**，玩家站到半砖下面躲箭雨；没躲好被箭击中就淘汰转旁观。掩体数量随回合递减（最少 1 个），第 N 回合起开放玩家互殴（默认第 10 回合），最后存活者获胜。
 - **核心规则**：
-  - 开局随机分配到**固定出生点**，清空背包、生存模式。
+  - 开局随机分配到**固定出生点**，清空背包、生存模式；**对局中玩家之间关闭实体碰撞**（不会互相挤压），结束/离开时恢复。
   - 每回合三个阶段：
-    1. **找掩体**（`round.cover-seconds`，默认 3 秒）：清掉上一轮半砖，在场地随机位置重新生成 `covers` 配置数量的半砖（离地 `covers.height`，默认 2 格 = 玩家头顶上方）。
-    2. **箭雨**（`round.rain-seconds`，默认 10 秒）：每 `rain.target-interval-ticks`（默认 10 tick）给每个**没有站在掩体正下方**的玩家头顶落一支箭；另有全场随机装饰箭（`rain.ambient-per-second`）。
+    1. **找掩体**（`round.cover-seconds`，默认 3 秒）：清掉上一轮半砖，在场地随机位置重新生成 `covers` 配置数量的半砖（离地 `covers.height`，默认 2 格 = 玩家头顶上方）。动作栏持续显示「箭雨 X 秒后开始」，最后 3 秒屏幕中央每秒报数。
+    2. **箭雨**（`round.rain-seconds`，默认 10 秒）：每 `rain.target-interval-ticks`（默认 10 tick）给每个**没有站在掩体正下方**的玩家头顶落一支箭；另有全场随机装饰箭（`rain.ambient-per-second`）。动作栏显示本回合箭雨剩余时间。
     3. **休息**（`round.gap-seconds`，默认 3 秒）→ 下一回合。
   - **掩体保护**：玩家脚部在地面高度附近，且 XZ 与某块半砖同格 → 安全；跳跃/离开该格都会被箭命中。
   - **掩体递减**：第 1 回合 `covers.start-count`（默认 8），每回合减 `covers.decrease-per-round`（默认 1），最低 `covers.min-count`（默认 1）。
@@ -48,7 +48,7 @@
 - **注意**：
   - 半砖默认在玩家头顶上方 2 格（`covers.height`），太低会卡头、太高箭可能从侧面绕过；建议 2。
   - 掩体会替换该位置的方块，回合结束/对局结束会**还原原始方块**。
-  - 场地需要开放天空：箭从 `rain.arrow-height`（默认 20 格）上方落下。
+  - 场地需要开放天空：箭从 `rain.arrow-height`（默认 20 格）上方落下。**所有箭都会实际落到平台高度**；命中方块后插在原地（不会中途消失），本轮箭雨结束统一清除，任何玩家都不能捡起。
   - PvP 开始时会把场地世界 PvP 临时设为 true；如果同一世界还有别的游戏，请按世界隔离（参见 AGENTS 的多世界约定）。
   - 已接入 ArcadeParty：`games.arrowrain`（`arrowrain join` / `arrowrain start`）。
 - **玩家记录**：命名空间 `arrowrain`，`games.arrowrain.firsts.<uuid>`（胜场），文件 `server/plugins/MiniGameLib/players.yml`。

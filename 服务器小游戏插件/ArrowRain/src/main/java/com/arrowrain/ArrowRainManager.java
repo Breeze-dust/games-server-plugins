@@ -82,6 +82,7 @@ public final class ArrowRainManager {
     private int round;
     private int startDelayTicks;
     private int phaseTicks;
+    private int lastPhaseSecond = -1;
     private boolean soloTest;
 
     public ArrowRainManager(ArrowRainPlugin plugin) {
@@ -332,6 +333,7 @@ public final class ArrowRainManager {
         clearPlayer(player);
         HubAPI.clearGame(id);
         player.setGameMode(GameMode.SURVIVAL);
+        player.setCollidable(true);
         if (!silent) {
             HubAPI.teleportToLobby(player);
             Chat.send(player, "&e你已离开" + GAME + "。");
@@ -406,6 +408,7 @@ public final class ArrowRainManager {
             Location spawn = spawns.isEmpty() ? arena.center() : spawns.get(index++ % spawns.size());
             clearPlayer(player);
             player.setGameMode(GameMode.SURVIVAL);
+            player.setCollidable(false);
             player.setHealth(20.0);
             player.setFoodLevel(20);
             player.setSaturation(20.0f);
@@ -456,6 +459,19 @@ public final class ArrowRainManager {
             case COVER -> {
                 if (--phaseTicks <= 0) {
                     startRain();
+                } else {
+                    int seconds = phaseSeconds();
+                    if (seconds != lastPhaseSecond) {
+                        lastPhaseSecond = seconds;
+                        if (seconds >= 1 && seconds <= 3) {
+                            for (UUID id : allPlayers()) {
+                                Player player = Bukkit.getPlayer(id);
+                                if (player != null) {
+                                    Chat.title(player, "&e" + seconds, "&f箭雨即将落下", 1);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             case RAIN -> {
@@ -472,12 +488,17 @@ public final class ArrowRainManager {
         }
     }
 
+    private int phaseSeconds() {
+        return Math.max(0, (phaseTicks + 19) / 20);
+    }
+
     private void startRound() {
         round++;
         removeCovers();
         placeCovers();
         phase = Phase.COVER;
         phaseTicks = coverSeconds() * 20;
+        lastPhaseSecond = -1;
         if (round >= pvpStartRound()) {
             enableWorldPvp();
         }
@@ -499,6 +520,7 @@ public final class ArrowRainManager {
     private void startRain() {
         phase = Phase.RAIN;
         phaseTicks = rainSeconds() * 20;
+        lastPhaseSecond = -1;
         broadcastGame("&c&l箭雨来了！&f快躲到半砖下面！");
         World world = arena.world();
         if (world != null) {
@@ -510,6 +532,7 @@ public final class ArrowRainManager {
         removeArrows();
         phase = Phase.GAP;
         phaseTicks = gapSeconds() * 20;
+        lastPhaseSecond = -1;
         broadcastGame("&a箭雨结束。&7下一回合掩体会重新刷新。");
     }
 
@@ -758,6 +781,7 @@ public final class ArrowRainManager {
             if (player != null && player.isOnline()) {
                 clearPlayer(player);
                 player.setGameMode(GameMode.SURVIVAL);
+                player.setCollidable(true);
                 HubAPI.teleportToLobby(player);
             }
             HubAPI.clearGame(id);
@@ -949,15 +973,22 @@ public final class ArrowRainManager {
     }
 
     private void updateActionBar() {
-        String phaseText = switch (phase) {
-            case COVER -> "&a找掩体";
-            case RAIN -> "&c箭雨中";
-            case GAP -> "&7休息";
+        int phaseLeft = phaseSeconds();
+        String bar = switch (phase) {
+            case COVER -> "&a找掩体 &7| &f箭雨 &e" + phaseLeft + "s &7后开始"
+                    + " &7| &f掩体 &e" + covers.size()
+                    + " &7| &f回合 &e" + Math.max(1, round)
+                    + " &7| &f剩余 &e" + secondsLeft + "s";
+            case RAIN -> "&c&l箭雨中 &7| &f本回合还剩 &e" + phaseLeft + "s"
+                    + " &7| &f存活 &e" + playing.size()
+                    + " &7| &f剩余 &e" + secondsLeft + "s";
+            case GAP -> "&7休息 &7| &f下一回合 &e" + phaseLeft + "s"
+                    + " &7| &f掩体 &e" + covers.size()
+                    + " &7| &f剩余 &e" + secondsLeft + "s";
         };
-        String bar = phaseText + " &7| &e第 " + Math.max(1, round) + " 回合"
-                + " &7| &f掩体 &e" + covers.size()
-                + " &7| &f剩余 &e" + secondsLeft + "s"
-                + (pvpEnabled() ? " &7| &cPvP 已开启" : "");
+        if (pvpEnabled()) {
+            bar += " &7| &cPvP";
+        }
         for (UUID id : allPlayers()) {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {

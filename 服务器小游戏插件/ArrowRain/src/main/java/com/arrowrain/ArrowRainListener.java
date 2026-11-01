@@ -106,9 +106,11 @@ public final class ArrowRainListener implements Listener {
         Entity hit = event.getHitEntity();
         if (hit instanceof Player player) {
             manager.hitByArrow(player);
+            manager.forgetArrow(arrow);
+            arrow.remove();
+            return;
         }
-        manager.forgetArrow(arrow);
-        arrow.remove();
+        // 命中方块：让箭插在平台上，直到本轮箭雨结束由 removeArrows 统一清理（不可捡起）
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
