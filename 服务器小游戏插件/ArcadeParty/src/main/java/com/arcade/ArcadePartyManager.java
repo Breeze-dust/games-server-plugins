@@ -363,6 +363,12 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         changed |= setDefault("games.firejumper.max-players", 16);
         changed |= setDefault("games.firejumper.join-command", "fj join");
         changed |= setDefault("games.firejumper.start-command", "fj start");
+        changed |= setDefault("games.arrowrain.display", "万箭齐发");
+        changed |= setDefault("games.arrowrain.enabled", true);
+        changed |= setDefault("games.arrowrain.arena-aware", false);
+        changed |= setDefault("games.arrowrain.max-players", 16);
+        changed |= setDefault("games.arrowrain.join-command", "arrowrain join");
+        changed |= setDefault("games.arrowrain.start-command", "arrowrain start");
         // 1.0.3：多场地游戏改用带 {arena} 的命令；旧配置一次性迁移
         if (plugin.getConfig().getInt("config-version", 0) < 1) {
             plugin.getConfig().set("games.digtobottom.arena-aware", true);
