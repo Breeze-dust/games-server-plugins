@@ -24,6 +24,24 @@ end-delay-seconds: 3
 # true = 每次出线在控制台打印起点/终点/判定高度（排查看不见线用）
 debug-lines: false
 
+# ---------- 火线粒子 ----------
+# 原版粒子的存留时间由客户端固定，服务端改不了；拖尾长度 ≈ 线速度 × 粒子寿命。
+# 想缩短拖尾：rows 保持 1、调大 spacing / interval-ticks，或换更短寿命的 type。
+particles:
+  # 粒子类型（只支持不需要额外参数的）：FLAME / SMALL_FLAME / SOUL_FIRE_FLAME /
+  # ELECTRIC_SPARK / CRIT / ENCHANTED_HIT / FIREWORK / END_ROD / SMOKE / LAVA
+  type: FLAME
+  # 火墙层数：1 = 只有一层
+  rows: 1
+  # 多层时的竖直间距（格）
+  row-gap: 0.6
+  # 沿线每隔多少格放一个粒子（越大越稀疏）
+  spacing: 1.0
+  # 每多少 tick 发一次（越大拖尾越稀疏；默认 3）
+  interval-ticks: 3
+  # 每个点发几个粒子
+  count: 1
+
 # ---------- 轮次 ----------
 # 一轮结束到下一轮开始之间的随机间隔（秒）
 round-gap-min-seconds: 1.5

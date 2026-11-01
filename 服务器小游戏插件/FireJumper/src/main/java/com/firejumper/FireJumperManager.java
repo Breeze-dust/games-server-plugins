@@ -454,7 +454,7 @@ public final class FireJumperManager {
         if (state != State.RUNNING) {
             return;
         }
-        if (tickCount % 2 == 0) {
+        if (tickCount % particleIntervalTicks() == 0) {
             renderWaves();
         }
         if (tickCount % 20 == 0) {
@@ -610,17 +610,26 @@ public final class FireJumperManager {
         if (world == null || waves.isEmpty()) {
             return;
         }
+        List<Player> viewers = world.getPlayers();
+        if (viewers.isEmpty()) {
+            return;
+        }
+        Particle particle = particleType();
+        int count = Math.max(1, cfgInt("particles.count", 1));
+        int rows = Math.max(1, cfgInt("particles.rows", 1));
+        double gap = Math.max(0.1, cfgDouble("particles.row-gap", 0.6));
+        double spacing = Math.max(0.2, cfgDouble("particles.spacing", 1.0));
         double bottom = arena.groundY() + 0.2;
-        double top = arena.groundY() + Math.max(1.0, arena.lineHeight()) + 0.6;
         for (Wave wave : waves) {
             double along = wave.position;
             for (double across = wave.spanCenter - wave.spanHalf;
-                 across <= wave.spanCenter + wave.spanHalf; across += 1.0) {
-                for (double y = bottom; y <= top; y += 0.6) {
+                 across <= wave.spanCenter + wave.spanHalf; across += spacing) {
+                for (int row = 0; row < rows; row++) {
+                    double y = bottom + row * gap;
                     if (arena.travelX()) {
-                        flame(world, along, y, across);
+                        emit(viewers, particle, along, y, across, count);
                     } else {
-                        flame(world, across, y, along);
+                        emit(viewers, particle, across, y, along, count);
                     }
                 }
             }
@@ -628,13 +637,28 @@ public final class FireJumperManager {
     }
 
     /**
-     * 逐玩家发送，保证不受 32 格视距限制；也只发本世界的玩家。
-     * 不用带 force 的重载：那个重载第 9 个参数是粒子 data，FLAME 没有 data，
-     * 传 double 会被当成 data 处理，部分版本会直接不显示。
+     * 逐玩家发送，不受 32 格视距限制。
+     * 注意：带 force 的 World#spawnParticle 重载第 9 个参数是粒子 data；
+     * FLAME 没有 data，传 double 会被当成 data，部分版本直接不发包。
      */
-    private void flame(World world, double x, double y, double z) {
-        for (Player player : world.getPlayers()) {
-            player.spawnParticle(Particle.FLAME, x, y, z, 1, 0.02, 0.02, 0.02, 0.01);
+    private void emit(List<Player> viewers, Particle particle, double x, double y, double z, int count) {
+        for (Player player : viewers) {
+            player.spawnParticle(particle, x, y, z, count, 0.02, 0.02, 0.02, 0.01);
+        }
+    }
+
+    private int particleIntervalTicks() {
+        return Math.max(1, Math.min(20, cfgInt("particles.interval-ticks", 3)));
+    }
+
+    private Particle particleType() {
+        String raw = plugin.getConfig().getString("particles.type", "FLAME");
+        try {
+            Particle particle = Particle.valueOf(String.valueOf(raw).trim().toUpperCase(Locale.ROOT));
+            // 只接受不需要额外 data 的粒子（DUST 等需要 DustOptions，传错会不发包）
+            return particle.getDataType() == Void.class ? particle : Particle.FLAME;
+        } catch (IllegalArgumentException exception) {
+            return Particle.FLAME;
         }
     }
 

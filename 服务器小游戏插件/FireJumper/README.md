@@ -45,6 +45,7 @@
   - 场地：`arena.direction / line-length / travel-range / line-height / ground-y / pos1 / pos2 / lobby / spawns`
   - 等待室道具：`wait-items.return` / `wait-items.start`
   - 计分板：`sidebar.enabled` / `sidebar.title`
+  - 粒子：`particles.type / rows / row-gap / spacing / interval-ticks / count`；排查：`debug-lines`
 - **常改文件**：
   | 需求 | 文件 |
   | --- | --- |
@@ -62,7 +63,9 @@
 - **注意**：
   - `ground-y` 是**玩家站立时的脚部 Y**；`/firejumper addspawn` 会用它记录地面，pos1 也会记录，所以正常按指令建场即可。地形抬高/降低后重新 pos1 或 setground。
   - **看不到火线**：`/firejumper debug` 看「地面 Y」是否等于你站立的脚部 Y；打开 `debug-lines: true` 后每次出线会在控制台打印起点/终点/判定高度。
-  - 火线粒子现在**逐玩家发送**（不受 32 格视距限制），并画成 3 层火墙（地面 +0.2 / +0.8 / +1.4）。
+  - 火线粒子**逐玩家发送**（不受 32 格视距限制）；默认只有 **1 层**（`particles.rows: 1`），每 3 tick 发一次（`particles.interval-ticks`）。
+  - **拖尾长短**：原版粒子的存活时间由客户端固定，服务端 API 不能直接改；可视拖尾 ≈ 线速度 × 粒子寿命。要更短就调大 `particles.spacing` / `particles.interval-ticks`，或把 `particles.type` 换成寿命更短的 `ELECTRIC_SPARK` / `CRIT` / `FIREWORK`。
+  - 粒子参数：`particles.type`（FLAME / SMALL_FLAME / SOUL_FIRE_FLAME / ELECTRIC_SPARK / CRIT / ENCHANTED_HIT / FIREWORK / END_ROD / SMOKE / LAVA）、`rows`、`row-gap`、`spacing`、`interval-ticks`、`count`。
   - `line-length` / `travel-range` 为 0 时自动用场地尺寸；自定义范围以场地中心居中。
   - 烟花/火焰粒子只用于显示，判定完全由插件计算，不受客户端粒子设置影响。
   - 已接入 ArcadeParty：`games.firejumper`（`fj join` / `fj start`），结算通过 `ArcadeBridge.report("firejumper", …)` 回报。
