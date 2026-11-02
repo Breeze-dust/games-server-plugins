@@ -84,6 +84,8 @@ public final class ArrowRainManager {
     private int phaseTicks;
     private int lastPhaseSecond = -1;
     private boolean soloTest;
+    private int arrowsSpawned;
+    private int arrowHits;
 
     public ArrowRainManager(ArrowRainPlugin plugin) {
         this.plugin = plugin;
@@ -476,6 +478,7 @@ public final class ArrowRainManager {
             }
             case RAIN -> {
                 rainTick();
+                detectArrowHits();
                 if (--phaseTicks <= 0) {
                     endRain();
                 }
@@ -521,6 +524,8 @@ public final class ArrowRainManager {
         phase = Phase.RAIN;
         phaseTicks = rainSeconds() * 20;
         lastPhaseSecond = -1;
+        arrowsSpawned = 0;
+        arrowHits = 0;
         broadcastGame("&c&l箭雨来了！&f快躲到半砖下面！");
         World world = arena.world();
         if (world != null) {
@@ -530,6 +535,10 @@ public final class ArrowRainManager {
 
     private void endRain() {
         removeArrows();
+        if (plugin.getConfig().getBoolean("debug-rain", false)) {
+            plugin.getLogger().info("[万箭齐发] 第 " + round + " 回合箭雨：发射 " + arrowsSpawned
+                    + " 支，自检命中 " + arrowHits + " 次，存活 " + playing.size());
+        }
         phase = Phase.GAP;
         phaseTicks = gapSeconds() * 20;
         lastPhaseSecond = -1;
@@ -564,6 +573,52 @@ public final class ArrowRainManager {
         }
     }
 
+    /**
+     * 自己每 tick 检测落箭是否穿过玩家，不依赖原版 ProjectileHitEvent
+     * （部分版本里箭的伤害事件被取消后不会再触发命中事件）。
+     * 只认「还在下落」的箭，避免地面上插着的箭误杀路过的玩家。
+     */
+    private void detectArrowHits() {
+        if (rainArrows.isEmpty() || playing.isEmpty()) {
+            return;
+        }
+        for (UUID arrowId : new ArrayList<>(rainArrows)) {
+            org.bukkit.entity.Entity entity = Bukkit.getEntity(arrowId);
+            if (!(entity instanceof Arrow arrow) || !arrow.isValid() || arrow.isDead()) {
+                rainArrows.remove(arrowId);
+                continue;
+            }
+            if (arrow.getVelocity().getY() > -0.05) {
+                continue; // 已经插住/停下的箭不算
+            }
+            Location arrowLoc = arrow.getLocation();
+            for (UUID playerId : new ArrayList<>(playing)) {
+                Player player = Bukkit.getPlayer(playerId);
+                if (player == null || !player.isOnline()) {
+                    continue;
+                }
+                Location playerLoc = player.getLocation();
+                if (!playerLoc.getWorld().equals(arrowLoc.getWorld())) {
+                    continue;
+                }
+                double dx = arrowLoc.getX() - playerLoc.getX();
+                double dz = arrowLoc.getZ() - playerLoc.getZ();
+                if (dx * dx + dz * dz > 0.5625) {
+                    continue;
+                }
+                if (arrowLoc.getY() < playerLoc.getY() - 0.6
+                        || arrowLoc.getY() > playerLoc.getY() + 2.6) {
+                    continue;
+                }
+                arrowHits++;
+                arrow.remove();
+                rainArrows.remove(arrowId);
+                hitByArrow(player);
+                break;
+            }
+        }
+    }
+
     private void spawnArrow(double x, double z) {
         World world = arena.world();
         if (world == null) {
@@ -573,16 +628,13 @@ public final class ArrowRainManager {
         double speed = Math.max(0.3, cfgDouble("rain.arrow-speed", 1.2));
         Location from = new Location(world, x, arena.groundY() + height, z);
         Arrow arrow = world.spawn(from, Arrow.class, entity -> {
-            entity.setShooter(null);
-            entity.setDamage(0);
-            entity.setKnockbackStrength(0);
-            entity.setCritical(false);
             entity.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
             entity.setPersistent(false);
             entity.setSilent(true);
         });
         arrow.setVelocity(new Vector(0, -speed, 0));
         rainArrows.add(arrow.getUniqueId());
+        arrowsSpawned++;
     }
 
     // ---------- 掩体 ----------

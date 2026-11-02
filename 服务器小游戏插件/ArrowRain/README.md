@@ -49,6 +49,7 @@
   - 半砖默认在玩家头顶上方 2 格（`covers.height`），太低会卡头、太高箭可能从侧面绕过；建议 2。
   - 掩体会替换该位置的方块，回合结束/对局结束会**还原原始方块**。
   - 场地需要开放天空：箭从 `rain.arrow-height`（默认 20 格）上方落下。**所有箭都会实际落到平台高度**；命中方块后插在原地（不会中途消失），本轮箭雨结束统一清除，任何玩家都不能捡起。
+  - 命中判定不依赖原版碰撞事件：箭雨阶段每 tick 自检「下落中的箭」与玩家距离（水平 ≤0.75 格、脚部 −0.6~+2.6），所以箭擦过也会淘汰；`debug-rain: true` 时每轮结束会在控制台打印「发射 N 支 / 命中 N 次」。
   - PvP 开始时会把场地世界 PvP 临时设为 true；如果同一世界还有别的游戏，请按世界隔离（参见 AGENTS 的多世界约定）。
   - 已接入 ArcadeParty：`games.arrowrain`（`arrowrain join` / `arrowrain start`）。
 - **玩家记录**：命名空间 `arrowrain`，`games.arrowrain.firsts.<uuid>`（胜场），文件 `server/plugins/MiniGameLib/players.yml`。
