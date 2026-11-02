@@ -23,3 +23,7 @@ Thumbs.db
 
 # ---- Local agent settings ----
 .claude/
+
+# ---- Scratch / downloaded temp files ----
+.tmp-scratch/
+.tmp-*.html
