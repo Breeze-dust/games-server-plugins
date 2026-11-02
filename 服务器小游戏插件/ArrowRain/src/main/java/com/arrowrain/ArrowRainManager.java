@@ -25,6 +25,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import java.io.File;
@@ -46,6 +48,7 @@ public final class ArrowRainManager {
 
     public static final String GAME = "万箭齐发";
     public static final String ARENA = "主场地";
+    private static final String NO_COLLIDE_TEAM = "arrowrain_nocollide";
 
     public enum State {
         WAITING, RUNNING, ENDING
@@ -336,6 +339,7 @@ public final class ArrowRainManager {
         HubAPI.clearGame(id);
         player.setGameMode(GameMode.SURVIVAL);
         player.setCollidable(true);
+        clearNoCollision(player);
         if (!silent) {
             HubAPI.teleportToLobby(player);
             Chat.send(player, "&e你已离开" + GAME + "。");
@@ -411,6 +415,7 @@ public final class ArrowRainManager {
             clearPlayer(player);
             player.setGameMode(GameMode.SURVIVAL);
             player.setCollidable(false);
+            applyNoCollision(player);
             player.setHealth(20.0);
             player.setFoodLevel(20);
             player.setSaturation(20.0f);
@@ -834,6 +839,7 @@ public final class ArrowRainManager {
                 clearPlayer(player);
                 player.setGameMode(GameMode.SURVIVAL);
                 player.setCollidable(true);
+                clearNoCollision(player);
                 HubAPI.teleportToLobby(player);
             }
             HubAPI.clearGame(id);
@@ -893,8 +899,50 @@ public final class ArrowRainManager {
 
     // ---------- 玩家状态 / 道具 ----------
 
-    private void clearPlayer(Player player) {
-        player.getInventory().clear();
+    /** 玩家之间的挤压由计分板队伍的 COLLISION_RULE 控制（客户端生效），setCollidable 管不到。 */
+    private void applyNoCollision(Player player) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        Scoreboard main = Bukkit.getScoreboardManager().getMainScoreboard();
+        noCollisionTeam(main, player);
+        Scoreboard current = player.getScoreboard();
+        if (current != null && current != main) {
+            noCollisionTeam(current, player);
+        }
+    }
+
+    private void noCollisionTeam(Scoreboard board, Player player) {
+        Team team = board.getTeam(NO_COLLIDE_TEAM);
+        if (team == null) {
+            team = board.registerNewTeam(NO_COLLIDE_TEAM);
+        }
+        team.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
+        if (!team.hasEntry(player.getName())) {
+            team.addEntry(player.getName());
+        }
+    }
+
+    private void clearNoCollision(Player player) {
+        if (player == null) {
+            return;
+        }
+        Scoreboard main = Bukkit.getScoreboardManager().getMainScoreboard();
+        removeFromNoCollision(main, player.getName());
+        Scoreboard current = player.getScoreboard();
+        if (current != null && current != main) {
+            removeFromNoCollision(current, player.getName());
+        }
+    }
+
+    private void removeFromNoCollision(Scoreboard board, String name) {
+        Team team = board.getTeam(NO_COLLIDE_TEAM);
+        if (team != null) {
+            team.removeEntry(name);
+        }
+    }
+
+    private void clearPlayer(Player player) {        player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
         player.getActivePotionEffects().forEach(effect -> player.removePotionEffect(effect.getType()));
         player.setGlowing(false);
@@ -1065,6 +1113,13 @@ public final class ArrowRainManager {
         liveSidebar.update("arrowrain",
                 plugin.getConfig().getString("sidebar.title", "&e&l万箭齐发 · 存活"),
                 new ArrayList<>(viewers), lines);
+        // LiveSidebar 会给玩家换计分板；换完再挂一次无碰撞队伍，否则客户端又恢复挤压
+        for (UUID id : playing) {
+            Player player = Bukkit.getPlayer(id);
+            if (player != null) {
+                applyNoCollision(player);
+            }
+        }
     }
 
     private void reportArena() {
