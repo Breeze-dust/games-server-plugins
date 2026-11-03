@@ -6,18 +6,54 @@
 
 # ---------- 人数 ----------
 min-players: 2
-# 最多 16 人（16 种收纳袋颜色一一对应）
+# 最多 16 人（16 种书包颜色一一对应）
 max-players: 16
 
 # ---------- 对局 ----------
-# 每回合抢座时间（秒）：到时间结算，期间可以互相偷袋、击退
+# 每回合抢座时间（秒）：到时间结算，期间可以互相偷书包、击退
 round-seconds: 45
 # 每回合结束后的准备时间（秒）
 round-end-delay-seconds: 4
-# 整局结束（前三名揭晓后）停留多少秒再回大厅
+# 整局结束（最终积分公布后）停留多少秒再回大厅
 end-delay-seconds: 5
-# 最多打多少回合，防止人数异常时卡死（正常人数会自然收敛到最后一回合）
-max-rounds: 15
+
+# ---------- 固定回合 ----------
+# 大一 ~ 大六，最多 6 回合（<= 6）
+rounds:
+  total: 4
+  # 回合名（主标题用的就是这里；{name} 会替换成大一/大二等）
+  names:
+    - 大一
+    - 大二
+    - 大三
+    - 大四
+    - 大五
+    - 大六
+  # 每回合开始时的副标题，可以和上面一一对应（不足的回合用 messages.round-subtitle）
+  subtitles:
+    - '&f第一回合：把书包放进离讲台最近的展示框'
+    - '&f第二回合：靠近讲台的座位分数更高'
+    - '&f第三回合：可以用击退笔抢走别人的书包'
+    - '&f第四回合：最后一回合，冲刺最高分'
+    - '&f第五回合：加时赛，把书包放稳'
+    - '&f第六回合：最终回合，别被击退'
+
+# ---------- 排 / 座位 / 分数 ----------
+# 从讲台向外按水平距离分段。每个展示框属于第一段满足 distance <= max-distance 的排；
+# 超过最后一段的展示框都算最后一段（最后一段建议 max-distance 写 9999）。
+# 每排每回合随机挑出 seats 个展示框作为可用座位，其余展示框放占位书包。
+# score 是坐到这一排的座位上、回合结束时获得的分数。
+score:
+  rows:
+    - max-distance: 6.0
+      seats: 1
+      score: 5
+    - max-distance: 12.0
+      seats: 3
+      score: 3
+    - max-distance: 9999.0
+      seats: 5
+      score: 1
 
 # ---------- 击退笔 ----------
 pen:
@@ -28,7 +64,7 @@ pen:
   # 同一玩家两次命中的最小间隔（tick，20 = 1 秒）
   cooldown-ticks: 10
 
-# ---------- 偷袋后的蓄力投掷 ----------
+# ---------- 偷书包后的蓄力投掷 ----------
 charge:
   # 按住右键多久达到最大力度（秒）
   max-seconds: 2.0
@@ -44,8 +80,10 @@ arena:
   # 区域两个对角（只取 X/Z；pos1 的脚部 Y 记为地面高度）
   pos1: ''
   pos2: ''
-  # 等待点 / 淘汰后的旁观点（/seatgrab setlobby 写）
+  # 等待点 / 死亡后的旁观点（/seatgrab setlobby 写）
   lobby: ''
+  # 讲台位置（/seatgrab setpodium 写）：展示框按到这里的水平距离分排
+  podium: ''
   # 回合出生点（/seatgrab addspawn 写，可多个；不写则在场地内随机找安全落脚点）
   spawns: []
   # 地面高度（玩家站立时的脚部 Y）；-999 = 未设置，自动用 pos1
@@ -54,13 +92,13 @@ arena:
   scan-height: 10
 
 # ---------- 提示文字 ----------
+# 每回合主标题：{name} = 大一/大二等
 messages:
-  start-title: '&e&l第 {round} 回合'
-  start-subtitle: '&f抢一个展示框坐下！存活 {alive} 人 · 座位 {seats} 个'
-  final-title: '&6&l最后回合'
-  final-subtitle: '&f先放进框的两人为第 1/2 名，没放进去的是第 3 名'
-  round-end-title: '&e&l回合结束'
-  round-end-subtitle: '&f存活 {alive} 人，{seconds} 秒后下一回合'
+  round-title: '&6&l{name}'
+  # 副标题列表缺项时的兜底
+  round-subtitle: '&f把书包放进离讲台更近的展示框'
+  round-end-title: '&e&l{name} 结束'
+  round-end-subtitle: '&f本回合得分已结算，准备下一回合'
 
 # ---------- 右侧计分板 ----------
 sidebar:

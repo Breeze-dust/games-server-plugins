@@ -47,6 +47,7 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
                 SeatGrabArena arena = manager.arena();
                 Chat.send(sender, "&7场地：" + arena.sizeText() + "，等待点 "
                         + (arena.lobby() == null ? "&c未设置" : "&a已设置")
+                        + " &7，讲台 " + (arena.podium() == null ? "&c未设置" : "&a已设置")
                         + " &7，出生点 " + arena.spawns().size() + " 个");
             }
             case "help", "?" -> help(sender);
@@ -69,6 +70,13 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
                 if (player != null) {
                     manager.arena().setLobby(player.getLocation());
                     Chat.send(sender, "&a已记录等待点/淘汰旁观点。记得 /seatgrab save。");
+                }
+            }
+            case "setpodium" -> {
+                Player player = adminPlayer(sender);
+                if (player != null) {
+                    manager.arena().setPodium(player.getLocation());
+                    Chat.send(sender, "&a已记录讲台位置（展示框按到这里的水平距离分排）。记得 /seatgrab save。");
                 }
             }
             case "setspawn" -> {
@@ -141,6 +149,7 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission("seatgrab.admin")) {
             Chat.send(sender, "&f/seatgrab pos1|pos2 &7- 站到场地两个对角设置区域（只取 XZ，Y 自动延伸）");
             Chat.send(sender, "&f/seatgrab setlobby &7- 等待点 / 淘汰旁观点");
+            Chat.send(sender, "&f/seatgrab setpodium &7- 讲台位置（按到讲台的距离分排计分）");
             Chat.send(sender, "&f/seatgrab setspawn|addspawn|clearspawns &7- 出生点（不配就随机）");
             Chat.send(sender, "&f/seatgrab save &7- 保存场地");
             Chat.send(sender, "&f/seatgrab frames &7- 检测场地内展示框数量");
@@ -178,7 +187,7 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
         }
         List<String> options = new ArrayList<>(List.of("join", "leave", "list", "help"));
         if (sender.hasPermission("seatgrab.admin")) {
-            options.addAll(List.of("pos1", "pos2", "setlobby", "setspawn", "addspawn",
+            options.addAll(List.of("pos1", "pos2", "setlobby", "setpodium", "setspawn", "addspawn",
                     "clearspawns", "save", "start", "stop", "reload", "frames", "debug"));
         }
         String prefix = args[0].toLowerCase(Locale.ROOT);

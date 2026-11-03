@@ -22,6 +22,7 @@ public final class SeatGrabArena {
     private Location pos1;
     private Location pos2;
     private Location lobby;
+    private Location podium;
     private final List<Location> spawns = new ArrayList<>();
     private int groundY = UNSET;
     private int scanHeight = 10;
@@ -36,6 +37,7 @@ public final class SeatGrabArena {
         pos1 = parse(cfg.getString("arena.pos1", ""));
         pos2 = parse(cfg.getString("arena.pos2", ""));
         lobby = parse(cfg.getString("arena.lobby", ""));
+        podium = parse(cfg.getString("arena.podium", ""));
         groundY = cfg.getInt("arena.ground-y", UNSET);
         if (groundY == -999) {
             groundY = UNSET;
@@ -59,6 +61,7 @@ public final class SeatGrabArena {
         cfg.set("arena.pos1", format(pos1));
         cfg.set("arena.pos2", format(pos2));
         cfg.set("arena.lobby", format(lobby));
+        cfg.set("arena.podium", format(podium));
         cfg.set("arena.ground-y", groundY);
         cfg.set("arena.scan-height", scanHeight);
         cfg.set("arena.spawns", formatAll(spawns));
@@ -78,6 +81,11 @@ public final class SeatGrabArena {
 
     public void setLobby(Location location) {
         lobby = location.clone();
+        worldName = location.getWorld().getName();
+    }
+
+    public void setPodium(Location location) {
+        podium = location.clone();
         worldName = location.getWorld().getName();
     }
 
@@ -111,8 +119,9 @@ public final class SeatGrabArena {
     }
 
     public boolean ready() {
-        return regionConfigured() && lobby != null && world() != null
-                && lobby.getWorld() != null && lobby.getWorld().getName().equals(pos1.getWorld().getName());
+        return regionConfigured() && lobby != null && podium != null && world() != null
+                && lobby.getWorld() != null && lobby.getWorld().getName().equals(pos1.getWorld().getName())
+                && podium.getWorld() != null && podium.getWorld().getName().equals(pos1.getWorld().getName());
     }
 
     public String missing() {
@@ -123,12 +132,19 @@ public final class SeatGrabArena {
         if (lobby == null) {
             out.append("等待点 ");
         }
+        if (podium == null) {
+            out.append("讲台 ");
+        }
         if (world() == null) {
             out.append("世界未加载 ");
         }
         if (lobby != null && lobby.getWorld() != null && regionConfigured()
                 && !lobby.getWorld().getName().equals(pos1.getWorld().getName())) {
             out.append("等待点不在同一世界 ");
+        }
+        if (podium != null && podium.getWorld() != null && regionConfigured()
+                && !podium.getWorld().getName().equals(pos1.getWorld().getName())) {
+            out.append("讲台不在同一世界 ");
         }
         return out.toString().trim();
     }
@@ -205,6 +221,10 @@ public final class SeatGrabArena {
 
     public Location lobby() {
         return lobby == null ? null : lobby.clone();
+    }
+
+    public Location podium() {
+        return podium == null ? null : podium.clone();
     }
 
     public Location pos1() {

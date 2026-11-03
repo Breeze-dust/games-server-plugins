@@ -16,6 +16,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -49,9 +50,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 抢位占座：每回合随机挑出若干展示框作为座位，玩家把自己的收纳袋放进去；
- * 回合结束时没坐下的玩家淘汰。可以用击退笔击退别人、空手偷走别人框里的收纳袋，
- * 被偷的袋子可以按住右键蓄力扔远（被击退笔打中则原地掉落）。
+ * 抢位占座：把书包放进展示框抢座位，座位离讲台越近分数越高；
+ * 固定回合数结束后按总积分排名。可以用击退笔击退别人、空手偷走别人框里的书包，
+ * 被偷的书包可以按住右键蓄力扔远（被击退笔打中则原地掉落）。
+ *
+ * <p>本轮没把书包放进展示框的玩家不会淘汰，只会在回合结束时吃一个纯视觉爆炸效果、本回合 0 分。
  */
 public final class SeatGrabManager {
 
@@ -61,15 +64,29 @@ public final class SeatGrabManager {
 
     private static final String GLOW_PREFIX = "sg_";
 
-    /** 16 种收纳袋颜色；颜色顺序打散后分给玩家，保证同局颜色尽量不同。 */
     private static final List<DyeColor> BAG_COLORS = List.of(
             DyeColor.RED, DyeColor.ORANGE, DyeColor.YELLOW, DyeColor.LIME,
             DyeColor.GREEN, DyeColor.CYAN, DyeColor.LIGHT_BLUE, DyeColor.BLUE,
             DyeColor.PURPLE, DyeColor.MAGENTA, DyeColor.PINK, DyeColor.WHITE,
             DyeColor.LIGHT_GRAY, DyeColor.GRAY, DyeColor.BROWN, DyeColor.BLACK);
 
+    private static final List<String> DEFAULT_ROUND_NAMES = List.of("大一", "大二", "大三", "大四", "大五", "大六");
+
     public enum State {
         WAITING, RUNNING, ENDING
+    }
+
+    /** 一排的配置：离讲台的最大水平距离、本回合可用座位数、该排每个座位的分数。 */
+    private static final class ScoreRow {
+        final double maxDistance;
+        final int seats;
+        final int score;
+
+        ScoreRow(double maxDistance, int seats, int score) {
+            this.maxDistance = maxDistance;
+            this.seats = Math.max(0, seats);
+            this.score = Math.max(0, score);
+        }
     }
 
     private final SeatGrabPlugin plugin;
@@ -87,19 +104,22 @@ public final class SeatGrabManager {
 
     private final Set<UUID> waiting = new LinkedHashSet<>();
     private final Set<UUID> playing = new LinkedHashSet<>();
+    /** 死亡/主动退出的旁观者；积分制下不会再因为没抢到座位而进入这里。 */
     private final Set<UUID> eliminated = new LinkedHashSet<>();
 
     private final Map<UUID, DyeColor> colors = new HashMap<>();
-    /** 当前这回合把袋子放进框里的 tick（用于最后回合的前两名排序）。 */
-    private final Map<UUID, Long> placedAt = new HashMap<>();
-    /** 本回合最近一次放进框里的 tick（袋子被偷走后仍保留，用于同分排序）。 */
-    private final Map<UUID, Long> lastPlacedAt = new HashMap<>();
-    /** 手里拿着别人袋子的玩家 → 袋子所属玩家。 */
+    /** 所有参与者的总积分（含已死亡的旁观者；主动退出会移除）。 */
+    private final Map<UUID, Integer> scores = new LinkedHashMap<>();
+    /** 本回合每个可用座位对应的排与分数。 */
+    private final Map<ItemFrame, Integer> seatRows = new LinkedHashMap<>();
+    private final Map<ItemFrame, Integer> seatPoints = new LinkedHashMap<>();
+
+    /** 手里拿着别人书包的玩家 → 书包所属玩家。 */
     private final Map<UUID, UUID> carrying = new LinkedHashMap<>();
     /** 正在按住右键蓄力的玩家 → 开始蓄力的 tick。 */
     private final Map<UUID, Long> charging = new HashMap<>();
     private final Set<UUID> chargeConfirmed = new LinkedHashSet<>();
-    /** 掉在地上的袋子（可被失主捡回）。 */
+    /** 掉在地上的书包（可被失主捡回）。 */
     private final Map<UUID, Item> droppedBags = new LinkedHashMap<>();
     private final Map<UUID, Long> lastPenHit = new HashMap<>();
 
@@ -108,13 +128,11 @@ public final class SeatGrabManager {
 
     private State state = State.WAITING;
     private boolean roundActive;
-    private boolean finalRound;
     private boolean soloTest;
     private int round;
     private int seatsThisRound;
     private int secondsLeft;
     private int roundTicks;
-    private int participants;
 
     private StartCountdown startCountdown;
     private BukkitTask gameTask;
@@ -225,8 +243,94 @@ public final class SeatGrabManager {
         return Math.max(1, cfgInt("end-delay-seconds", 5)) * 20;
     }
 
-    private int maxRounds() {
-        return Math.max(1, cfgInt("max-rounds", 15));
+    /** 固定回合数，1~6（对应大一~大六）。 */
+    public int totalRounds() {
+        return Math.max(1, Math.min(6, cfgInt("rounds.total", 4)));
+    }
+
+    private List<String> roundNames() {
+        List<String> names = plugin.getConfig().getStringList("rounds.names");
+        return names.isEmpty() ? DEFAULT_ROUND_NAMES : names;
+    }
+
+    public String roundName(int index) {
+        List<String> names = roundNames();
+        if (index >= 1 && index <= names.size()) {
+            return names.get(index - 1);
+        }
+        if (index >= 1 && index <= 6) {
+            return "大" + chineseNumber(index);
+        }
+        return "第" + index + "回合";
+    }
+
+    private String roundSubtitle(int index) {
+        List<String> subtitles = plugin.getConfig().getStringList("rounds.subtitles");
+        if (index >= 1 && index <= subtitles.size()) {
+            String text = subtitles.get(index - 1);
+            if (text != null && !text.isBlank()) {
+                return text;
+            }
+        }
+        return cfgString("messages.round-subtitle", "&f把书包放进离讲台更近的展示框");
+    }
+
+    private String chineseNumber(int number) {
+        return switch (number) {
+            case 1 -> "一";
+            case 2 -> "二";
+            case 3 -> "三";
+            case 4 -> "四";
+            case 5 -> "五";
+            case 6 -> "六";
+            default -> String.valueOf(number);
+        };
+    }
+
+    /** 排配置：按 max-distance 从小到大；每个排配置本回合可用座位数与分数。 */
+    private List<ScoreRow> scoreRows() {
+        List<ScoreRow> rows = new ArrayList<>();
+        for (Map<?, ?> map : plugin.getConfig().getMapList("score.rows")) {
+            double maxDistance = number(map.get("max-distance"), 9999.0);
+            int seats = (int) Math.round(number(map.get("seats"), 0));
+            int score = (int) Math.round(number(map.get("score"), 0));
+            rows.add(new ScoreRow(maxDistance <= 0 ? 9999.0 : maxDistance, seats, score));
+        }
+        if (rows.isEmpty()) {
+            rows.add(new ScoreRow(6.0, 1, 5));
+            rows.add(new ScoreRow(12.0, 3, 3));
+            rows.add(new ScoreRow(9999.0, 5, 1));
+        }
+        rows.sort(Comparator.comparingDouble(row -> row.maxDistance));
+        return rows;
+    }
+
+    private double number(Object value, double def) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text) {
+            try {
+                return Double.parseDouble(text.trim());
+            } catch (NumberFormatException ignored) {
+                return def;
+            }
+        }
+        return def;
+    }
+
+    private int rowIndexFor(List<ScoreRow> rows, double distance) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (distance <= rows.get(i).maxDistance) {
+                return i;
+            }
+        }
+        return rows.size() - 1;
+    }
+
+    private String rowLabel(int index, int rowCount) {
+        String base = "第" + (index + 1) + "排";
+        return index >= rowCount - 1 ? base + "及以后" : base;
     }
 
     private int maxChargeTicks() {
@@ -257,21 +361,6 @@ public final class SeatGrabManager {
         return Math.max(0, cfgInt("pen.cooldown-ticks", 10));
     }
 
-    /**
-     * 本回合可用座位数：
-     * 存活 >= 5 时 N-2（每回合淘汰 2 人）；剩 4 人时 3 个、剩 3 人时 2 个（只淘汰 1 人），
-     * 保证最后一回合能决出前三名。
-     */
-    public int seatsFor(int alive) {
-        if (alive <= 1) {
-            return 1;
-        }
-        if (alive <= 4) {
-            return alive - 1;
-        }
-        return alive - 2;
-    }
-
     // ---------- 生命周期 ----------
 
     public void load() {
@@ -293,7 +382,23 @@ public final class SeatGrabManager {
         changed |= setDefault("round-seconds", 45);
         changed |= setDefault("round-end-delay-seconds", 4);
         changed |= setDefault("end-delay-seconds", 5);
-        changed |= setDefault("max-rounds", 15);
+        changed |= setDefault("rounds.total", 4);
+        changed |= setDefault("rounds.names", new ArrayList<>(DEFAULT_ROUND_NAMES));
+        changed |= setDefault("rounds.subtitles", new ArrayList<>(List.of(
+                "&f第一回合：把书包放进离讲台最近的展示框",
+                "&f第二回合：靠近讲台的座位分数更高",
+                "&f第三回合：可以用击退笔抢走别人的书包",
+                "&f第四回合：最后一回合，冲刺最高分",
+                "&f第五回合：加时赛，把书包放稳",
+                "&f第六回合：最终回合，别被击退")));
+        if (!plugin.getConfig().isSet("score.rows")) {
+            List<Map<String, Object>> rows = new ArrayList<>();
+            rows.add(rowDefaults(6.0, 1, 5));
+            rows.add(rowDefaults(12.0, 3, 3));
+            rows.add(rowDefaults(9999.0, 5, 1));
+            plugin.getConfig().set("score.rows", rows);
+            changed = true;
+        }
         changed |= setDefault("pen.knockback-horizontal", 1.05);
         changed |= setDefault("pen.knockback-vertical", 0.42);
         changed |= setDefault("pen.cooldown-ticks", 10);
@@ -302,17 +407,23 @@ public final class SeatGrabManager {
         changed |= setDefault("charge.max-speed", 1.9);
         changed |= setDefault("charge.up", 0.25);
         changed |= setDefault("arena.scan-height", 10);
-        changed |= setDefault("messages.start-title", "&e&l第 {round} 回合");
-        changed |= setDefault("messages.start-subtitle", "&f抢一个展示框坐下！存活 {alive} 人 · 座位 {seats} 个");
-        changed |= setDefault("messages.final-title", "&6&l最后回合");
-        changed |= setDefault("messages.final-subtitle", "&f先放进框的两人为第 1/2 名，没放进去的是第 3 名");
-        changed |= setDefault("messages.round-end-title", "&e&l回合结束");
-        changed |= setDefault("messages.round-end-subtitle", "&f存活 {alive} 人，{seconds} 秒后下一回合");
+        changed |= setDefault("messages.round-title", "&6&l{name}");
+        changed |= setDefault("messages.round-subtitle", "&f把书包放进离讲台更近的展示框");
+        changed |= setDefault("messages.round-end-title", "&e&l{name} 结束");
+        changed |= setDefault("messages.round-end-subtitle", "&f本回合得分已结算，准备下一回合");
         changed |= setDefault("sidebar.enabled", true);
         changed |= setDefault("sidebar.title", "&e&l抢位占座");
         if (changed) {
             plugin.saveConfig();
         }
+    }
+
+    private Map<String, Object> rowDefaults(double maxDistance, int seats, int score) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("max-distance", maxDistance);
+        map.put("seats", seats);
+        map.put("score", score);
+        return map;
     }
 
     private boolean setDefault(String path, Object value) {
@@ -341,8 +452,9 @@ public final class SeatGrabManager {
         playing.clear();
         eliminated.clear();
         colors.clear();
-        placedAt.clear();
-        lastPlacedAt.clear();
+        scores.clear();
+        seatRows.clear();
+        seatPoints.clear();
         carrying.clear();
         charging.clear();
         chargeConfirmed.clear();
@@ -409,12 +521,12 @@ public final class SeatGrabManager {
             dropCarriedBag(player);
         }
         freeFrameOf(id);
-        placedAt.remove(id);
-        lastPlacedAt.remove(id);
         carrying.remove(id);
         charging.remove(id);
         chargeConfirmed.remove(id);
         colors.remove(id);
+        scores.remove(id);
+        lastPenHit.remove(id);
         clearPlayer(player);
         HubAPI.clearGame(id);
         player.setGameMode(GameMode.SURVIVAL);
@@ -446,11 +558,10 @@ public final class SeatGrabManager {
         carrying.remove(id);
         charging.remove(id);
         chargeConfirmed.remove(id);
-        placedAt.remove(id);
-        lastPlacedAt.remove(id);
-        lastPenHit.remove(id);
         colors.remove(id);
-        // 退出时清掉局内道具，避免收纳袋/击退笔被写进玩家存档
+        scores.remove(id);
+        lastPenHit.remove(id);
+        // 退出时清掉局内道具，避免书包/击退笔被写进玩家存档
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
         if (state == State.RUNNING && playing.isEmpty()) {
@@ -487,15 +598,15 @@ public final class SeatGrabManager {
         countdown.cancel();
         playing.clear();
         eliminated.clear();
-        placedAt.clear();
-        lastPlacedAt.clear();
+        colors.clear();
+        scores.clear();
+        seatRows.clear();
+        seatPoints.clear();
         carrying.clear();
         charging.clear();
         chargeConfirmed.clear();
         lastPenHit.clear();
-        colors.clear();
         round = 0;
-        finalRound = false;
         roundActive = false;
         soloTest = false;
         for (UUID id : new ArrayList<>(waiting)) {
@@ -510,14 +621,14 @@ public final class SeatGrabManager {
             reportArena();
             return;
         }
-        participants = playing.size();
-        soloTest = force && participants == 1 && !ArcadeBridge.isActive();
+        soloTest = force && playing.size() == 1 && !ArcadeBridge.isActive();
         assignColors();
+        for (UUID id : playing) {
+            scores.put(id, 0);
+        }
         scanFrames();
-        int needSeats = Math.max(2, seatsFor(participants));
-        if (frames.size() < needSeats) {
-            String message = "&c场地里的展示框不够（检测到 " + frames.size() + " 个，至少需要 " + needSeats
-                    + " 个），无法开始。请管理员在场地内多放几个展示框。";
+        if (frames.isEmpty()) {
+            String message = "&c场地里没有检测到展示框，无法开始。请管理员在 pos1/pos2 范围内放好展示框。";
             for (UUID id : playing) {
                 Player player = Bukkit.getPlayer(id);
                 if (player != null) {
@@ -550,28 +661,23 @@ public final class SeatGrabManager {
             return;
         }
         round++;
-        if (round > maxRounds()) {
-            settleByStanding();
+        if (round > totalRounds()) {
+            settleByScore();
             return;
         }
-        int alive = playing.size();
-        if (alive <= 1) {
-            settleByStanding();
+        if (playing.isEmpty()) {
+            settleByScore();
             return;
         }
-        finalRound = alive <= 3;
-        seatsThisRound = seatsFor(alive);
-        if (frames.size() < seatsThisRound) {
-            abortMatch("展示框不足");
-            return;
-        }
-        placedAt.clear();
-        lastPlacedAt.clear();
         lastPenHit.clear();
         clearCarries();
         clearDroppedBags();
-        resetFrames(seatsThisRound);
-
+        resetFrames();
+        if (seatFrames.isEmpty()) {
+            abortMatch("没有可用座位，请检查讲台位置和 score.rows 配置");
+            return;
+        }
+        seatsThisRound = seatFrames.size();
         secondsLeft = roundSeconds();
         roundTicks = 0;
         roundActive = true;
@@ -583,6 +689,7 @@ public final class SeatGrabManager {
             Player player = Bukkit.getPlayer(id);
             if (player == null || !player.isOnline()) {
                 playing.remove(id);
+                scores.remove(id);
                 continue;
             }
             Location spawn = spawns.isEmpty() ? arena.randomSpawn(random) : spawns.get(index++ % spawns.size());
@@ -603,18 +710,13 @@ public final class SeatGrabManager {
             HubAPI.setPlaying(id, GAME);
         }
         if (playing.isEmpty()) {
-            settleByStanding();
+            settleByScore();
             return;
         }
 
-        String title = finalRound
-                ? cfgString("messages.final-title", "&6&l最后回合")
-                : cfgString("messages.start-title", "&e&l第 {round} 回合").replace("{round}", String.valueOf(round));
-        String subtitle = finalRound
-                ? cfgString("messages.final-subtitle", "&f先放进框的两人为第 1/2 名，没放进去的是第 3 名")
-                : cfgString("messages.start-subtitle", "&f抢一个展示框坐下！存活 {alive} 人 · 座位 {seats} 个")
-                .replace("{alive}", String.valueOf(playing.size()))
-                .replace("{seats}", String.valueOf(seatsThisRound));
+        String name = roundName(round);
+        String title = cfgString("messages.round-title", "&6&l{name}").replace("{name}", name);
+        String subtitle = roundSubtitle(round);
         for (UUID id : allPlayers()) {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {
@@ -622,8 +724,8 @@ public final class SeatGrabManager {
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1.0f, 1.2f);
             }
         }
-        broadcastGame("&e第 " + round + " 回合开始：&f存活 &e" + playing.size()
-                + " &f人，可用座位 &e" + seatsThisRound + " &f个。");
+        broadcastGame("&e" + name + " 开始：&f座位 &e" + seatsThisRound
+                + " &f个，共 &e" + playing.size() + " &f人，离讲台越近分越高。");
         updateSidebar();
         updateActionBar();
         reportArena();
@@ -688,65 +790,56 @@ public final class SeatGrabManager {
         cancelGameTask();
         clearCarries();
 
-        Set<UUID> seated = seatedOwners();
-        List<UUID> survivors = new ArrayList<>();
-        List<UUID> failed = new ArrayList<>();
+        Map<UUID, Integer> gains = new LinkedHashMap<>();
+        Map<UUID, Integer> rows = new LinkedHashMap<>();
+        for (ItemFrame frame : seatFrames) {
+            UUID owner = bagOwner(frame.getItem());
+            if (owner == null || !playing.contains(owner) || !scores.containsKey(owner)) {
+                continue;
+            }
+            int points = seatPoints.getOrDefault(frame, 0);
+            gains.merge(owner, points, Integer::sum);
+            rows.put(owner, seatRows.getOrDefault(frame, 0));
+        }
+        int rowCount = scoreRows().size();
         for (UUID id : new ArrayList<>(playing)) {
-            if (seated.contains(id)) {
-                survivors.add(id);
+            Player player = Bukkit.getPlayer(id);
+            if (player == null || !player.isOnline()) {
+                continue;
+            }
+            int gain = gains.getOrDefault(id, 0);
+            scores.merge(id, gain, Integer::sum);
+            if (gain > 0) {
+                Chat.sendTitled(player, "&a本回合 +" + gain + " 分 &7("
+                        + rowLabel(rows.getOrDefault(id, 0), rowCount) + ") &7总分 &e" + scores.get(id));
             } else {
-                failed.add(id);
+                explosionEffect(player);
+                Chat.sendTitled(player, "&c本回合 0 分 &7(书包没放进展示框)");
             }
         }
-        survivors.sort(Comparator.comparingLong((UUID id) -> placedAt.getOrDefault(id, (long) roundTicks)));
-        failed.sort(Comparator
-                .comparingLong((UUID id) -> lastPlacedAt.getOrDefault(id, -1L)).reversed()
-                .thenComparing(this::nameOf, String.CASE_INSENSITIVE_ORDER));
+        broadcastGains(gains);
 
-        broadcastRoundResult(survivors, failed);
-
-        if (finalRound) {
-            List<UUID> ordered = new ArrayList<>(survivors);
-            ordered.addAll(failed);
-            List<UUID> firsts = new ArrayList<>();
-            List<UUID> seconds = new ArrayList<>();
-            List<UUID> thirds = new ArrayList<>();
-            if (!ordered.isEmpty()) {
-                firsts.add(ordered.get(0));
-            }
-            if (ordered.size() > 1) {
-                seconds.add(ordered.get(1));
-            }
-            if (ordered.size() > 2) {
-                thirds.add(ordered.get(2));
-            }
-            for (UUID id : new ArrayList<>(playing)) {
-                Player player = Bukkit.getPlayer(id);
-                if (player != null) {
-                    player.getInventory().clear();
-                    player.setGameMode(GameMode.SPECTATOR);
-                }
-            }
-            settle(false, firsts, seconds, thirds);
-            return;
-        }
-
-        for (UUID id : new ArrayList<>(failed)) {
+        String name = roundName(round);
+        String endTitle = cfgString("messages.round-end-title", "&e&l{name} 结束").replace("{name}", name);
+        String endSubtitle = round >= totalRounds()
+                ? "&f全部回合结束，正在统计最终积分…"
+                : cfgString("messages.round-end-subtitle", "&f本回合得分已结算，准备下一回合");
+        for (UUID id : allPlayers()) {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {
-                eliminate(player, "没抢到座位");
-            } else {
-                playing.remove(id);
-                eliminated.add(id);
+                Chat.title(player, endTitle, endSubtitle, 2);
             }
         }
+
         clearRoundField();
-        if (playing.size() <= 1) {
-            settleByStanding();
+        updateSidebar();
+        updateActionBar();
+        reportArena();
+
+        if (round >= totalRounds()) {
+            settleByScore();
             return;
         }
-        updateSidebar();
-        reportArena();
         roundTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
             roundTask = null;
             if (state == State.RUNNING) {
@@ -755,42 +848,28 @@ public final class SeatGrabManager {
         }, roundEndDelayTicks());
     }
 
-    private void broadcastRoundResult(List<UUID> survivors, List<UUID> failed) {
-        StringBuilder survivorsText = new StringBuilder();
-        for (UUID id : survivors) {
-            if (survivorsText.length() > 0) {
-                survivorsText.append("&7, ");
+    private void broadcastGains(Map<UUID, Integer> gains) {
+        StringBuilder text = new StringBuilder();
+        for (UUID id : playing) {
+            if (text.length() > 0) {
+                text.append(" &7| ");
             }
-            survivorsText.append("&a").append(nameOf(id));
+            int gain = gains.getOrDefault(id, 0);
+            text.append(gain > 0 ? "&a" : "&c").append(nameOf(id)).append(" +").append(gain);
         }
-        broadcastGame("&e第 " + round + " 回合结束：&a坐下 &f" + (survivorsText.length() == 0 ? "无" : survivorsText.toString()));
-        if (!failed.isEmpty()) {
-            StringBuilder failedText = new StringBuilder();
-            for (UUID id : failed) {
-                if (failedText.length() > 0) {
-                    failedText.append("&7, ");
-                }
-                failedText.append("&c").append(nameOf(id));
-            }
-            broadcastGame("&c没抢到座位：&f" + failedText);
-        }
-        String title = cfgString("messages.round-end-title", "&e&l回合结束");
-        String subtitle = finalRound
-                ? "&f正在结算前三名…"
-                : cfgString("messages.round-end-subtitle", "&f存活 {alive} 人，{seconds} 秒后下一回合")
-                .replace("{alive}", String.valueOf(survivors.size()))
-                .replace("{seconds}", String.valueOf(Math.max(1, cfgInt("round-end-delay-seconds", 4))));
-        for (UUID id : allPlayers()) {
-            Player player = Bukkit.getPlayer(id);
-            if (player != null) {
-                Chat.title(player, title, subtitle, 2);
-            }
-        }
-        if (finalRound) {
-            broadcastGame("&6最后回合已结束，正在结算前三名…");
+        if (text.length() > 0) {
+            broadcastGame("&e本回合得分：&f" + text);
         }
     }
 
+    /** 纯视觉效果：不破坏方块、不造成伤害、不影响积分。 */
+    private void explosionEffect(Player player) {
+        Location location = player.getLocation().add(0, 1.0, 0);
+        player.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, location, 1, 0, 0, 0, 0);
+        player.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
+    }
+
+    /** 死亡（正常对局不会掉血，只有 /kill 等）转旁观；没抢到座位不会走到这里。 */
     public void eliminate(Player player, String reason) {
         UUID id = player.getUniqueId();
         if (!playing.remove(id)) {
@@ -799,8 +878,6 @@ public final class SeatGrabManager {
         eliminated.add(id);
         dropCarriedBag(player);
         freeFrameOf(id);
-        placedAt.remove(id);
-        lastPlacedAt.remove(id);
         player.clearActiveItem();
         player.getInventory().clear();
         player.setFireTicks(0);
@@ -815,39 +892,52 @@ public final class SeatGrabManager {
         updateSidebar();
         updateActionBar();
         reportArena();
+        if (playing.isEmpty()) {
+            settleByScore();
+        }
     }
 
-    private void settleByStanding() {
+    // ---------- 结算 ----------
+
+    /** 按总积分排名；同分并列共享名次。 */
+    private void settleByScore() {
         if (state != State.RUNNING) {
             return;
         }
-        Set<UUID> seated = seatedOwners();
-        List<UUID> survivors = new ArrayList<>();
-        List<UUID> failed = new ArrayList<>();
-        for (UUID id : new ArrayList<>(playing)) {
-            if (seated.contains(id)) {
-                survivors.add(id);
-            } else {
-                failed.add(id);
-            }
-        }
-        survivors.sort(Comparator.comparingLong((UUID id) -> placedAt.getOrDefault(id, (long) roundTicks)));
-        failed.sort(Comparator
-                .comparingLong((UUID id) -> lastPlacedAt.getOrDefault(id, -1L)).reversed()
+        List<UUID> ranked = new ArrayList<>(scores.keySet());
+        ranked.sort(Comparator
+                .comparingInt((UUID id) -> scores.getOrDefault(id, 0)).reversed()
                 .thenComparing(this::nameOf, String.CASE_INSENSITIVE_ORDER));
-        List<UUID> ordered = new ArrayList<>(survivors);
-        ordered.addAll(failed);
-        List<UUID> firsts = new ArrayList<>();
-        List<UUID> seconds = new ArrayList<>();
-        List<UUID> thirds = new ArrayList<>();
-        if (!ordered.isEmpty()) {
-            firsts.add(ordered.get(0));
+
+        List<List<UUID>> groups = new ArrayList<>();
+        Integer lastScore = null;
+        for (UUID id : ranked) {
+            int score = scores.getOrDefault(id, 0);
+            if (lastScore == null || score != lastScore) {
+                groups.add(new ArrayList<>());
+                lastScore = score;
+            }
+            groups.get(groups.size() - 1).add(id);
         }
-        if (ordered.size() > 1) {
-            seconds.add(ordered.get(1));
+        List<UUID> firsts = groups.size() > 0 ? groups.get(0) : new ArrayList<>();
+        List<UUID> seconds = groups.size() > 1 ? groups.get(1) : new ArrayList<>();
+        List<UUID> thirds = groups.size() > 2 ? groups.get(2) : new ArrayList<>();
+
+        broadcastGame("&6&l最终积分");
+        int rank = 1;
+        for (List<UUID> group : groups) {
+            for (UUID id : group) {
+                broadcastGame("&e" + rank + ". &f" + nameOf(id) + " &7- &e"
+                        + scores.getOrDefault(id, 0) + " 分");
+            }
+            rank += group.size();
         }
-        if (ordered.size() > 2) {
-            thirds.add(ordered.get(2));
+        for (UUID id : new ArrayList<>(playing)) {
+            Player player = Bukkit.getPlayer(id);
+            if (player != null) {
+                player.getInventory().clear();
+                player.setGameMode(GameMode.SPECTATOR);
+            }
         }
         settle(false, firsts, seconds, thirds);
     }
@@ -861,7 +951,7 @@ public final class SeatGrabManager {
         cancelTasks();
         clearCarries();
         clearDroppedBags();
-        resetFrames(0);
+        clearFrames();
         restoreWorldPvp();
 
         if (aborted) {
@@ -920,8 +1010,9 @@ public final class SeatGrabManager {
         playing.clear();
         eliminated.clear();
         colors.clear();
-        placedAt.clear();
-        lastPlacedAt.clear();
+        scores.clear();
+        seatRows.clear();
+        seatPoints.clear();
         carrying.clear();
         charging.clear();
         chargeConfirmed.clear();
@@ -929,9 +1020,9 @@ public final class SeatGrabManager {
         lastPenHit.clear();
         frames.clear();
         seatFrames.clear();
-        finalRound = false;
         soloTest = false;
         roundActive = false;
+        round = 0;
         state = State.WAITING;
         liveSidebar.hide(ARCADE_KEY);
         countdown.update();
@@ -949,7 +1040,7 @@ public final class SeatGrabManager {
         }
     }
 
-    // ---------- 展示框 / 发光 ----------
+    // ---------- 展示框 / 座位 / 发光 ----------
 
     /** 重新扫描场地里的展示框（只读场地内的，含发光展示框）。 */
     public List<ItemFrame> scanFrames() {
@@ -991,20 +1082,59 @@ public final class SeatGrabManager {
         return scanFrames().size();
     }
 
-    private void resetFrames(int seats) {
+    /** 每回合按排随机挑座位：每排只在配置的数量内随机选，其余展示框放占位书包。 */
+    private void resetFrames() {
         clearAllGlows();
         seatFrames.clear();
-        List<ItemFrame> pool = new ArrayList<>(frames);
-        Collections.shuffle(pool, random);
-        for (int i = 0; i < pool.size(); i++) {
-            ItemFrame frame = pool.get(i);
-            if (i < seats) {
-                makeSeat(frame);
-                seatFrames.add(frame);
-            } else {
-                setPlaceholder(frame);
+        seatRows.clear();
+        seatPoints.clear();
+        List<ScoreRow> rows = scoreRows();
+        List<List<ItemFrame>> buckets = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            buckets.add(new ArrayList<>());
+        }
+        for (ItemFrame frame : frames) {
+            double distance = distanceToPodium(frame);
+            int row = rowIndexFor(rows, distance);
+            buckets.get(row).add(frame);
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            List<ItemFrame> bucket = buckets.get(i);
+            Collections.shuffle(bucket, random);
+            int seats = Math.min(rows.get(i).seats, bucket.size());
+            for (int j = 0; j < bucket.size(); j++) {
+                ItemFrame frame = bucket.get(j);
+                if (j < seats) {
+                    makeSeat(frame);
+                    seatFrames.add(frame);
+                    seatRows.put(frame, i);
+                    seatPoints.put(frame, rows.get(i).score);
+                } else {
+                    setPlaceholder(frame);
+                }
             }
         }
+    }
+
+    /** 把所有展示框恢复成占位书包并清空座位信息。 */
+    private void clearFrames() {
+        clearAllGlows();
+        seatFrames.clear();
+        seatRows.clear();
+        seatPoints.clear();
+        for (ItemFrame frame : frames) {
+            setPlaceholder(frame);
+        }
+    }
+
+    private double distanceToPodium(ItemFrame frame) {
+        Location podium = arena.podium();
+        if (podium == null) {
+            return Double.MAX_VALUE;
+        }
+        double dx = frame.getLocation().getX() + 0.5 - podium.getX();
+        double dz = frame.getLocation().getZ() + 0.5 - podium.getZ();
+        return Math.hypot(dx, dz);
     }
 
     private void makeSeat(ItemFrame frame) {
@@ -1048,17 +1178,6 @@ public final class SeatGrabManager {
         return filled;
     }
 
-    private Set<UUID> seatedOwners() {
-        Set<UUID> owners = new LinkedHashSet<>();
-        for (ItemFrame frame : seatFrames) {
-            UUID owner = bagOwner(frame.getItem());
-            if (owner != null) {
-                owners.add(owner);
-            }
-        }
-        return owners;
-    }
-
     private Team glowTeam(String teamKey, NamedTextColor color) {
         Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
         String name = GLOW_PREFIX + teamKey;
@@ -1078,7 +1197,7 @@ public final class SeatGrabManager {
         glow(entity, "seat", NamedTextColor.WHITE);
     }
 
-    /** 已放置 / 掉落的收纳袋：发光颜色取最近的收纳袋颜色。 */
+    /** 已放置 / 掉落的书包：发光颜色取最近的书包颜色。 */
     private void glowBag(Entity entity, DyeColor dye) {
         DyeColor color = dye == null ? DyeColor.WHITE : dye;
         glow(entity, color.name().toLowerCase(Locale.ROOT), glowColor(color));
@@ -1111,7 +1230,7 @@ public final class SeatGrabManager {
         }
     }
 
-    /** 把某个玩家放在框里的袋子取下来、框恢复成空座位（玩家被淘汰/退出时用）。 */
+    /** 把某个玩家放在框里的书包取下来、框恢复成空座位（玩家死亡/退出时用）。 */
     private void freeFrameOf(UUID owner) {
         if (owner == null) {
             return;
@@ -1125,7 +1244,7 @@ public final class SeatGrabManager {
         }
     }
 
-    /** 队伍发光颜色只能是 16 种原版文字颜色，取最接近的收纳袋颜色。 */
+    /** 队伍发光颜色只能是 16 种原版文字颜色，取最接近的书包颜色。 */
     private NamedTextColor glowColor(DyeColor dye) {
         if (dye == null) {
             return NamedTextColor.WHITE;
@@ -1190,7 +1309,7 @@ public final class SeatGrabManager {
         hasSavedPvp = false;
     }
 
-    // ---------- 收纳袋 / 击退笔 ----------
+    // ---------- 书包 / 击退笔 ----------
 
     private Material bagMaterial(DyeColor color) {
         if (color == null) {
@@ -1205,9 +1324,9 @@ public final class SeatGrabManager {
         ItemStack item = new ItemStack(bagMaterial(color));
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Chat.noItalic(Chat.color("&f&l收纳袋")));
+            meta.displayName(Chat.noItalic(Chat.color("&f&l书包")));
             List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
-            lore.add(Chat.color("&7这是 &e" + nameOf(owner) + " &7的收纳袋"));
+            lore.add(Chat.color("&7这是 &e" + nameOf(owner) + " &7的书包"));
             lore.add(Chat.color("&7拿着它右键空展示框坐下"));
             meta.lore(lore);
             meta.getPersistentDataContainer().set(bagKey, PersistentDataType.BYTE, (byte) 1);
@@ -1291,7 +1410,7 @@ public final class SeatGrabManager {
 
     // ---------- 展示框交互 ----------
 
-    /** 玩家右键展示框：手里是自己袋子 → 放入；空手 → 偷别人的。 */
+    /** 玩家右键展示框：手里是自己书包 → 放入；空手 → 偷别人的。 */
     public void handleFrameInteract(Player player, ItemFrame frame) {
         if (!roundActive || state != State.RUNNING || !playing.contains(player.getUniqueId())) {
             return;
@@ -1309,11 +1428,12 @@ public final class SeatGrabManager {
             }
             frame.setItem(hand.clone(), false);
             player.getInventory().setItemInMainHand(null);
-            placedAt.put(player.getUniqueId(), (long) roundTicks);
-            lastPlacedAt.merge(player.getUniqueId(), (long) roundTicks, (a, b) -> Math.max(a, b));
             glowBag(frame, colors.getOrDefault(player.getUniqueId(), DyeColor.WHITE));
             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 0.8f, 1.4f);
-            Chat.actionBar(player, "&a坐下了！&7座位 " + filledSeats() + "/" + seatsThisRound);
+            int points = seatPoints.getOrDefault(frame, 0);
+            int row = seatRows.getOrDefault(frame, 0);
+            Chat.actionBar(player, "&a坐下了！&7" + rowLabel(row, scoreRows().size())
+                    + " &e回合结束 +" + points + " 分");
             broadcastGame("&e" + player.getName() + " &f坐上了座位 &7(" + filledSeats() + "/" + seatsThisRound + ")");
             updateSidebar();
             updateActionBar();
@@ -1322,11 +1442,11 @@ public final class SeatGrabManager {
         if (hand.isEmpty()) {
             UUID owner = bagOwner(frame.getItem());
             if (owner == null) {
-                Chat.actionBar(player, "&7这个展示框里只是占位用的收纳袋，拿不走");
+                Chat.actionBar(player, "&7这个展示框里只是占位用的书包，拿不走");
                 return;
             }
             if (owner.equals(player.getUniqueId())) {
-                Chat.actionBar(player, "&7这是你自己的收纳袋，不用拿");
+                Chat.actionBar(player, "&7这是你自己的书包，不用拿");
                 return;
             }
             ItemStack taken = frame.getItem().clone();
@@ -1336,22 +1456,21 @@ public final class SeatGrabManager {
             carrying.put(player.getUniqueId(), owner);
             charging.remove(player.getUniqueId());
             chargeConfirmed.remove(player.getUniqueId());
-            placedAt.remove(owner);
             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 0.8f);
-            Chat.title(player, "&c你抢到了收纳袋", "&7按住右键蓄力，松开右键扔出", 2);
-            broadcastGame("&e" + player.getName() + " &f抢走了 &e" + nameOf(owner) + " &f的收纳袋！");
+            Chat.title(player, "&c你抢到了书包", "&7按住右键蓄力，松开右键扔出", 2);
+            broadcastGame("&e" + player.getName() + " &f抢走了 &e" + nameOf(owner) + " &f的书包！");
             updateSidebar();
             updateActionBar();
             return;
         }
         if (isPen(hand)) {
-            Chat.actionBar(player, "&7空手才能取下别人的收纳袋");
+            Chat.actionBar(player, "&7空手才能取下别人的书包");
         } else {
-            Chat.actionBar(player, "&7手里拿着别人的收纳袋，先按住右键扔出去");
+            Chat.actionBar(player, "&7手里拿着别人的书包，先按住右键扔出去");
         }
     }
 
-    /** 玩家右键空展示框外的空气/方块，且手里拿着偷来的袋子 → 开始蓄力。 */
+    /** 玩家右键空展示框外的空气/方块，且手里拿着偷来的书包 → 开始蓄力。 */
     public void startCharge(Player player) {
         UUID id = player.getUniqueId();
         if (!roundActive || state != State.RUNNING || !playing.contains(id)) {
@@ -1442,11 +1561,11 @@ public final class SeatGrabManager {
         velocity.setY(direction.getY() * speed * 0.6 + chargeUp());
         spawnDroppedBag(player.getWorld(), player.getEyeLocation().subtract(0, 0.3, 0), bag, owner, velocity);
         player.playSound(player.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 1.0f);
-        Chat.actionBar(player, "&c你把袋子扔出去了！&7（力度 " + Math.round(power * 100) + "%）");
+        Chat.actionBar(player, "&c你把书包扔出去了！&7（力度 " + Math.round(power * 100) + "%）");
         updateActionBar();
     }
 
-    /** 蓄力时被击退笔打中：袋子原地掉落，不会被扔出去。 */
+    /** 蓄力时被击退笔打中：书包原地掉落，不会被扔出去。 */
     private void dropCarriedBag(Player player) {
         UUID id = player.getUniqueId();
         UUID owner = carrying.remove(id);
@@ -1461,7 +1580,7 @@ public final class SeatGrabManager {
         clearStolenItemFromInventory(player, owner);
         ItemStack bag = bagItem(owner);
         spawnDroppedBag(player.getWorld(), player.getLocation().add(0, 0.3, 0), bag, owner, new Vector(0, 0, 0));
-        Chat.actionBar(player, "&c你被击退，收纳袋掉在原地了！");
+        Chat.actionBar(player, "&c你被击退，书包掉在原地了！");
     }
 
     private void clearStolenItemFromInventory(Player player, UUID owner) {
@@ -1487,7 +1606,7 @@ public final class SeatGrabManager {
         droppedBags.put(item.getUniqueId(), item);
     }
 
-    /** 只有失主能捡回自己的袋子。 */
+    /** 只有失主能捡回自己的书包。 */
     public void handlePickup(org.bukkit.event.entity.EntityPickupItemEvent event) {
         ItemStack stack = event.getItem().getItemStack();
         if (!isBagItem(stack)) {
@@ -1504,13 +1623,13 @@ public final class SeatGrabManager {
         }
         droppedBags.remove(event.getItem().getUniqueId());
         clearGlow(event.getItem());
-        Chat.actionBar(picker, "&a你捡回了自己的收纳袋！");
+        Chat.actionBar(picker, "&a你捡回了自己的书包！");
         picker.playSound(picker.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.2f);
     }
 
     // ---------- 击退笔 ----------
 
-    /** 击退笔命中：0 伤害，但对方有原版受击动画 + 击退；蓄力中的袋子原地掉落。 */
+    /** 击退笔命中：0 伤害，但对方有原版受击动画 + 击退；蓄力中的书包原地掉落。 */
     public boolean penHit(Player attacker, Player victim) {
         if (!roundActive || state != State.RUNNING) {
             return false;
@@ -1554,7 +1673,7 @@ public final class SeatGrabManager {
     private void clearRoundField() {
         clearCarries();
         clearDroppedBags();
-        resetFrames(0);
+        clearFrames();
         for (UUID id : playing) {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {
@@ -1562,8 +1681,6 @@ public final class SeatGrabManager {
                 player.clearActiveItem();
             }
         }
-        updateSidebar();
-        updateActionBar();
     }
 
     private void clearCarries() {
@@ -1707,10 +1824,6 @@ public final class SeatGrabManager {
         return round;
     }
 
-    public boolean isFinalRound() {
-        return finalRound;
-    }
-
     public boolean isSoloTest() {
         return soloTest;
     }
@@ -1773,28 +1886,29 @@ public final class SeatGrabManager {
                 continue;
             }
             if (!playing.contains(id)) {
-                Chat.actionBar(player, "&7观战中 · 等待本局结束");
+                Chat.actionBar(player, "&7观战中 &7| &f你的分数 &e" + scores.getOrDefault(id, 0));
                 continue;
             }
             StringBuilder bar = new StringBuilder();
-            bar.append("&e第 ").append(round).append(" 回合");
-            if (finalRound) {
-                bar.append(" &6(最后)");
-            }
-            bar.append(" &7| &f剩余 &e").append(Math.max(0, secondsLeft)).append("s")
-                    .append(" &7| &a座位 &f").append(filledSeats()).append("&7/&f").append(seatsThisRound)
-                    .append(" &7| &a存活 &f").append(playing.size());
+            bar.append("&e").append(roundName(Math.max(1, round)))
+                    .append(" &7| &f剩余 &e").append(Math.max(0, secondsLeft)).append("s")
+                    .append(" &7| &f你的分数 &e").append(scores.getOrDefault(id, 0))
+                    .append(" &7| &a座位 &f").append(filledSeats()).append("&7/&f").append(seatsThisRound);
             Long chargeStart = charging.get(id);
             if (chargeStart != null) {
                 bar.append(" &7| &c蓄力 &f").append(chargeBar(roundTicks - chargeStart));
             } else if (carrying.containsKey(id)) {
-                bar.append(" &7| &c按住右键蓄力扔袋");
+                bar.append(" &7| &c按住右键蓄力扔书包");
             }
             Chat.actionBar(player, bar.toString());
         }
     }
 
     public void updateSidebar() {
+        if (state == State.WAITING) {
+            liveSidebar.hide(ARCADE_KEY);
+            return;
+        }
         if (!plugin.getConfig().getBoolean("sidebar.enabled", true)) {
             return;
         }
@@ -1804,10 +1918,20 @@ public final class SeatGrabManager {
             return;
         }
         List<LiveSidebar.Line> lines = new ArrayList<>();
-        lines.add(new LiveSidebar.Line("§6剩余 &e" + Math.max(0, secondsLeft) + "s", 4));
-        lines.add(new LiveSidebar.Line("§a存活 &f" + playing.size(), 3));
-        lines.add(new LiveSidebar.Line("§f座位 &e" + filledSeats() + "§7/§e" + seatsThisRound, 2));
-        lines.add(new LiveSidebar.Line("§e第 " + Math.max(1, round) + " 回合" + (finalRound ? " §6(最后)" : ""), 1));
+        lines.add(new LiveSidebar.Line("§6剩余 &e" + Math.max(0, secondsLeft) + "s", 30));
+        lines.add(new LiveSidebar.Line("§e" + roundName(Math.max(1, round)), 29));
+        lines.add(new LiveSidebar.Line("§f座位 &e" + filledSeats() + "§7/§e" + seatsThisRound, 28));
+        lines.add(new LiveSidebar.Line("§7— 总积分 —", 27));
+        List<UUID> ranked = new ArrayList<>(scores.keySet());
+        ranked.sort(Comparator
+                .comparingInt((UUID id) -> scores.getOrDefault(id, 0)).reversed()
+                .thenComparing(this::nameOf, String.CASE_INSENSITIVE_ORDER));
+        int lineScore = 26;
+        for (int i = 0; i < Math.min(5, ranked.size()); i++) {
+            UUID id = ranked.get(i);
+            lines.add(new LiveSidebar.Line("§e" + (i + 1) + ". §f" + nameOf(id)
+                    + " §7- §e" + scores.getOrDefault(id, 0), lineScore--));
+        }
         liveSidebar.update(ARCADE_KEY,
                 plugin.getConfig().getString("sidebar.title", "&e&l抢位占座"),
                 new ArrayList<>(viewers), lines);
@@ -1816,8 +1940,8 @@ public final class SeatGrabManager {
     private void reportArena() {
         boolean running = state != State.WAITING;
         String extra = running
-                ? "第 " + Math.max(1, round) + " 回合 · 存活 " + playing.size()
-                + " · 座位 " + seatsThisRound
+                ? roundName(Math.max(1, round)) + " · 座位 " + seatsThisRound
+                + " · 参与 " + playing.size()
                 : null;
         HubAPI.setArena(GAME, ARENA, running ? GameState.PLAYING : GameState.WAITING,
                 waiting.size() + playing.size() + eliminated.size(), extra);
@@ -1826,25 +1950,48 @@ public final class SeatGrabManager {
 
     public List<String> debugLines() {
         List<String> out = new ArrayList<>();
-        out.add("状态 " + state + "，回合 " + round + "，最后回合 " + finalRound
-                + "，剩余 " + secondsLeft + "s，存活 " + playing.size() + "，淘汰 " + eliminated.size()
-                + "，总人数 " + participants);
+        out.add("状态 " + state + "，回合 " + roundName(Math.max(1, round)) + "/" + totalRounds()
+                + "，剩余 " + secondsLeft + "s，参与 " + playing.size() + "，旁观 " + eliminated.size());
         out.add("世界 " + arena.worldName() + "，区域 " + arena.sizeText()
                 + "，等待点 " + (arena.lobby() == null ? "未设置" : "已设置")
-                + "，出生点 " + arena.spawns().size());
+                + "，讲台 " + (arena.podium() == null ? "未设置"
+                : arena.podium().getBlockX() + "," + arena.podium().getBlockZ()));
+        List<String> rowText = new ArrayList<>();
+        List<ScoreRow> rows = scoreRows();
+        for (int i = 0; i < rows.size(); i++) {
+            ScoreRow row = rows.get(i);
+            rowText.add(rowLabel(i, rows.size()) + " 距离<=" + trim(row.maxDistance)
+                    + "格，座位" + row.seats + "，分数" + row.score);
+        }
+        out.add("排配置：" + String.join("；", rowText));
         out.add("展示框 " + frames.size() + " 个，本回合座位 " + seatFrames.size()
-                + "，已坐 " + filledSeats() + "，当前拿起袋子 " + carrying.size()
-                + "，蓄力中 " + charging.size() + "，地上袋子 " + droppedBags.size());
-        out.add("座位规则：存活>=5 → N-2；4 → 3；3 → 2；2 → 1。每回合 " + roundSeconds() + "s。");
+                + "，已坐 " + filledSeats() + "，拿起书包 " + carrying.size()
+                + "，蓄力中 " + charging.size() + "，地上书包 " + droppedBags.size());
+        List<UUID> ranked = new ArrayList<>(scores.keySet());
+        ranked.sort(Comparator.comparingInt((UUID id) -> scores.getOrDefault(id, 0)).reversed());
+        List<String> scoreText = new ArrayList<>();
+        for (UUID id : ranked) {
+            scoreText.add(nameOf(id) + "=" + scores.getOrDefault(id, 0));
+        }
+        out.add("总积分：" + (scoreText.isEmpty() ? "无" : String.join("，", scoreText)));
         return out;
+    }
+
+    private String trim(double value) {
+        if (value >= 9999) {
+            return "∞";
+        }
+        if (value == Math.floor(value)) {
+            return String.valueOf((int) value);
+        }
+        return String.format(Locale.ROOT, "%.1f", value);
     }
 
     public String statusText() {
         if (state == State.WAITING) {
             return "等待中 " + waiting.size() + "/" + maxPlayers() + " 人";
         }
-        return "第 " + Math.max(1, round) + " 回合 · 存活 " + playing.size()
-                + " · 座位 " + filledSeats() + "/" + seatsThisRound
+        return roundName(Math.max(1, round)) + " · 座位 " + filledSeats() + "/" + seatsThisRound
                 + " · 剩余 " + Math.max(0, secondsLeft) + "s";
     }
 
