@@ -6,7 +6,7 @@
 
     <groupId>com.redlight</groupId>
     <artifactId>red-light</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <packaging>jar</packaging>
 
     <name>RedLight</name>

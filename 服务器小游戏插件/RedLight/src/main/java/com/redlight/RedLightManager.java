@@ -50,8 +50,10 @@ public final class RedLightManager {
     public static final String ARENA = "主场地";
     public static final String ARCADE_KEY = "redlight";
     private static final String NO_COLLIDE_TEAM = "redlight_nocollide";
-    /** 本 tick 水平位移低于这个值就认为玩家快停下了（走路约 0.2、潜行约 0.065 格/tick）。 */
-    private static final double ACTIVE_SPEED = 0.08;
+    /** 正常走路约 0.216 格/tick；低于这个值认为玩家松开了移动键。 */
+    private static final double ACTIVE_SPEED = 0.15;
+    /** 推力后多少 tick 内不再记录新的惯性，避免把滑行本身当成“又走了一步”。 */
+    private static final int GLIDE_TICKS = 12;
 
     public enum State {
         WAITING, RUNNING, ENDING
@@ -61,10 +63,11 @@ public final class RedLightManager {
         MOVE, COUNTDOWN, CHECK
     }
 
-    /** 每名玩家的上一 tick 位置与最近一次主动/滑行速度。 */
+    /** 每名玩家的上一 tick 位置、最近一次主动移动速度与滑行冷却。 */
     private static final class Motion {
         Location last;
         Vector pending = new Vector();
+        int cooldown;
     }
 
     private final RedLightPlugin plugin;
@@ -208,8 +211,8 @@ public final class RedLightManager {
         return plugin.getConfig().getBoolean("movement.inertia", true);
     }
 
-    private double inertiaFriction() {
-        return Math.max(0.5, Math.min(0.95, cfgDouble("movement.friction", 0.82)));
+    private double inertiaStrength() {
+        return Math.max(0.5, Math.min(3.0, cfgDouble("movement.strength", 1.8)));
     }
 
     private double inertiaMinSpeed() {
@@ -284,7 +287,12 @@ public final class RedLightManager {
         changed |= setDefault("check.duration-max-seconds", 8);
         changed |= setDefault("check.move-threshold", 0.02);
         changed |= setDefault("movement.inertia", true);
-        changed |= setDefault("movement.friction", 0.82);
+        if (plugin.getConfig().isSet("movement.friction")) {
+            // 1.0.3 起惯性改为“松手时推一次”，不再使用 friction；旧键删掉免得误导
+            plugin.getConfig().set("movement.friction", null);
+            changed = true;
+        }
+        changed |= setDefault("movement.strength", 1.8);
         changed |= setDefault("movement.min-speed", 0.02);
         changed |= setDefault("movement.disable-sprint", true);
         changed |= setDefault("finish-slots", 3);
@@ -668,8 +676,8 @@ public final class RedLightManager {
     /**
      * 移动手感：禁止疾跑 + 松开按键后滑行。
      * <p>
-     * 惯性只在玩家即将停下（本 tick 位移低于 {@link #ACTIVE_SPEED}）时补一次推力，
-     * 其余时间交给客户端原生摩擦自然滑行；每 tick 反复 setVelocity 会互相覆盖，表现为一顿一顿。
+     * 惯性只在玩家松开移动键时施加一次推力（上一 tick 速度 × strength），之后交给客户端原生摩擦
+     * 自然滑行；不在滑行期间反复 setVelocity，否则推力会互相覆盖、表现为一顿一顿。
      */
     private void applyMovementRules() {
         boolean noSprint = disableSprint();
@@ -677,7 +685,7 @@ public final class RedLightManager {
         if (!noSprint && !inertia) {
             return;
         }
-        double friction = inertiaFriction();
+        double strength = inertiaStrength();
         double minSpeed = inertiaMinSpeed();
         double minSpeedSq = minSpeed * minSpeed;
         for (UUID id : new ArrayList<>(playing)) {
@@ -713,19 +721,24 @@ public final class RedLightManager {
             if (speed > 2.0) {
                 // 传送/回城等：清掉上一 tick 的惯性，避免把人弹飞
                 motion.pending = new Vector();
+                motion.cooldown = 0;
+                continue;
+            }
+            if (motion.cooldown > 0) {
+                // 正在滑行：这段位移是上一次推力造成的，不能当成新的主动移动
+                motion.cooldown--;
                 continue;
             }
             if (speed >= ACTIVE_SPEED) {
-                // 玩家自己在走，或上一次推力还在让客户端滑行：记录当前速度
                 motion.pending = new Vector(dx, 0, dz);
             } else if (canGlide(player) && motion.pending.lengthSquared() > minSpeedSq) {
-                // 即将停下：按摩擦衰减后补一次推力，剩下的交给客户端摩擦
-                motion.pending = motion.pending.multiply(friction);
-                if (motion.pending.lengthSquared() >= minSpeedSq) {
-                    push(player, motion.pending);
-                } else {
-                    motion.pending = new Vector();
+                Vector impulse = motion.pending.multiply(strength);
+                if (impulse.length() > 0.6) {
+                    impulse = impulse.normalize().multiply(0.6);
                 }
+                push(player, impulse);
+                motion.pending = new Vector();
+                motion.cooldown = GLIDE_TICKS;
             } else if (!canGlide(player)) {
                 motion.pending = new Vector();
             }
@@ -1189,7 +1202,7 @@ public final class RedLightManager {
         out.add("检查：倒数 " + countdownMinSeconds() + "-" + countdownMaxSeconds() + "s，间隔 "
                 + intervalMinSeconds() + "-" + intervalMaxSeconds() + "s，持续 "
                 + durationMinSeconds() + "-" + durationMaxSeconds() + "s，阈值 " + moveThreshold());
-        out.add("移动：惯性 " + inertiaEnabled() + "（摩擦 " + inertiaFriction() + "），禁止疾跑 "
+        out.add("移动：惯性 " + inertiaEnabled() + "（推力 " + inertiaStrength() + " 倍），禁止疾跑 "
                 + disableSprint());
         return out;
     }
