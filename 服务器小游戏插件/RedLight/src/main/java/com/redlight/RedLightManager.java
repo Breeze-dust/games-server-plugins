@@ -725,7 +725,7 @@ public final class RedLightManager {
     }
 
     private boolean canGlide(Player player) {
-        return player.isOnGround() && !player.isSneaking();
+        return !player.isSneaking();
     }
 
     private void push(Player player, Vector horizontal) {

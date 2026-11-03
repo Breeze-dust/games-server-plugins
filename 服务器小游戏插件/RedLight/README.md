@@ -52,7 +52,7 @@
   - 「移动」只比较坐标：原地转头、打开聊天、切换物品栏都不会被淘汰；跳跃、潜行时位置变化、被推挤都会。
   - 对局中玩家之间的碰撞已通过计分板队伍关闭；仍然建议场地内不要有会推人的实体（矿车、船等）。
   - 局内所有伤害被取消；掉出场外由 `fall-limit` 检测淘汰，不会真的摔死。
-  - 惯性只作用于地面水平移动（跳起/下落保持原版 Y 轴）；蹲下时不滑行。觉得太滑可以把 `movement.friction` 调小（如 0.7），觉得没手感就调大（0.88~0.9）；不想用惯性把 `movement.inertia` 设为 false。
+  - 惯性只作用于水平方向（Y 轴保持原版跳跃/下落），蹲下时不滑行。觉得太滑可以把 `movement.friction` 调小（如 0.7），觉得没手感就调大（0.88~0.9）；不想用惯性把 `movement.inertia` 设为 false。
   - 因为滑行也会被判定为移动，玩家需要在倒数结束前提前松手；如果觉得太难，把 `movement.friction` 调小或把 `check.move-threshold` 调大。
   - 已接入 ArcadeParty：`games.redlight`（`redlight join` / `redlight start`）。
 - **玩家记录**：命名空间 `redlight`，`games.redlight.firsts/seconds/thirds/points.<uuid>`，文件 `server/plugins/MiniGameLib/players.yml`。
