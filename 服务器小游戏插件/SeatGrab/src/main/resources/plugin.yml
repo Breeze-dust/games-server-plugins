@@ -1,5 +1,5 @@
 name: SeatGrab
-version: '1.1.3'
+version: '1.1.4'
 main: com.seatgrab.SeatGrabPlugin
 api-version: '1.21'
 description: 抢位占座：把背包放进展示框抢座位，离讲台越近分越高，按总积分决出前三

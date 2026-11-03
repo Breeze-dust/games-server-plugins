@@ -93,14 +93,18 @@ public final class SeatGrabManager {
         }
     }
 
-    /** 非座位展示框里随机摆放的物品（material + 显示名，名称可在配置里改）。 */
+    /** 非座位展示框里随机摆放的物品（material + 显示名 + 权重 + 最少出现个数）。 */
     private static final class PlaceholderItem {
         final Material material;
         final String name;
+        final int weight;
+        final int minCount;
 
-        PlaceholderItem(Material material, String name) {
+        PlaceholderItem(Material material, String name, int weight, int minCount) {
             this.material = material;
             this.name = name;
+            this.weight = Math.max(0, weight);
+            this.minCount = Math.max(0, minCount);
         }
     }
 
@@ -421,13 +425,38 @@ public final class SeatGrabManager {
         }
         if (!plugin.getConfig().isSet("placeholder-items")) {
             List<Map<String, Object>> items = new ArrayList<>();
-            items.add(placeholderDefaults("BUNDLE", "&f被黏在桌子上的书包"));
-            items.add(placeholderDefaults("POTION", "&b水壶"));
-            items.add(placeholderDefaults("LEATHER_CHESTPLATE", "&6衣服"));
-            items.add(placeholderDefaults("WRITABLE_BOOK", "&e课本"));
-            items.add(placeholderDefaults("PAPER", "&f食品包装袋"));
+            items.add(placeholderDefaults("BUNDLE", "&f被黏在桌子上的书包", 3, 1));
+            items.add(placeholderDefaults("POTION", "&b水壶", 2, 1));
+            items.add(placeholderDefaults("LEATHER_CHESTPLATE", "&6衣服", 2, 1));
+            items.add(placeholderDefaults("WRITABLE_BOOK", "&e课本", 2, 1));
+            items.add(placeholderDefaults("PAPER", "&f食品包装袋", 3, 1));
             plugin.getConfig().set("placeholder-items", items);
             changed = true;
+        }
+        // 老配置补齐 weight / min-count 字段（缺省行为保持原来的均匀随机）
+        List<Map<?, ?>> configuredPlaceholders = plugin.getConfig().getMapList("placeholder-items");
+        if (!configuredPlaceholders.isEmpty()) {
+            boolean migratedPlaceholders = false;
+            List<Map<String, Object>> updated = new ArrayList<>();
+            for (Map<?, ?> raw : configuredPlaceholders) {
+                Map<String, Object> map = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : raw.entrySet()) {
+                    map.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+                if (!map.containsKey("weight")) {
+                    map.put("weight", 1);
+                    migratedPlaceholders = true;
+                }
+                if (!map.containsKey("min-count")) {
+                    map.put("min-count", 0);
+                    migratedPlaceholders = true;
+                }
+                updated.add(map);
+            }
+            if (migratedPlaceholders) {
+                plugin.getConfig().set("placeholder-items", updated);
+                changed = true;
+            }
         }
         changed |= setDefault("pen.knockback-horizontal", 1.05);
         changed |= setDefault("pen.knockback-vertical", 0.42);
@@ -458,10 +487,12 @@ public final class SeatGrabManager {
         return map;
     }
 
-    private Map<String, Object> placeholderDefaults(String material, String name) {
+    private Map<String, Object> placeholderDefaults(String material, String name, int weight, int minCount) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("material", material);
         map.put("name", name);
+        map.put("weight", weight);
+        map.put("min-count", minCount);
         return map;
     }
 
@@ -1154,6 +1185,7 @@ public final class SeatGrabManager {
             int row = rowIndexFor(rows, distance);
             buckets.get(row).add(frame);
         }
+        List<ItemFrame> nonSeat = new ArrayList<>();
         for (int i = 0; i < rows.size(); i++) {
             List<ItemFrame> bucket = buckets.get(i);
             Collections.shuffle(bucket, random);
@@ -1166,20 +1198,25 @@ public final class SeatGrabManager {
                     seatRows.put(frame, i);
                     seatPoints.put(frame, rows.get(i).score);
                 } else {
-                    setPlaceholder(frame);
+                    nonSeat.add(frame);
                 }
             }
         }
+        List<PlaceholderItem> plan = placeholderPlan(nonSeat.size());
+        for (int i = 0; i < nonSeat.size(); i++) {
+            setPlaceholder(nonSeat.get(i), plan.get(i));
+        }
     }
 
-    /** 把所有展示框恢复成占位背包并清空座位信息。 */
+    /** 把所有展示框恢复成占位物品并清空座位信息。 */
     private void clearFrames() {
         clearAllGlows();
         seatFrames.clear();
         seatRows.clear();
         seatPoints.clear();
-        for (ItemFrame frame : frames) {
-            setPlaceholder(frame);
+        List<PlaceholderItem> plan = placeholderPlan(frames.size());
+        for (int i = 0; i < frames.size(); i++) {
+            setPlaceholder(frames.get(i), plan.get(i));
         }
     }
 
@@ -1203,14 +1240,12 @@ public final class SeatGrabManager {
         glowSeat(frame);
     }
 
-    private void setPlaceholder(ItemFrame frame) {
-        List<PlaceholderItem> items = placeholderItems();
-        PlaceholderItem placeholder = items.get(random.nextInt(items.size()));
+    private void setPlaceholder(ItemFrame frame, PlaceholderItem placeholder) {
         frame.setItem(placeholderStack(placeholder), false);
         clearGlow(frame);
     }
 
-    /** 非座位展示框随机摆放的物品，来自配置 placeholder-items（material + name）。 */
+    /** 非座位展示框随机摆放的物品，来自配置 placeholder-items（material + name + weight + min-count）。 */
     private List<PlaceholderItem> placeholderItems() {
         List<PlaceholderItem> items = new ArrayList<>();
         for (Map<?, ?> map : plugin.getConfig().getMapList("placeholder-items")) {
@@ -1220,16 +1255,50 @@ public final class SeatGrabManager {
                 continue;
             }
             String name = map.get("name") == null ? "" : String.valueOf(map.get("name"));
-            items.add(new PlaceholderItem(material, name));
+            int weight = (int) Math.round(number(map.get("weight"), 1));
+            int minCount = (int) Math.round(number(map.get("min-count"), 0));
+            items.add(new PlaceholderItem(material, name, weight, minCount));
         }
         if (items.isEmpty()) {
-            items.add(new PlaceholderItem(Material.BUNDLE, "&f被黏在桌子上的书包"));
-            items.add(new PlaceholderItem(Material.POTION, "&b水壶"));
-            items.add(new PlaceholderItem(Material.LEATHER_CHESTPLATE, "&6衣服"));
-            items.add(new PlaceholderItem(Material.WRITABLE_BOOK, "&e课本"));
-            items.add(new PlaceholderItem(Material.PAPER, "&f食品包装袋"));
+            items.add(new PlaceholderItem(Material.BUNDLE, "&f被黏在桌子上的书包", 3, 1));
+            items.add(new PlaceholderItem(Material.POTION, "&b水壶", 2, 1));
+            items.add(new PlaceholderItem(Material.LEATHER_CHESTPLATE, "&6衣服", 2, 1));
+            items.add(new PlaceholderItem(Material.WRITABLE_BOOK, "&e课本", 2, 1));
+            items.add(new PlaceholderItem(Material.PAPER, "&f食品包装袋", 3, 1));
         }
         return items;
+    }
+
+    /**
+     * 为一组非座位框生成占位物品：先按列表顺序满足每项的 min-count，
+     * 剩下的槽位按 weight 加权随机；weight 全为 0 时退化为均匀随机。
+     */
+    private List<PlaceholderItem> placeholderPlan(int slots) {
+        List<PlaceholderItem> plan = new ArrayList<>();
+        if (slots <= 0) {
+            return plan;
+        }
+        List<PlaceholderItem> pool = placeholderItems();
+        for (PlaceholderItem item : pool) {
+            for (int i = 0; i < item.minCount && plan.size() < slots; i++) {
+                plan.add(item);
+            }
+        }
+        List<PlaceholderItem> weighted = new ArrayList<>();
+        for (PlaceholderItem item : pool) {
+            for (int i = 0; i < item.weight; i++) {
+                weighted.add(item);
+            }
+        }
+        while (plan.size() < slots) {
+            if (weighted.isEmpty()) {
+                plan.add(pool.get(random.nextInt(pool.size())));
+            } else {
+                plan.add(weighted.get(random.nextInt(weighted.size())));
+            }
+        }
+        Collections.shuffle(plan, random);
+        return plan;
     }
 
     private ItemStack placeholderStack(PlaceholderItem placeholder) {

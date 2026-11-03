@@ -58,17 +58,29 @@ score:
 # ---------- 非座位展示框的随机物品 ----------
 # 每回合没被选为座位的展示框会从下面随机挑一个物品放进去；显示名可以随便改。
 # material = Bukkit 物品 ID（POTION 会自动变成水瓶）；可以增删条目。
+# weight    = 加权随机权重，越大越容易出现；0 = 不会随机出现（只能靠 min-count 出现）。
+# min-count = 每回合至少出现几个；非座位框不够时按列表顺序优先满足靠前的条目。
 placeholder-items:
   - material: BUNDLE
     name: '&f被黏在桌子上的书包'
+    weight: 3
+    min-count: 1
   - material: POTION
     name: '&b水壶'
+    weight: 2
+    min-count: 1
   - material: LEATHER_CHESTPLATE
     name: '&6衣服'
+    weight: 2
+    min-count: 1
   - material: WRITABLE_BOOK
     name: '&e课本'
+    weight: 2
+    min-count: 1
   - material: PAPER
     name: '&f食品包装袋'
+    weight: 3
+    min-count: 1
 
 # ---------- 击退笔 ----------
 pen:
