@@ -407,6 +407,7 @@ public final class SeatGrabManager {
         changed |= setDefault("charge.max-speed", 1.9);
         changed |= setDefault("charge.up", 0.25);
         changed |= setDefault("arena.scan-height", 10);
+        changed |= setDefault("arena.podium-axis", "z");
         changed |= setDefault("messages.round-title", "&6&l{name}");
         changed |= setDefault("messages.round-subtitle", "&f把书包放进离讲台更近的展示框");
         changed |= setDefault("messages.round-end-title", "&e&l{name} 结束");
@@ -1142,14 +1143,19 @@ public final class SeatGrabManager {
         }
     }
 
+    /**
+     * 讲台是一条沿 X 或 Z 轴的“正面线”，距离取展示框到这条线的垂直距离，
+     * 不是到讲台点的半径。podium-axis 表示排向沿哪条轴推进。
+     */
     private double distanceToPodium(ItemFrame frame) {
         Location podium = arena.podium();
         if (podium == null) {
             return Double.MAX_VALUE;
         }
-        double dx = frame.getLocation().getX() + 0.5 - podium.getX();
-        double dz = frame.getLocation().getZ() + 0.5 - podium.getZ();
-        return Math.hypot(dx, dz);
+        if ("x".equals(arena.podiumAxis())) {
+            return Math.abs(frame.getLocation().getX() + 0.5 - podium.getX());
+        }
+        return Math.abs(frame.getLocation().getZ() + 0.5 - podium.getZ());
     }
 
     private void makeSeat(ItemFrame frame) {
@@ -1933,9 +1939,9 @@ public final class SeatGrabManager {
             return;
         }
         List<LiveSidebar.Line> lines = new ArrayList<>();
-        lines.add(new LiveSidebar.Line("§6剩余 &e" + Math.max(0, secondsLeft) + "s", 30));
+        lines.add(new LiveSidebar.Line("§6剩余 §e" + Math.max(0, secondsLeft) + "s", 30));
         lines.add(new LiveSidebar.Line("§e" + roundName(Math.max(1, round)), 29));
-        lines.add(new LiveSidebar.Line("§f座位 &e" + filledSeats() + "§7/§e" + seatsThisRound, 28));
+        lines.add(new LiveSidebar.Line("§f座位 §e" + filledSeats() + "§7/§e" + seatsThisRound, 28));
         lines.add(new LiveSidebar.Line("§7— 总积分 —", 27));
         List<UUID> ranked = new ArrayList<>(scores.keySet());
         ranked.sort(Comparator
@@ -1970,7 +1976,8 @@ public final class SeatGrabManager {
         out.add("世界 " + arena.worldName() + "，区域 " + arena.sizeText()
                 + "，等待点 " + (arena.lobby() == null ? "未设置" : "已设置")
                 + "，讲台 " + (arena.podium() == null ? "未设置"
-                : arena.podium().getBlockX() + "," + arena.podium().getBlockZ()));
+                : arena.podium().getBlockX() + "," + arena.podium().getBlockZ()
+                + "（排向沿 " + arena.podiumAxis().toUpperCase() + " 轴）"));
         List<String> rowText = new ArrayList<>();
         List<ScoreRow> rows = scoreRows();
         for (int i = 0; i < rows.size(); i++) {

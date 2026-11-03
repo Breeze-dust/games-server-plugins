@@ -23,6 +23,8 @@ public final class SeatGrabArena {
     private Location pos2;
     private Location lobby;
     private Location podium;
+    /** 讲台“正面线”的法线方向：x = 排向沿 X 轴推进（线沿 Z），z = 排向沿 Z 轴推进（线沿 X）。 */
+    private String podiumAxis = "z";
     private final List<Location> spawns = new ArrayList<>();
     private int groundY = UNSET;
     private int scanHeight = 10;
@@ -38,6 +40,7 @@ public final class SeatGrabArena {
         pos2 = parse(cfg.getString("arena.pos2", ""));
         lobby = parse(cfg.getString("arena.lobby", ""));
         podium = parse(cfg.getString("arena.podium", ""));
+        podiumAxis = normalizeAxis(cfg.getString("arena.podium-axis", "z"));
         groundY = cfg.getInt("arena.ground-y", UNSET);
         if (groundY == -999) {
             groundY = UNSET;
@@ -62,6 +65,7 @@ public final class SeatGrabArena {
         cfg.set("arena.pos2", format(pos2));
         cfg.set("arena.lobby", format(lobby));
         cfg.set("arena.podium", format(podium));
+        cfg.set("arena.podium-axis", podiumAxis);
         cfg.set("arena.ground-y", groundY);
         cfg.set("arena.scan-height", scanHeight);
         cfg.set("arena.spawns", formatAll(spawns));
@@ -86,7 +90,30 @@ public final class SeatGrabArena {
 
     public void setPodium(Location location) {
         podium = location.clone();
+        podiumAxis = axisFromYaw(location.getYaw());
         worldName = location.getWorld().getName();
+    }
+
+    public void setPodium(Location location, String axis) {
+        podium = location.clone();
+        podiumAxis = normalizeAxis(axis);
+        worldName = location.getWorld().getName();
+    }
+
+    /** 玩家面朝方向的主要水平轴：面向南北（±Z）→ z，面向东西（±X）→ x。 */
+    public static String axisFromYaw(float yaw) {
+        double radians = Math.toRadians(yaw);
+        double dx = -Math.sin(radians);
+        double dz = Math.cos(radians);
+        return Math.abs(dx) > Math.abs(dz) ? "x" : "z";
+    }
+
+    public static String normalizeAxis(String axis) {
+        return axis != null && axis.equalsIgnoreCase("x") ? "x" : "z";
+    }
+
+    public String podiumAxis() {
+        return podiumAxis;
     }
 
     public void setSpawn(Location location) {

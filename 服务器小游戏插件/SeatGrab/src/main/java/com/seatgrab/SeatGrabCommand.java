@@ -47,7 +47,8 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
                 SeatGrabArena arena = manager.arena();
                 Chat.send(sender, "&7场地：" + arena.sizeText() + "，等待点 "
                         + (arena.lobby() == null ? "&c未设置" : "&a已设置")
-                        + " &7，讲台 " + (arena.podium() == null ? "&c未设置" : "&a已设置")
+                        + " &7，讲台 " + (arena.podium() == null ? "&c未设置"
+                        : "&a已设置（排向沿 " + arena.podiumAxis().toUpperCase() + " 轴）")
                         + " &7，出生点 " + arena.spawns().size() + " 个");
             }
             case "help", "?" -> help(sender);
@@ -75,8 +76,17 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
             case "setpodium" -> {
                 Player player = adminPlayer(sender);
                 if (player != null) {
-                    manager.arena().setPodium(player.getLocation());
-                    Chat.send(sender, "&a已记录讲台位置（展示框按到这里的水平距离分排）。记得 /seatgrab save。");
+                    if (args.length >= 2) {
+                        String axis = args[1].equalsIgnoreCase("x") ? "x" : "z";
+                        manager.arena().setPodium(player.getLocation(), axis);
+                        Chat.send(sender, "&a已记录讲台位置，排向沿 &e" + axis.toUpperCase()
+                                + " &a轴（讲台线垂直于该轴）。记得 /seatgrab save。");
+                    } else {
+                        manager.arena().setPodium(player.getLocation());
+                        Chat.send(sender, "&a已记录讲台位置，按你的面朝方向判定排向沿 &e"
+                                + manager.arena().podiumAxis().toUpperCase()
+                                + " &a轴；可用 /seatgrab setpodium x|z 强制指定。记得 /seatgrab save。");
+                    }
                 }
             }
             case "setspawn" -> {
@@ -149,7 +159,7 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission("seatgrab.admin")) {
             Chat.send(sender, "&f/seatgrab pos1|pos2 &7- 站到场地两个对角设置区域（只取 XZ，Y 自动延伸）");
             Chat.send(sender, "&f/seatgrab setlobby &7- 等待点 / 淘汰旁观点");
-            Chat.send(sender, "&f/seatgrab setpodium &7- 讲台位置（按到讲台的距离分排计分）");
+            Chat.send(sender, "&f/seatgrab setpodium [x|z] &7- 讲台正面线（按点到线的垂直距离分排）");
             Chat.send(sender, "&f/seatgrab setspawn|addspawn|clearspawns &7- 出生点（不配就随机）");
             Chat.send(sender, "&f/seatgrab save &7- 保存场地");
             Chat.send(sender, "&f/seatgrab frames &7- 检测场地内展示框数量");
@@ -182,6 +192,16 @@ public final class SeatGrabCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 2 && args[0].equalsIgnoreCase("setpodium")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            List<String> out = new ArrayList<>();
+            for (String option : List.of("x", "z")) {
+                if (option.startsWith(prefix)) {
+                    out.add(option);
+                }
+            }
+            return out;
+        }
         if (args.length != 1) {
             return new ArrayList<>();
         }

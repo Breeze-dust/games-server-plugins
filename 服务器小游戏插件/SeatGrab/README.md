@@ -6,11 +6,11 @@
   - 管理（OP 或 `seatgrab.admin`）：
     - `/seatgrab pos1` / `pos2`：站到场地两个对角执行（只取 XZ；pos1 的脚部 Y 记为地面）
     - `/seatgrab setlobby`：等待点 / 死亡后的旁观点
-    - `/seatgrab setpodium`：**讲台位置**（展示框按到这里的水平距离分排计分）
+    - `/seatgrab setpodium [x|z]`：**讲台正面线**（一条沿 X 或 Z 轴的线；展示框按到这条线的**垂直距离**分排计分）
     - `/seatgrab setspawn` / `addspawn` / `clearspawns`：出生点（不配就在场地内随机找落脚点）
     - `/seatgrab save`、`start`、`stop`、`reload`、`frames`（检测场地内展示框数量）、`debug`
 - **核心规则（1.1.0 积分制）**：
-  - **展示框由管理员提前摆在场地里**（固定位置）；每回合代码扫描 `pos1/pos2` 范围（XZ 取场地，Y 从角点向上自动延伸 `arena.scan-height` 格），按到讲台的距离分排，**每排随机挑配置数量的展示框作为可用座位**，其余展示框自动填上**没有染色的书包**当占位。
+  - **展示框由管理员提前摆在场地里**（固定位置）；每回合代码扫描 `pos1/pos2` 范围（XZ 取场地，Y 从角点向上自动延伸 `arena.scan-height` 格），按展示框到**讲台正面线**的垂直距离分排，**每排随机挑配置数量的展示框作为可用座位**，其余展示框自动填上**没有染色的书包**当占位。讲台不是圆心，而是一条沿 X 或 Z 轴的直线：`podium-axis: z` 表示排向沿 Z 推进（线沿 X，距离取 `|框Z-讲台Z|`），`x` 则相反。
   - 默认排配置（`score.rows`）：第一排（≤6 格）1 个座位、**+5 分**；第二排（≤12 格）3 个座位、**+3 分**；第三排及以后 5 个座位、**+1 分**。距离、座位数、分数都能在配置里改。
   - 每回合开始：清背包、冒险模式、传送到出生点，发一个**自己颜色的书包**和一根**击退笔**（击退 II 的末地烛，名字“击退笔”）。
   - 右键**本回合的空展示框**放入自己的书包；框会发出**书包颜色的光**（队伍发光颜色是原版 16 色里最接近的颜色，见下）。
@@ -29,7 +29,7 @@
   - 排/分数：`score.rows`（`max-distance` / `seats` / `score`，按距离从小到大；最后一段建议写 `9999`）
   - 击退笔：`pen.knockback-horizontal`（1.05）、`knockback-vertical`（0.42）、`cooldown-ticks`（10）
   - 蓄力：`charge.max-seconds`（2.0）、`min-speed`（0.6）、`max-speed`（1.9）、`up`（0.25）
-  - 场地：`arena.pos1 / pos2 / lobby / podium / spawns / ground-y / scan-height`
+  - 场地：`arena.pos1 / pos2 / lobby / podium / podium-axis / spawns / ground-y / scan-height`
   - 提示文字：`messages.round-title`（`{name}`）、`messages.round-subtitle`、`messages.round-end-*`、`sidebar.*`、`wait-items.*`
 - **常改文件**：
   | 需求 | 文件 |
@@ -42,14 +42,14 @@
 - **建场步骤**：
   1. 搭好场地，在场地内**提前摆好展示框**（空框或放着普通书包都可以；每回合会被重置）。展示框建议固定在墙/柱子上。
   2. 站到场地两个对角：`/seatgrab pos1`、`/seatgrab pos2`（地面高度取 pos1 的 Y；展示框扫描从角点向上延伸 `scan-height`）。
-  3. 站到讲台位置：`/seatgrab setpodium`（只用它的 X/Z 算距离）。
+  3. 站到讲台位置、面朝座位：`/seatgrab setpodium`（按面朝方向自动判定排向沿 X 还是 Z；也可 `/seatgrab setpodium x` 或 `z` 强制）。
   4. 站到等待点：`/seatgrab setlobby`；可选 `/seatgrab addspawn` 设多个出生点。
   5. `/seatgrab save`，再 `/seatgrab frames` 确认扫描到的展示框数量；用 `/seatgrab debug` 看排配置和讲台距离。
   6. 按实际场地改 `score.rows` 的 `max-distance` / `seats` / `score`，并改 `rounds.total` / `rounds.subtitles`。
   7. 至少 2 人 `/seatgrab join` → `/seatgrab start`，或走街机派对。
 - **注意 / 已知限制**：
-  - **讲台是必填项**：没设讲台时 `arena.ready()` 为 false，无法开局。
-  - **排是按到讲台的水平距离（XZ）分段**，不是按建筑层数；如果场地不是标准教室排布，按实际距离调 `max-distance` 即可。
+  - **讲台是必填项**：没设讲台时 `arena.ready()` 为 false，无法开局。讲台是沿 X 或 Z 轴的**直线**，距离取展示框到线的垂直距离（不是到讲台点的半径）；排向不对时用 `/seatgrab setpodium x|z` 重新指定。
+  - **排是按到讲台线的垂直距离分段**，不是按建筑层数；如果场地不是标准教室排布，按实际距离调 `max-distance` 即可。
   - **每排座位数固定**（默认 1/3/5）：该排展示框不够时会有多少用多少；所有长度为 0 会中止本局。
   - **队伍发光颜色只有原版 16 色**：书包有 16 色，但团队发光只支持 16 种文字颜色，所以粉/品红都会接近淡紫色、浅灰会接近灰色、棕色接近金色。书包物品本身的颜色是准确的。
   - **PvP**：对局开始时把场地世界的 PvP 打开（`world.setPVP(true)`，和 HillKing 同做法），结束后恢复。场地世界别和其它玩法共用。

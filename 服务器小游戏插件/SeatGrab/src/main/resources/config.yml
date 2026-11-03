@@ -82,8 +82,12 @@ arena:
   pos2: ''
   # 等待点 / 死亡后的旁观点（/seatgrab setlobby 写）
   lobby: ''
-  # 讲台位置（/seatgrab setpodium 写）：展示框按到这里的水平距离分排
+  # 讲台位置（/seatgrab setpodium 写）：讲台是一条沿 X 或 Z 轴的“正面线”，
+  # 展示框按到这条线的垂直距离分排，不是按到讲台点的半径。
   podium: ''
+  # 讲台线的排向：x = 排向沿 X 轴推进（讲台线沿 Z 轴）；z = 排向沿 Z 轴推进（讲台线沿 X 轴）。
+  # /seatgrab setpodium 会按你的面朝方向自动判断，也可以用 /seatgrab setpodium x|z 强制指定。
+  podium-axis: z
   # 回合出生点（/seatgrab addspawn 写，可多个；不写则在场地内随机找安全落脚点）
   spawns: []
   # 地面高度（玩家站立时的脚部 Y）；-999 = 未设置，自动用 pos1
