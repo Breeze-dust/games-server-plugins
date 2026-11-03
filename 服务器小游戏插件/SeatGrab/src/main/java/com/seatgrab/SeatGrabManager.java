@@ -376,6 +376,11 @@ public final class SeatGrabManager {
         return Math.max(0, cfgInt("pen.cooldown-ticks", 10));
     }
 
+    /** 自己背包已放进展示框时是否禁止偷别人的背包（默认关闭）。 */
+    private boolean blockStealWhenSeated() {
+        return plugin.getConfig().getBoolean("steal.block-when-seated", false);
+    }
+
     // ---------- 生命周期 ----------
 
     public void load() {
@@ -427,6 +432,7 @@ public final class SeatGrabManager {
         changed |= setDefault("pen.knockback-horizontal", 1.05);
         changed |= setDefault("pen.knockback-vertical", 0.42);
         changed |= setDefault("pen.cooldown-ticks", 10);
+        changed |= setDefault("steal.block-when-seated", false);
         changed |= setDefault("charge.max-seconds", 2.0);
         changed |= setDefault("charge.min-speed", 0.6);
         changed |= setDefault("charge.max-speed", 1.9);
@@ -597,6 +603,7 @@ public final class SeatGrabManager {
         // 退出时清掉局内道具，避免背包/击退笔被写进玩家存档
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
+        clearExpBar(player);
         if (state == State.RUNNING && playing.isEmpty()) {
             abortMatch("没有玩家了");
         } else if (state == State.WAITING) {
@@ -913,6 +920,7 @@ public final class SeatGrabManager {
         freeFrameOf(id);
         player.clearActiveItem();
         player.getInventory().clear();
+        clearExpBar(player);
         player.setFireTicks(0);
         player.setFallDistance(0f);
         player.setGameMode(GameMode.SPECTATOR);
@@ -1555,7 +1563,7 @@ public final class SeatGrabManager {
                 Chat.actionBar(player, "&7这是你自己的背包，不用拿");
                 return;
             }
-            if (ownBagSeated(player.getUniqueId())) {
+            if (blockStealWhenSeated() && ownBagSeated(player.getUniqueId())) {
                 Chat.actionBar(player, "&c你的背包已经放进展示框了，不能再拿别人的背包");
                 return;
             }
@@ -1600,7 +1608,8 @@ public final class SeatGrabManager {
         }
         charging.put(id, (long) roundTicks);
         chargeConfirmed.remove(id);
-        Chat.actionBar(player, "&e蓄力中… &7按住越久扔得越远，松开右键扔出");
+        setExpBar(player, 0L);
+        Chat.actionBar(player, "&e蓄力中… &7看经验条，松开右键扔出");
         player.playSound(player.getLocation(), Sound.ITEM_TRIDENT_RETURN, 0.6f, 1.6f);
     }
 
@@ -1610,6 +1619,7 @@ public final class SeatGrabManager {
             if (player == null || !player.isOnline() || !playing.contains(id)) {
                 charging.remove(id);
                 chargeConfirmed.remove(id);
+                clearExpBar(player);
                 continue;
             }
             UUID owner = carrying.get(id);
@@ -1618,14 +1628,13 @@ public final class SeatGrabManager {
             if (owner == null || handOwner == null || !owner.equals(handOwner)) {
                 charging.remove(id);
                 chargeConfirmed.remove(id);
+                clearExpBar(player);
                 continue;
             }
             long elapsed = roundTicks - charging.get(id);
             if (player.isHandRaised()) {
                 chargeConfirmed.add(id);
-                if (roundTicks % 5 == 0) {
-                    Chat.actionBar(player, "&e蓄力 &f" + chargeBar(elapsed) + " &7松开右键扔出");
-                }
+                setExpBar(player, elapsed);
                 continue;
             }
             if (chargeConfirmed.contains(id) || elapsed >= 20) {
@@ -1651,6 +1660,7 @@ public final class SeatGrabManager {
         chargeConfirmed.remove(id);
         UUID owner = carrying.remove(id);
         if (owner == null) {
+            clearExpBar(player);
             return;
         }
         ItemStack hand = player.getInventory().getItemInMainHand();
@@ -1670,6 +1680,7 @@ public final class SeatGrabManager {
         Vector velocity = direction.multiply(speed);
         velocity.setY(direction.getY() * speed * 0.6 + chargeUp());
         spawnDroppedBag(player.getWorld(), player.getEyeLocation().subtract(0, 0.3, 0), bag, owner, velocity);
+        clearExpBar(player);
         player.playSound(player.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 1.0f);
         Chat.actionBar(player, "&c你把背包扔出去了！&7（力度 " + Math.round(power * 100) + "%）");
         updateActionBar();
@@ -1683,6 +1694,7 @@ public final class SeatGrabManager {
         chargeConfirmed.remove(id);
         if (player != null) {
             player.clearActiveItem();
+            clearExpBar(player);
         }
         if (owner == null) {
             return;
@@ -1798,6 +1810,7 @@ public final class SeatGrabManager {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {
                 player.clearActiveItem();
+                clearExpBar(player);
             }
         }
         carrying.clear();
@@ -1977,13 +1990,21 @@ public final class SeatGrabManager {
         return name != null ? name : id.toString().substring(0, 8);
     }
 
-    private String chargeBar(long ticks) {
-        int filled = (int) Math.min(10, Math.max(0, Math.round(ticks * 10.0 / Math.max(1, maxChargeTicks()))));
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < 10; i++) {
-            out.append(i < filled ? "&c■" : "&7■");
+    /** 蓄力进度显示在经验条上（0~1）。 */
+    private void setExpBar(Player player, long ticks) {
+        if (player == null) {
+            return;
         }
-        return out.toString();
+        float progress = Math.max(0f, Math.min(1f, ticks / (float) Math.max(1, maxChargeTicks())));
+        player.setLevel(0);
+        player.setExp(progress);
+    }
+
+    private void clearExpBar(Player player) {
+        if (player != null) {
+            player.setLevel(0);
+            player.setExp(0f);
+        }
     }
 
     public void updateActionBar() {
@@ -2006,7 +2027,7 @@ public final class SeatGrabManager {
                     .append(" &7| &a座位 &f").append(filledSeats()).append("&7/&f").append(seatsThisRound);
             Long chargeStart = charging.get(id);
             if (chargeStart != null) {
-                bar.append(" &7| &c蓄力 &f").append(chargeBar(roundTicks - chargeStart));
+                bar.append(" &7| &c蓄力中 &7(看经验条)");
             } else if (carrying.containsKey(id)) {
                 bar.append(" &7| &c按住右键蓄力扔背包");
             }
