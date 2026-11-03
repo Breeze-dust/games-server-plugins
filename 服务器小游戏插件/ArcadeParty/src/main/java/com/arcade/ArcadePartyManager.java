@@ -369,6 +369,12 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         changed |= setDefault("games.arrowrain.max-players", 16);
         changed |= setDefault("games.arrowrain.join-command", "arrowrain join");
         changed |= setDefault("games.arrowrain.start-command", "arrowrain start");
+        changed |= setDefault("games.redlight.display", "一二三木头人");
+        changed |= setDefault("games.redlight.enabled", true);
+        changed |= setDefault("games.redlight.arena-aware", false);
+        changed |= setDefault("games.redlight.max-players", 16);
+        changed |= setDefault("games.redlight.join-command", "redlight join");
+        changed |= setDefault("games.redlight.start-command", "redlight start");
         // 1.0.3：多场地游戏改用带 {arena} 的命令；旧配置一次性迁移
         if (plugin.getConfig().getInt("config-version", 0) < 1) {
             plugin.getConfig().set("games.digtobottom.arena-aware", true);

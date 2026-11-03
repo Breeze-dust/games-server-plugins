@@ -1,0 +1,28 @@
+name: RedLight
+version: '1.0.0'
+main: com.redlight.RedLightPlugin
+api-version: '1.21'
+description: 一二三木头人：木头人回头时不能动，先到终点线的前三名获胜
+
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+minigame-game: true
+minigame:
+  name: 一二三木头人
+  icon: ARMOR_STAND
+  color: 'c'
+
+commands:
+  redlight:
+    description: 一二三木头人小游戏
+    usage: /redlight help
+    aliases: [rl, woodenman]
+
+permissions:
+  redlight.play:
+    description: 允许加入一二三木头人
+    default: true
+  redlight.admin:
+    description: 允许配置和管理一二三木头人
+    default: op

@@ -1,0 +1,77 @@
+# ============================================================
+# 一二三木头人（RedLight）配置文件
+# 修改后在非对局状态执行 /redlight reload，或重启服务器
+# 注意：YAML 的冒号后面必须有空格，缩进必须用空格（不能用 Tab）
+# ============================================================
+
+# ---------- 人数 ----------
+min-players: 2
+max-players: 16
+
+# ---------- 对局 ----------
+# 一局最长多少秒；时间到时只有已经到达终点线的玩家算成功
+game-seconds: 180
+# 结算后等待多少秒回大厅
+end-delay-seconds: 3
+# 前几名到达终点线就结束本局（默认 3 = 前三名）
+finish-slots: 3
+# 掉到起点地面以下多少格算掉出场外、直接淘汰
+fall-limit: 10
+
+# ---------- 木头人检查 ----------
+check:
+  # 木头人回头前的 title 倒数秒数（每个数字播 1 秒）
+  countdown-seconds: 3
+  # 两次检查之间「可以移动」的随机秒数范围（含两端）
+  interval-min-seconds: 5
+  interval-max-seconds: 12
+  # 木头人回头后「必须站住」的随机秒数范围（含两端）
+  duration-min-seconds: 3
+  duration-max-seconds: 8
+  # 位置变化超过多少格算「移动」（只算坐标，转头不算）
+  move-threshold: 0.02
+
+# ---------- 场地 ----------
+arena:
+  world: world
+  # 区域两个对角（只取 X/Z）；pos1 的脚部 Y 会记录为地面高度
+  pos1: ''
+  pos2: ''
+  # 等待点 / 淘汰后的旁观点（/redlight setlobby 写）
+  lobby: ''
+  # 起跑出生点（/redlight setspawn / addspawn 写）
+  spawns: []
+  # 终点线位置（/redlight setfinish 写）；方向由「出生点中心 → 终点线」自动判断
+  finish: ''
+  # 地面高度（玩家站立时的脚部 Y）；-999 = 未设置，自动用 pos1 / 出生点
+  ground-y: -999
+
+# ---------- 提示文字 ----------
+messages:
+  start-subtitle: '&f木头人回头时不要动，先到终点线的前三名获胜'
+  countdown-title: '&c&l木头人回头：{time}'
+  countdown-subtitle: '&f数到 0 就不能动了'
+  check-title: '&c&l别动！'
+  check-subtitle: '&f被看到移动就淘汰'
+  move-title: '&a&l可以动了'
+  move-subtitle: '&f快向终点线跑'
+
+# ---------- 右侧计分板 ----------
+sidebar:
+  enabled: true
+  title: '&c&l一二三木头人'
+
+# ---------- 等待室道具 ----------
+wait-items:
+  return:
+    material: RED_BED
+    name: '&a&l返回大厅 &7(右键)'
+    lore:
+      - '&7点击返回大厅'
+    slot: 8
+  start:
+    material: PAPER
+    name: '&a&l开始游戏 &7(右键)'
+    lore:
+      - '&7点击立刻开始本局'
+    slot: 4

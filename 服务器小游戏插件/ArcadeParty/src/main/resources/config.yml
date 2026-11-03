@@ -197,6 +197,13 @@ games:
     max-players: 16
     join-command: 'arrowrain join'
     start-command: 'arrowrain start'
+  redlight:
+    display: 一二三木头人
+    enabled: true
+    arena-aware: false
+    max-players: 16
+    join-command: 'redlight join'
+    start-command: 'redlight start'
 
 # 配置版本（迁移用，不要手改）
 config-version: 1
