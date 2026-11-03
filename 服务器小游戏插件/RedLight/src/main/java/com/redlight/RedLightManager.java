@@ -50,6 +50,8 @@ public final class RedLightManager {
     public static final String ARENA = "主场地";
     public static final String ARCADE_KEY = "redlight";
     private static final String NO_COLLIDE_TEAM = "redlight_nocollide";
+    /** 本 tick 水平位移低于这个值就认为玩家快停下了（走路约 0.2、潜行约 0.065 格/tick）。 */
+    private static final double ACTIVE_SPEED = 0.08;
 
     public enum State {
         WAITING, RUNNING, ENDING
@@ -59,11 +61,10 @@ public final class RedLightManager {
         MOVE, COUNTDOWN, CHECK
     }
 
-    /** 每名玩家的上一 tick 位置、主动移动速度与当前惯性速度。 */
+    /** 每名玩家的上一 tick 位置与最近一次主动/滑行速度。 */
     private static final class Motion {
         Location last;
-        Vector lastDelta = new Vector();
-        Vector inertia;
+        Vector pending = new Vector();
     }
 
     private final RedLightPlugin plugin;
@@ -488,8 +489,14 @@ public final class RedLightManager {
             player.setCollidable(false);
             applyNoCollision(player);
             player.setHealth(20.0);
-            player.setFoodLevel(20);
-            player.setSaturation(20.0f);
+            if (disableSprint()) {
+                // 饥饿值 6 是原版客户端允许疾跑的下限，压到 6 让客户端自己按不出疾跑
+                player.setFoodLevel(6);
+                player.setSaturation(0f);
+            } else {
+                player.setFoodLevel(20);
+                player.setSaturation(20.0f);
+            }
             if (spawn != null) {
                 player.teleport(spawn);
                 player.setFallDistance(0f);
@@ -659,8 +666,10 @@ public final class RedLightManager {
     }
 
     /**
-     * 移动手感：禁止疾跑 + 松开按键后按上一 tick 的速度继续滑行一小段。
-     * 惯性只作用于水平方向，不碰 Y（跳跃/下落保持原版）。
+     * 移动手感：禁止疾跑 + 松开按键后滑行。
+     * <p>
+     * 惯性只在玩家即将停下（本 tick 位移低于 {@link #ACTIVE_SPEED}）时补一次推力，
+     * 其余时间交给客户端原生摩擦自然滑行；每 tick 反复 setVelocity 会互相覆盖，表现为一顿一顿。
      */
     private void applyMovementRules() {
         boolean noSprint = disableSprint();
@@ -677,8 +686,15 @@ public final class RedLightManager {
                 motions.remove(id);
                 continue;
             }
-            if (noSprint && player.isSprinting()) {
-                player.setSprinting(false);
+            if (noSprint) {
+                if (player.isSprinting()) {
+                    player.setSprinting(false);
+                }
+                // 原版客户端要求饥饿值 > 6 才能疾跑；压到 6 后客户端自己就按不出疾跑
+                if (player.getFoodLevel() > 6) {
+                    player.setFoodLevel(6);
+                    player.setSaturation(0f);
+                }
             }
             if (!inertia) {
                 continue;
@@ -696,30 +712,22 @@ public final class RedLightManager {
             double speed = Math.sqrt(dx * dx + dz * dz);
             if (speed > 2.0) {
                 // 传送/回城等：清掉上一 tick 的惯性，避免把人弹飞
-                motion.lastDelta = new Vector();
-                motion.inertia = null;
+                motion.pending = new Vector();
                 continue;
             }
-            if (motion.inertia != null) {
-                if (speed > motion.inertia.length() * 1.25 + 0.02) {
-                    // 玩家重新按键：结束滑行，按新的主动速度继续
-                    motion.inertia = null;
-                    motion.lastDelta = new Vector(dx, 0, dz);
+            if (speed >= ACTIVE_SPEED) {
+                // 玩家自己在走，或上一次推力还在让客户端滑行：记录当前速度
+                motion.pending = new Vector(dx, 0, dz);
+            } else if (canGlide(player) && motion.pending.lengthSquared() > minSpeedSq) {
+                // 即将停下：按摩擦衰减后补一次推力，剩下的交给客户端摩擦
+                motion.pending = motion.pending.multiply(friction);
+                if (motion.pending.lengthSquared() >= minSpeedSq) {
+                    push(player, motion.pending);
                 } else {
-                    motion.inertia = motion.inertia.multiply(friction);
-                    if (motion.inertia.lengthSquared() < minSpeedSq) {
-                        motion.inertia = null;
-                    } else if (canGlide(player)) {
-                        push(player, motion.inertia);
-                    }
+                    motion.pending = new Vector();
                 }
-            } else if (speed >= 0.04) {
-                motion.lastDelta = new Vector(dx, 0, dz);
-            } else if (canGlide(player) && motion.lastDelta.lengthSquared() > minSpeedSq) {
-                motion.inertia = motion.lastDelta.clone().multiply(friction);
-                push(player, motion.inertia);
             } else if (!canGlide(player)) {
-                motion.lastDelta = new Vector();
+                motion.pending = new Vector();
             }
         }
     }

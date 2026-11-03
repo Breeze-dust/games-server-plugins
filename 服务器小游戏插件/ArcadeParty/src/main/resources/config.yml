@@ -204,6 +204,13 @@ games:
     max-players: 16
     join-command: 'redlight join'
     start-command: 'redlight start'
+  seatgrab:
+    display: 抢位占座
+    enabled: true
+    arena-aware: false
+    max-players: 16
+    join-command: 'seatgrab join'
+    start-command: 'seatgrab start'
 
 # 配置版本（迁移用，不要手改）
 config-version: 1

@@ -375,6 +375,12 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         changed |= setDefault("games.redlight.max-players", 16);
         changed |= setDefault("games.redlight.join-command", "redlight join");
         changed |= setDefault("games.redlight.start-command", "redlight start");
+        changed |= setDefault("games.seatgrab.display", "抢位占座");
+        changed |= setDefault("games.seatgrab.enabled", true);
+        changed |= setDefault("games.seatgrab.arena-aware", false);
+        changed |= setDefault("games.seatgrab.max-players", 16);
+        changed |= setDefault("games.seatgrab.join-command", "seatgrab join");
+        changed |= setDefault("games.seatgrab.start-command", "seatgrab start");
         // 1.0.3：多场地游戏改用带 {arena} 的命令；旧配置一次性迁移
         if (plugin.getConfig().getInt("config-version", 0) < 1) {
             plugin.getConfig().set("games.digtobottom.arena-aware", true);

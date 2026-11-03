@@ -1,0 +1,83 @@
+# ============================================================
+# 抢位占座（SeatGrab）配置文件
+# 修改后在非对局状态执行 /seatgrab reload，或重启服务器
+# 注意：YAML 的冒号后面必须有空格，缩进必须用空格（不能用 Tab）
+# ============================================================
+
+# ---------- 人数 ----------
+min-players: 2
+# 最多 16 人（16 种收纳袋颜色一一对应）
+max-players: 16
+
+# ---------- 对局 ----------
+# 每回合抢座时间（秒）：到时间结算，期间可以互相偷袋、击退
+round-seconds: 45
+# 每回合结束后的准备时间（秒）
+round-end-delay-seconds: 4
+# 整局结束（前三名揭晓后）停留多少秒再回大厅
+end-delay-seconds: 5
+# 最多打多少回合，防止人数异常时卡死（正常人数会自然收敛到最后一回合）
+max-rounds: 15
+
+# ---------- 击退笔 ----------
+pen:
+  # 击退笔命中后的水平击退力度
+  knockback-horizontal: 1.05
+  # 击退笔命中后的向上力度
+  knockback-vertical: 0.42
+  # 同一玩家两次命中的最小间隔（tick，20 = 1 秒）
+  cooldown-ticks: 10
+
+# ---------- 偷袋后的蓄力投掷 ----------
+charge:
+  # 按住右键多久达到最大力度（秒）
+  max-seconds: 2.0
+  # 最短 / 最长投掷速度
+  min-speed: 0.6
+  max-speed: 1.9
+  # 投掷时的向上分量
+  up: 0.25
+
+# ---------- 场地 ----------
+arena:
+  world: world
+  # 区域两个对角（只取 X/Z；pos1 的脚部 Y 记为地面高度）
+  pos1: ''
+  pos2: ''
+  # 等待点 / 淘汰后的旁观点（/seatgrab setlobby 写）
+  lobby: ''
+  # 回合出生点（/seatgrab addspawn 写，可多个；不写则在场地内随机找安全落脚点）
+  spawns: []
+  # 地面高度（玩家站立时的脚部 Y）；-999 = 未设置，自动用 pos1
+  ground-y: -999
+  # 自动向上延伸多少格来扫描展示框（从 pos1/pos2 较高的那个 Y 再往上）
+  scan-height: 10
+
+# ---------- 提示文字 ----------
+messages:
+  start-title: '&e&l第 {round} 回合'
+  start-subtitle: '&f抢一个展示框坐下！存活 {alive} 人 · 座位 {seats} 个'
+  final-title: '&6&l最后回合'
+  final-subtitle: '&f先放进框的两人为第 1/2 名，没放进去的是第 3 名'
+  round-end-title: '&e&l回合结束'
+  round-end-subtitle: '&f存活 {alive} 人，{seconds} 秒后下一回合'
+
+# ---------- 右侧计分板 ----------
+sidebar:
+  enabled: true
+  title: '&e&l抢位占座'
+
+# ---------- 等待室道具 ----------
+wait-items:
+  return:
+    material: RED_BED
+    name: '&a&l返回大厅 &7(右键)'
+    lore:
+      - '&7点击返回大厅'
+    slot: 8
+  start:
+    material: PAPER
+    name: '&a&l开始游戏 &7(右键)'
+    lore:
+      - '&7点击立刻开始本局'
+    slot: 4

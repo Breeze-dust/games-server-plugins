@@ -3,7 +3,7 @@
 - **一句话职责**：玩家从起跑点向终点线移动；木头人每隔一段随机时间回头，回头前 title 倒数（默认 2~5 秒随机），回头期间**位置发生变化的玩家淘汰转旁观**；前 3 名到达终点线的人获胜。已接入街机派对。
 - **核心规则**：
   - 开局随机分配到**起跑出生点**，清空背包、冒险模式；对局中玩家之间关闭碰撞（计分板队伍 `redlight_nocollide` 的 `COLLISION_RULE=NEVER`），不会互相推挤导致“被移动”。
-  - **移动手感**：默认禁止疾跑（`movement.disable-sprint`，会同时阻止疾跑跳）；默认开启移动惯性（`movement.inertia`）——松开按键后会按上一 tick 的速度继续滑行，速度每 tick 乘 `movement.friction`（默认 0.82），低于 `movement.min-speed`（默认 0.02）才停下。滑行阶段也会被检查判定为“移动”，所以必须在木头人回头前提前松手。
+  - **移动手感**：默认禁止疾跑（`movement.disable-sprint`）——对局把玩家饥饿值压在 **6**（原版客户端允许疾跑的下限），客户端自己按不出疾跑，同时阻止疾跑跳；`PlayerToggleSprintEvent` 作为第二道保险。默认开启移动惯性（`movement.inertia`）——松开按键后，在玩家即将停下时补一次推力（速度乘 `movement.friction`，默认 0.82），之后交给客户端原生摩擦自然滑行；低于 `movement.min-speed`（默认 0.02）停止。滑行阶段也会被检查判定为“移动”，所以必须在木头人回头前提前松手。
   - 三个循环阶段：
     1. **可以移动**（`check.interval-min-seconds` ~ `check.interval-max-seconds`，默认 5~12 秒随机）：玩家自由向终点线跑。
     2. **木头人回头倒数**（`check.countdown-min-seconds` ~ `check.countdown-max-seconds`，默认 2~5 秒随机）：每次回头随机一个整数秒数，每秒 title 报数，**倒数期间仍可移动**。
@@ -53,6 +53,7 @@
   - 对局中玩家之间的碰撞已通过计分板队伍关闭；仍然建议场地内不要有会推人的实体（矿车、船等）。
   - 局内所有伤害被取消；掉出场外由 `fall-limit` 检测淘汰，不会真的摔死。
   - 惯性只作用于水平方向（Y 轴保持原版跳跃/下落），蹲下时不滑行。觉得太滑可以把 `movement.friction` 调小（如 0.7），觉得没手感就调大（0.88~0.9）；不想用惯性把 `movement.inertia` 设为 false。
+  - 禁疾跑会把对局内饥饿值固定在 6（饥饿条显示 3 格），不会饿死，也不会影响移动速度；这是客户端层面的硬限制，比只取消 `PlayerToggleSprintEvent` 可靠。
   - 因为滑行也会被判定为移动，玩家需要在倒数结束前提前松手；如果觉得太难，把 `movement.friction` 调小或把 `check.move-threshold` 调大。
   - 已接入 ArcadeParty：`games.redlight`（`redlight join` / `redlight start`）。
 - **玩家记录**：命名空间 `redlight`，`games.redlight.firsts/seconds/thirds/points.<uuid>`，文件 `server/plugins/MiniGameLib/players.yml`。

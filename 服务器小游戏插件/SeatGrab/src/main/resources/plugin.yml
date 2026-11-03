@@ -1,0 +1,28 @@
+name: SeatGrab
+version: '1.0.0'
+main: com.seatgrab.SeatGrabPlugin
+api-version: '1.21'
+description: 抢位占座：把收纳袋放进展示框抢座位，偷别人的袋子、用击退笔击退对手
+
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+minigame-game: true
+minigame:
+  name: 抢位占座
+  icon: BUNDLE
+  color: 'e'
+
+commands:
+  seatgrab:
+    description: 抢位占座小游戏
+    usage: /seatgrab help
+    aliases: [sg, grabseat, chair]
+
+permissions:
+  seatgrab.play:
+    description: 允许加入抢位占座
+    default: true
+  seatgrab.admin:
+    description: 允许配置和管理抢位占座
+    default: op
