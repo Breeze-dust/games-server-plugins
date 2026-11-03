@@ -919,9 +919,24 @@ public final class SeatGrabManager {
             }
             groups.get(groups.size() - 1).add(id);
         }
-        List<UUID> firsts = groups.size() > 0 ? groups.get(0) : new ArrayList<>();
-        List<UUID> seconds = groups.size() > 1 ? groups.get(1) : new ArrayList<>();
-        List<UUID> thirds = groups.size() > 2 ? groups.get(2) : new ArrayList<>();
+        // 竞技排名：两人并列第一时，下一组从第 3 名开始（不是第 2 名）
+        List<UUID> firsts = new ArrayList<>();
+        List<UUID> seconds = new ArrayList<>();
+        List<UUID> thirds = new ArrayList<>();
+        int groupRank = 1;
+        for (List<UUID> group : groups) {
+            if (groupRank > 3) {
+                break;
+            }
+            if (groupRank == 1) {
+                firsts.addAll(group);
+            } else if (groupRank == 2) {
+                seconds.addAll(group);
+            } else {
+                thirds.addAll(group);
+            }
+            groupRank += group.size();
+        }
 
         broadcastGame("&6&l最终积分");
         int rank = 1;
