@@ -24,6 +24,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
+import org.bukkit.util.Vector;
 
 import java.io.File;
 import java.io.IOException;
@@ -58,6 +59,13 @@ public final class RedLightManager {
         MOVE, COUNTDOWN, CHECK
     }
 
+    /** 每名玩家的上一 tick 位置、主动移动速度与当前惯性速度。 */
+    private static final class Motion {
+        Location last;
+        Vector lastDelta = new Vector();
+        Vector inertia;
+    }
+
     private final RedLightPlugin plugin;
     private final RedLightArena arena;
     private final LiveSidebar liveSidebar;
@@ -72,6 +80,7 @@ public final class RedLightManager {
     /** 按到达终点线的先后顺序记录，结算时前三个就是前三名。 */
     private final List<UUID> finished = new ArrayList<>();
     private final Map<UUID, Location> snapshots = new HashMap<>();
+    private final Map<UUID, Motion> motions = new HashMap<>();
 
     private State state = State.WAITING;
     private Phase phase = Phase.MOVE;
@@ -182,8 +191,32 @@ public final class RedLightManager {
         return Math.max(1, cfgInt("finish-slots", 3));
     }
 
-    public int countdownSeconds() {
-        return Math.max(1, Math.min(10, cfgInt("check.countdown-seconds", 3)));
+    public int countdownMinSeconds() {
+        return Math.max(1, Math.min(10, cfgInt("check.countdown-min-seconds", 2)));
+    }
+
+    public int countdownMaxSeconds() {
+        return Math.max(countdownMinSeconds(), Math.min(10, cfgInt("check.countdown-max-seconds", 5)));
+    }
+
+    private int randomCountdownSeconds() {
+        return randomBetween(countdownMinSeconds(), countdownMaxSeconds());
+    }
+
+    public boolean inertiaEnabled() {
+        return plugin.getConfig().getBoolean("movement.inertia", true);
+    }
+
+    private double inertiaFriction() {
+        return Math.max(0.5, Math.min(0.95, cfgDouble("movement.friction", 0.82)));
+    }
+
+    private double inertiaMinSpeed() {
+        return Math.max(0.005, cfgDouble("movement.min-speed", 0.02));
+    }
+
+    public boolean disableSprint() {
+        return plugin.getConfig().getBoolean("movement.disable-sprint", true);
     }
 
     private int intervalMinSeconds() {
@@ -230,12 +263,29 @@ public final class RedLightManager {
 
     private void ensureDefaults() {
         boolean changed = false;
-        changed |= setDefault("check.countdown-seconds", 3);
+        int legacyCountdown = plugin.getConfig().getInt("check.countdown-seconds", Integer.MIN_VALUE);
+        if (legacyCountdown != Integer.MIN_VALUE) {
+            int value = Math.max(1, Math.min(10, legacyCountdown));
+            if (!plugin.getConfig().isSet("check.countdown-min-seconds")) {
+                plugin.getConfig().set("check.countdown-min-seconds", value);
+            }
+            if (!plugin.getConfig().isSet("check.countdown-max-seconds")) {
+                plugin.getConfig().set("check.countdown-max-seconds", value);
+            }
+            plugin.getConfig().set("check.countdown-seconds", null);
+            changed = true;
+        }
+        changed |= setDefault("check.countdown-min-seconds", 2);
+        changed |= setDefault("check.countdown-max-seconds", 5);
         changed |= setDefault("check.interval-min-seconds", 5);
         changed |= setDefault("check.interval-max-seconds", 12);
         changed |= setDefault("check.duration-min-seconds", 3);
         changed |= setDefault("check.duration-max-seconds", 8);
         changed |= setDefault("check.move-threshold", 0.02);
+        changed |= setDefault("movement.inertia", true);
+        changed |= setDefault("movement.friction", 0.82);
+        changed |= setDefault("movement.min-speed", 0.02);
+        changed |= setDefault("movement.disable-sprint", true);
         changed |= setDefault("finish-slots", 3);
         changed |= setDefault("fall-limit", 10);
         changed |= setDefault("messages.start-subtitle", "&f木头人回头时不要动，先到终点线的前三名获胜");
@@ -280,6 +330,7 @@ public final class RedLightManager {
         }
         liveSidebar.hideAll();
         snapshots.clear();
+        motions.clear();
         waiting.clear();
         playing.clear();
         eliminated.clear();
@@ -340,6 +391,7 @@ public final class RedLightManager {
             return;
         }
         snapshots.remove(id);
+        motions.remove(id);
         clearPlayer(player);
         HubAPI.clearGame(id);
         player.setGameMode(GameMode.SURVIVAL);
@@ -367,6 +419,7 @@ public final class RedLightManager {
             return;
         }
         snapshots.remove(id);
+        motions.remove(id);
         if (state == State.RUNNING && playing.isEmpty()) {
             settle(false);
         } else if (state == State.WAITING) {
@@ -399,6 +452,7 @@ public final class RedLightManager {
         eliminated.clear();
         finished.clear();
         snapshots.clear();
+        motions.clear();
         for (UUID id : new ArrayList<>(waiting)) {
             Player player = Bukkit.getPlayer(id);
             if (player != null && player.isOnline()) {
@@ -429,6 +483,8 @@ public final class RedLightManager {
             Location spawn = spawns.isEmpty() ? arena.center() : spawns.get(index++ % spawns.size());
             clearPlayer(player);
             player.setGameMode(GameMode.ADVENTURE);
+            player.setWalkSpeed(0.2f);
+            player.setSprinting(false);
             player.setCollidable(false);
             applyNoCollision(player);
             player.setHealth(20.0);
@@ -485,6 +541,7 @@ public final class RedLightManager {
             return;
         }
         tickCount++;
+        applyMovementRules();
         if (tickCount % 20 == 0) {
             secondsLeft--;
             if (secondsLeft <= 0) {
@@ -551,7 +608,7 @@ public final class RedLightManager {
 
     private void beginCountdown() {
         phase = Phase.COUNTDOWN;
-        phaseTicks = countdownSeconds() * 20;
+        phaseTicks = randomCountdownSeconds() * 20;
         lastCountdownSecond = -1;
         updateActionBar();
     }
@@ -601,6 +658,81 @@ public final class RedLightManager {
         }
     }
 
+    /**
+     * 移动手感：禁止疾跑 + 松开按键后按上一 tick 的速度继续滑行一小段。
+     * 惯性只作用于水平方向，不碰 Y（跳跃/下落保持原版）。
+     */
+    private void applyMovementRules() {
+        boolean noSprint = disableSprint();
+        boolean inertia = inertiaEnabled();
+        if (!noSprint && !inertia) {
+            return;
+        }
+        double friction = inertiaFriction();
+        double minSpeed = inertiaMinSpeed();
+        double minSpeedSq = minSpeed * minSpeed;
+        for (UUID id : new ArrayList<>(playing)) {
+            Player player = Bukkit.getPlayer(id);
+            if (player == null || !player.isOnline()) {
+                motions.remove(id);
+                continue;
+            }
+            if (noSprint && player.isSprinting()) {
+                player.setSprinting(false);
+            }
+            if (!inertia) {
+                continue;
+            }
+            Motion motion = motions.computeIfAbsent(id, key -> new Motion());
+            Location now = player.getLocation();
+            if (motion.last == null || now.getWorld() == null
+                    || !now.getWorld().equals(motion.last.getWorld())) {
+                motion.last = now.clone();
+                continue;
+            }
+            double dx = now.getX() - motion.last.getX();
+            double dz = now.getZ() - motion.last.getZ();
+            motion.last = now.clone();
+            double speed = Math.sqrt(dx * dx + dz * dz);
+            if (speed > 2.0) {
+                // 传送/回城等：清掉上一 tick 的惯性，避免把人弹飞
+                motion.lastDelta = new Vector();
+                motion.inertia = null;
+                continue;
+            }
+            if (motion.inertia != null) {
+                if (speed > motion.inertia.length() * 1.25 + 0.02) {
+                    // 玩家重新按键：结束滑行，按新的主动速度继续
+                    motion.inertia = null;
+                    motion.lastDelta = new Vector(dx, 0, dz);
+                } else {
+                    motion.inertia = motion.inertia.multiply(friction);
+                    if (motion.inertia.lengthSquared() < minSpeedSq) {
+                        motion.inertia = null;
+                    } else if (canGlide(player)) {
+                        push(player, motion.inertia);
+                    }
+                }
+            } else if (speed >= 0.04) {
+                motion.lastDelta = new Vector(dx, 0, dz);
+            } else if (canGlide(player) && motion.lastDelta.lengthSquared() > minSpeedSq) {
+                motion.inertia = motion.lastDelta.clone().multiply(friction);
+                push(player, motion.inertia);
+            } else if (!canGlide(player)) {
+                motion.lastDelta = new Vector();
+            }
+        }
+    }
+
+    private boolean canGlide(Player player) {
+        return player.isOnGround() && !player.isSneaking();
+    }
+
+    private void push(Player player, Vector horizontal) {
+        Vector velocity = player.getVelocity();
+        player.setVelocity(new Vector(horizontal.getX(), velocity.getY(), horizontal.getZ()));
+    }
+
     private void checkFinishAndFall() {
         for (UUID id : new ArrayList<>(playing)) {
             Player player = Bukkit.getPlayer(id);
@@ -631,6 +763,7 @@ public final class RedLightManager {
         }
         finished.add(id);
         snapshots.remove(id);
+        motions.remove(id);
         player.setGameMode(GameMode.SPECTATOR);
         player.setFallDistance(0f);
         Location spot = arena.spectatorSpot();
@@ -656,6 +789,7 @@ public final class RedLightManager {
         }
         eliminated.add(id);
         snapshots.remove(id);
+        motions.remove(id);
         player.setGlowing(false);
         player.setGameMode(GameMode.SPECTATOR);
         Location spot = arena.spectatorSpot();
@@ -682,6 +816,7 @@ public final class RedLightManager {
             gameTask = null;
         }
         snapshots.clear();
+        motions.clear();
 
         List<UUID> firsts = new ArrayList<>();
         List<UUID> seconds = new ArrayList<>();
@@ -749,6 +884,7 @@ public final class RedLightManager {
         eliminated.clear();
         finished.clear();
         snapshots.clear();
+        motions.clear();
         soloTest = false;
         state = State.WAITING;
         liveSidebar.hide(ARCADE_KEY);
@@ -1042,9 +1178,11 @@ public final class RedLightManager {
                 + "，终点线 " + (arena.finish() == null ? "未设置" : arena.finish().getBlockX() + ","
                 + arena.finish().getBlockY() + "," + arena.finish().getBlockZ())
                 + "，沿 " + (finishAlongX ? "X" : "Z") + (finishDirection > 0 ? "+" : "-"));
-        out.add("检查：倒数 " + countdownSeconds() + "s，间隔 " + intervalMinSeconds() + "-"
-                + intervalMaxSeconds() + "s，持续 " + durationMinSeconds() + "-"
-                + durationMaxSeconds() + "s，阈值 " + moveThreshold());
+        out.add("检查：倒数 " + countdownMinSeconds() + "-" + countdownMaxSeconds() + "s，间隔 "
+                + intervalMinSeconds() + "-" + intervalMaxSeconds() + "s，持续 "
+                + durationMinSeconds() + "-" + durationMaxSeconds() + "s，阈值 " + moveThreshold());
+        out.add("移动：惯性 " + inertiaEnabled() + "（摩擦 " + inertiaFriction() + "），禁止疾跑 "
+                + disableSprint());
         return out;
     }
 

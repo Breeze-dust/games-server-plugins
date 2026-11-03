@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.ItemStack;
 
 /** 一二三木头人事件：等待室道具、局内禁止伤害/破坏/丢弃、死亡与退出。 */
@@ -54,6 +55,18 @@ public final class RedLightListener implements Listener {
             if (player.hasPermission("redlight.admin")) {
                 manager.startGame(true);
             }
+        }
+    }
+
+    /** 对局中禁止疾跑；取消开始疾跑的事件，客户端也会被纠正为走路。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onToggleSprint(PlayerToggleSprintEvent event) {
+        if (!event.isSprinting() || !manager.disableSprint()) {
+            return;
+        }
+        if (manager.isPlaying(event.getPlayer())) {
+            event.setCancelled(true);
+            event.getPlayer().setSprinting(false);
         }
     }
 

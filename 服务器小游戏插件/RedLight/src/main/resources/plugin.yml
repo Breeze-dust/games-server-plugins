@@ -1,5 +1,5 @@
 name: RedLight
-version: '1.0.0'
+version: '1.0.1'
 main: com.redlight.RedLightPlugin
 api-version: '1.21'
 description: 一二三木头人：木头人回头时不能动，先到终点线的前三名获胜

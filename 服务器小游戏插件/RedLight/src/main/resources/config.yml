@@ -20,8 +20,9 @@ fall-limit: 10
 
 # ---------- 木头人检查 ----------
 check:
-  # 木头人回头前的 title 倒数秒数（每个数字播 1 秒）
-  countdown-seconds: 3
+  # 木头人回头前的 title 倒数秒数范围（含两端；每次回头随机选一个整数，每个数字播 1 秒）
+  countdown-min-seconds: 2
+  countdown-max-seconds: 5
   # 两次检查之间「可以移动」的随机秒数范围（含两端）
   interval-min-seconds: 5
   interval-max-seconds: 12
@@ -30,6 +31,17 @@ check:
   duration-max-seconds: 8
   # 位置变化超过多少格算「移动」（只算坐标，转头不算）
   move-threshold: 0.02
+
+# ---------- 移动手感 ----------
+movement:
+  # 是否给玩家加移动惯性（松开按键后会继续滑行一小段）
+  inertia: true
+  # 滑行时每 tick 保留的速度比例（越小停得越快；0.75~0.9 比较明显）
+  friction: 0.82
+  # 滑行速度低于这个值就停下
+  min-speed: 0.02
+  # 是否禁止疾跑（同时会阻止疾跑跳）
+  disable-sprint: true
 
 # ---------- 场地 ----------
 arena:

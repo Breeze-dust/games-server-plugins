@@ -98,8 +98,10 @@ public final class RedLightCommand implements CommandExecutor, TabCompleter {
                 : "&a" + arena.finish().getBlockX() + "," + arena.finish().getBlockY()
                 + "," + arena.finish().getBlockZ())
                 + " &7| 出生点 &f" + arena.spawns().size() + " &7个");
-        Chat.send(sender, "&7木头人: 倒数 &f" + manager.countdownSeconds() + "s"
-                + " &7| 前几名结束 &f" + manager.finishSlots());
+        Chat.send(sender, "&7木头人: 倒数 &f" + countdownRange() + "s"
+                + " &7| 前几名结束 &f" + manager.finishSlots()
+                + " &7| 惯性 " + (manager.inertiaEnabled() ? "&a开" : "&c关")
+                + " &7| 疾跑 " + (manager.disableSprint() ? "&c禁止" : "&a允许"));
         if (arena.ready()) {
             Chat.send(sender, "&a可开局。");
         } else {
@@ -218,19 +220,45 @@ public final class RedLightCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 2) {
-            Chat.send(sender, "&c用法: /redlight setcountdown <秒>（当前 " + manager.countdownSeconds() + "）");
+            Chat.send(sender, "&c用法: /redlight setcountdown <最小秒> [最大秒]（当前 " + countdownRange() + "）");
             return;
         }
-        int seconds;
+        int min;
         try {
-            seconds = Math.max(1, Math.min(10, Integer.parseInt(args[1])));
+            min = clampSeconds(Integer.parseInt(args[1]));
         } catch (NumberFormatException exception) {
             Chat.send(sender, "&c秒数必须是整数。");
             return;
         }
-        plugin.getConfig().set("check.countdown-seconds", seconds);
+        int max = min;
+        if (args.length >= 3) {
+            try {
+                max = clampSeconds(Integer.parseInt(args[2]));
+            } catch (NumberFormatException exception) {
+                Chat.send(sender, "&c秒数必须是整数。");
+                return;
+            }
+        }
+        if (max < min) {
+            int swap = min;
+            min = max;
+            max = swap;
+        }
+        plugin.getConfig().set("check.countdown-min-seconds", min);
+        plugin.getConfig().set("check.countdown-max-seconds", max);
         plugin.saveConfig();
-        Chat.send(sender, "&a木头人回头前的 title 倒数已设为 &f" + seconds + " &a秒（对下一局生效）。");
+        Chat.send(sender, "&a木头人回头前的 title 倒数已设为 &f" + min
+                + (min == max ? "" : "~" + max) + " &a秒（每次回头随机；对下一局生效）。");
+    }
+
+    private int clampSeconds(int value) {
+        return Math.max(1, Math.min(10, value));
+    }
+
+    private String countdownRange() {
+        int min = manager.countdownMinSeconds();
+        int max = manager.countdownMaxSeconds();
+        return min == max ? String.valueOf(min) : min + "~" + max;
     }
 
     private void save(CommandSender sender) {
@@ -304,7 +332,7 @@ public final class RedLightCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&f/redlight setfinish &7- 站在终点线上设置终点线");
             Chat.send(sender, "&f/redlight setlobby &7- 设置等待点 / 淘汰旁观点");
             Chat.send(sender, "&f/redlight setground [Y] &7- 设置地面高度（默认当前位置）");
-            Chat.send(sender, "&f/redlight setcountdown <秒> &7- 木头人回头前 title 倒数（默认 3）");
+            Chat.send(sender, "&f/redlight setcountdown <最小秒> [最大秒] &7- 木头人回头前 title 倒数范围（默认 2~5）");
             Chat.send(sender, "&f/redlight save &7- 保存场地");
             Chat.send(sender, "&f/redlight start | stop &7- 开始 / 强制结束（管理员可 1 人测试）");
             Chat.send(sender, "&f/redlight reload &7- 重新读取配置");
@@ -331,6 +359,12 @@ public final class RedLightCommand implements CommandExecutor, TabCompleter {
             }
             if (sub.equals("setground")) {
                 return filter(List.of("60", "64", "70", "100"), args[1]);
+            }
+        }
+        if (args.length == 3) {
+            String sub = args[0].toLowerCase(Locale.ROOT);
+            if (sub.equals("setcountdown")) {
+                return filter(List.of("3", "5", "6"), args[2]);
             }
         }
         return List.of();
