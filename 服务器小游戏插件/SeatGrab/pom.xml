@@ -6,11 +6,11 @@
 
     <groupId>com.seatgrab</groupId>
     <artifactId>seat-grab</artifactId>
-    <version>1.1.1</version>
+    <version>1.1.2</version>
     <packaging>jar</packaging>
 
     <name>SeatGrab</name>
-    <description>抢位占座：把书包放进展示框抢座位，离讲台越近分越高，按总积分决出前三</description>
+    <description>抢位占座：把背包放进展示框抢座位，离讲台越近分越高，按总积分决出前三</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

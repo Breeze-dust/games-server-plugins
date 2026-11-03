@@ -10,7 +10,9 @@ import com.hub.util.StartCountdown;
 import com.hub.util.Top3;
 import com.hub.util.WaitCountdown;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.DyeColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -27,7 +29,9 @@ import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
@@ -50,11 +54,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 抢位占座：把书包放进展示框抢座位，座位离讲台越近分数越高；
- * 固定回合数结束后按总积分排名。可以用击退笔击退别人、空手偷走别人框里的书包，
- * 被偷的书包可以按住右键蓄力扔远（被击退笔打中则原地掉落）。
+ * 抢位占座：把背包放进展示框抢座位，座位离讲台越近分数越高；
+ * 固定回合数结束后按总积分排名。可以用击退笔击退别人、空手偷走别人框里的背包，
+ * 被偷的背包可以按住右键蓄力扔远（被击退笔打中则原地掉落）。
  *
- * <p>本轮没把书包放进展示框的玩家不会淘汰，只会在回合结束时吃一个纯视觉爆炸效果、本回合 0 分。
+ * <p>本轮没把背包放进展示框的玩家不会淘汰，只会在回合结束时吃一个纯视觉爆炸效果、本回合 0 分。
  */
 public final class SeatGrabManager {
 
@@ -89,6 +93,17 @@ public final class SeatGrabManager {
         }
     }
 
+    /** 非座位展示框里随机摆放的物品（material + 显示名，名称可在配置里改）。 */
+    private static final class PlaceholderItem {
+        final Material material;
+        final String name;
+
+        PlaceholderItem(Material material, String name) {
+            this.material = material;
+            this.name = name;
+        }
+    }
+
     private final SeatGrabPlugin plugin;
     private final SeatGrabArena arena;
     private final LiveSidebar liveSidebar;
@@ -114,12 +129,12 @@ public final class SeatGrabManager {
     private final Map<ItemFrame, Integer> seatRows = new LinkedHashMap<>();
     private final Map<ItemFrame, Integer> seatPoints = new LinkedHashMap<>();
 
-    /** 手里拿着别人书包的玩家 → 书包所属玩家。 */
+    /** 手里拿着别人背包的玩家 → 背包所属玩家。 */
     private final Map<UUID, UUID> carrying = new LinkedHashMap<>();
     /** 正在按住右键蓄力的玩家 → 开始蓄力的 tick。 */
     private final Map<UUID, Long> charging = new HashMap<>();
     private final Set<UUID> chargeConfirmed = new LinkedHashSet<>();
-    /** 掉在地上的书包（可被失主捡回）。 */
+    /** 掉在地上的背包（可被失主捡回）。 */
     private final Map<UUID, Item> droppedBags = new LinkedHashMap<>();
     private final Map<UUID, Long> lastPenHit = new HashMap<>();
 
@@ -272,7 +287,7 @@ public final class SeatGrabManager {
                 return text;
             }
         }
-        return cfgString("messages.round-subtitle", "&f把书包放进离讲台更近的展示框");
+        return cfgString("messages.round-subtitle", "&f把背包放进离讲台更近的展示框");
     }
 
     private String chineseNumber(int number) {
@@ -385,11 +400,11 @@ public final class SeatGrabManager {
         changed |= setDefault("rounds.total", 4);
         changed |= setDefault("rounds.names", new ArrayList<>(DEFAULT_ROUND_NAMES));
         changed |= setDefault("rounds.subtitles", new ArrayList<>(List.of(
-                "&f第一回合：把书包放进离讲台最近的展示框",
+                "&f第一回合：把背包放进离讲台最近的展示框",
                 "&f第二回合：靠近讲台的座位分数更高",
-                "&f第三回合：可以用击退笔抢走别人的书包",
+                "&f第三回合：可以用击退笔抢走别人的背包",
                 "&f第四回合：最后一回合，冲刺最高分",
-                "&f第五回合：加时赛，把书包放稳",
+                "&f第五回合：加时赛，把背包放稳",
                 "&f第六回合：最终回合，别被击退")));
         if (!plugin.getConfig().isSet("score.rows")) {
             List<Map<String, Object>> rows = new ArrayList<>();
@@ -397,6 +412,16 @@ public final class SeatGrabManager {
             rows.add(rowDefaults(12.0, 3, 3));
             rows.add(rowDefaults(9999.0, 5, 1));
             plugin.getConfig().set("score.rows", rows);
+            changed = true;
+        }
+        if (!plugin.getConfig().isSet("placeholder-items")) {
+            List<Map<String, Object>> items = new ArrayList<>();
+            items.add(placeholderDefaults("BUNDLE", "&f被黏在桌子上的书包"));
+            items.add(placeholderDefaults("POTION", "&b水壶"));
+            items.add(placeholderDefaults("LEATHER_CHESTPLATE", "&6衣服"));
+            items.add(placeholderDefaults("WRITABLE_BOOK", "&e课本"));
+            items.add(placeholderDefaults("PAPER", "&f食品包装袋"));
+            plugin.getConfig().set("placeholder-items", items);
             changed = true;
         }
         changed |= setDefault("pen.knockback-horizontal", 1.05);
@@ -409,7 +434,7 @@ public final class SeatGrabManager {
         changed |= setDefault("arena.scan-height", 10);
         changed |= setDefault("arena.podium-axis", "z");
         changed |= setDefault("messages.round-title", "&6&l{name}");
-        changed |= setDefault("messages.round-subtitle", "&f把书包放进离讲台更近的展示框");
+        changed |= setDefault("messages.round-subtitle", "&f把背包放进离讲台更近的展示框");
         changed |= setDefault("messages.round-end-title", "&e&l{name} 结束");
         changed |= setDefault("messages.round-end-subtitle", "&f本回合得分已结算，准备下一回合");
         changed |= setDefault("sidebar.enabled", true);
@@ -424,6 +449,13 @@ public final class SeatGrabManager {
         map.put("max-distance", maxDistance);
         map.put("seats", seats);
         map.put("score", score);
+        return map;
+    }
+
+    private Map<String, Object> placeholderDefaults(String material, String name) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("material", material);
+        map.put("name", name);
         return map;
     }
 
@@ -562,7 +594,7 @@ public final class SeatGrabManager {
         colors.remove(id);
         scores.remove(id);
         lastPenHit.remove(id);
-        // 退出时清掉局内道具，避免书包/击退笔被写进玩家存档
+        // 退出时清掉局内道具，避免背包/击退笔被写进玩家存档
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
         if (state == State.RUNNING && playing.isEmpty()) {
@@ -815,7 +847,7 @@ public final class SeatGrabManager {
                         + rowLabel(rows.getOrDefault(id, 0), rowCount) + ") &7总分 &e" + scores.get(id));
             } else {
                 explosionEffect(player);
-                Chat.sendTitled(player, "&c本回合 0 分 &7(书包没放进展示框)");
+                Chat.sendTitled(player, "&c本回合 0 分 &7(背包没放进展示框)");
             }
         }
         broadcastGains(gains);
@@ -1098,7 +1130,7 @@ public final class SeatGrabManager {
         return scanFrames().size();
     }
 
-    /** 每回合按排随机挑座位：每排只在配置的数量内随机选，其余展示框放占位书包。 */
+    /** 每回合按排随机挑座位：每排只在配置的数量内随机选，其余展示框放占位背包。 */
     private void resetFrames() {
         clearAllGlows();
         seatFrames.clear();
@@ -1132,7 +1164,7 @@ public final class SeatGrabManager {
         }
     }
 
-    /** 把所有展示框恢复成占位书包并清空座位信息。 */
+    /** 把所有展示框恢复成占位背包并清空座位信息。 */
     private void clearFrames() {
         clearAllGlows();
         seatFrames.clear();
@@ -1164,8 +1196,46 @@ public final class SeatGrabManager {
     }
 
     private void setPlaceholder(ItemFrame frame) {
-        frame.setItem(new ItemStack(Material.BUNDLE), false);
+        List<PlaceholderItem> items = placeholderItems();
+        PlaceholderItem placeholder = items.get(random.nextInt(items.size()));
+        frame.setItem(placeholderStack(placeholder), false);
         clearGlow(frame);
+    }
+
+    /** 非座位展示框随机摆放的物品，来自配置 placeholder-items（material + name）。 */
+    private List<PlaceholderItem> placeholderItems() {
+        List<PlaceholderItem> items = new ArrayList<>();
+        for (Map<?, ?> map : plugin.getConfig().getMapList("placeholder-items")) {
+            String rawMaterial = map.get("material") == null ? "" : String.valueOf(map.get("material"));
+            Material material = Material.matchMaterial(rawMaterial);
+            if (material == null || material.isAir()) {
+                continue;
+            }
+            String name = map.get("name") == null ? "" : String.valueOf(map.get("name"));
+            items.add(new PlaceholderItem(material, name));
+        }
+        if (items.isEmpty()) {
+            items.add(new PlaceholderItem(Material.BUNDLE, "&f被黏在桌子上的书包"));
+            items.add(new PlaceholderItem(Material.POTION, "&b水壶"));
+            items.add(new PlaceholderItem(Material.LEATHER_CHESTPLATE, "&6衣服"));
+            items.add(new PlaceholderItem(Material.WRITABLE_BOOK, "&e课本"));
+            items.add(new PlaceholderItem(Material.PAPER, "&f食品包装袋"));
+        }
+        return items;
+    }
+
+    private ItemStack placeholderStack(PlaceholderItem placeholder) {
+        ItemStack item = new ItemStack(placeholder.material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            String name = placeholder.name == null || placeholder.name.isBlank() ? "&f占位物品" : placeholder.name;
+            meta.displayName(Chat.noItalic(Chat.color(name)));
+            if (meta instanceof PotionMeta potion) {
+                potion.setBasePotionType(PotionType.WATER);
+            }
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     public boolean isArenaFrame(Entity entity) {
@@ -1199,6 +1269,17 @@ public final class SeatGrabManager {
         return filled;
     }
 
+    /** 该玩家的背包是否已经放进某个座位（坐下后不能再偷别人的背包）。 */
+    private boolean ownBagSeated(UUID owner) {
+        for (ItemFrame frame : seatFrames) {
+            UUID itemOwner = bagOwner(frame.getItem());
+            if (owner.equals(itemOwner)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private Team glowTeam(String teamKey, NamedTextColor color) {
         Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
         String name = GLOW_PREFIX + teamKey;
@@ -1218,7 +1299,7 @@ public final class SeatGrabManager {
         glow(entity, "seat", NamedTextColor.WHITE);
     }
 
-    /** 已放置 / 掉落的书包：发光颜色取最近的书包颜色。 */
+    /** 已放置 / 掉落的背包：发光颜色取最近的背包颜色。 */
     private void glowBag(Entity entity, DyeColor dye) {
         DyeColor color = dye == null ? DyeColor.WHITE : dye;
         glow(entity, color.name().toLowerCase(Locale.ROOT), glowColor(color));
@@ -1251,7 +1332,7 @@ public final class SeatGrabManager {
         }
     }
 
-    /** 把某个玩家放在框里的书包取下来、框恢复成空座位（玩家死亡/退出时用）。 */
+    /** 把某个玩家放在框里的背包取下来、框恢复成空座位（玩家死亡/退出时用）。 */
     private void freeFrameOf(UUID owner) {
         if (owner == null) {
             return;
@@ -1265,7 +1346,7 @@ public final class SeatGrabManager {
         }
     }
 
-    /** 队伍发光颜色只能是 16 种原版文字颜色，取最接近的书包颜色。 */
+    /** 队伍发光颜色只能是 16 种原版文字颜色，取最接近的背包颜色。 */
     private NamedTextColor glowColor(DyeColor dye) {
         if (dye == null) {
             return NamedTextColor.WHITE;
@@ -1330,7 +1411,7 @@ public final class SeatGrabManager {
         hasSavedPvp = false;
     }
 
-    // ---------- 书包 / 击退笔 ----------
+    // ---------- 背包 / 击退笔 ----------
 
     private Material bagMaterial(DyeColor color) {
         if (color == null) {
@@ -1345,9 +1426,13 @@ public final class SeatGrabManager {
         ItemStack item = new ItemStack(bagMaterial(color));
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Chat.noItalic(Chat.color("&f&l书包")));
+            Color dyeColor = color.getColor();
+            TextColor nameColor = dyeColor == null
+                    ? glowColor(color)
+                    : TextColor.color(dyeColor.getRed(), dyeColor.getGreen(), dyeColor.getBlue());
+            meta.displayName(Chat.noItalic(Chat.color("&l背包").color(nameColor)));
             List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
-            lore.add(Chat.color("&7这是 &e" + nameOf(owner) + " &7的书包"));
+            lore.add(Chat.color("&7这是 &e" + nameOf(owner) + " &7的背包"));
             lore.add(Chat.color("&7拿着它右键空展示框坐下"));
             meta.lore(lore);
             meta.getPersistentDataContainer().set(bagKey, PersistentDataType.BYTE, (byte) 1);
@@ -1431,7 +1516,7 @@ public final class SeatGrabManager {
 
     // ---------- 展示框交互 ----------
 
-    /** 玩家右键展示框：手里是自己书包 → 放入；空手 → 偷别人的。 */
+    /** 玩家右键展示框：手里是自己背包 → 放入；空手 → 偷别人的。 */
     public void handleFrameInteract(Player player, ItemFrame frame) {
         if (!roundActive || state != State.RUNNING || !playing.contains(player.getUniqueId())) {
             return;
@@ -1463,11 +1548,15 @@ public final class SeatGrabManager {
         if (hand.isEmpty()) {
             UUID owner = bagOwner(frame.getItem());
             if (owner == null) {
-                Chat.actionBar(player, "&7这个展示框里只是占位用的书包，拿不走");
+                Chat.actionBar(player, "&7这个展示框里只是占位物品，拿不走");
                 return;
             }
             if (owner.equals(player.getUniqueId())) {
-                Chat.actionBar(player, "&7这是你自己的书包，不用拿");
+                Chat.actionBar(player, "&7这是你自己的背包，不用拿");
+                return;
+            }
+            if (ownBagSeated(player.getUniqueId())) {
+                Chat.actionBar(player, "&c你的背包已经放进展示框了，不能再拿别人的背包");
                 return;
             }
             ItemStack taken = frame.getItem().clone();
@@ -1478,20 +1567,20 @@ public final class SeatGrabManager {
             charging.remove(player.getUniqueId());
             chargeConfirmed.remove(player.getUniqueId());
             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 0.8f);
-            Chat.title(player, "&c你抢到了书包", "&7按住右键蓄力，松开右键扔出", 2);
-            broadcastGame("&e" + player.getName() + " &f抢走了 &e" + nameOf(owner) + " &f的书包！");
+            Chat.title(player, "&c你抢到了背包", "&7按住右键蓄力，松开右键扔出", 2);
+            broadcastGame("&e" + player.getName() + " &f抢走了 &e" + nameOf(owner) + " &f的背包！");
             updateSidebar();
             updateActionBar();
             return;
         }
         if (isPen(hand)) {
-            Chat.actionBar(player, "&7空手才能取下别人的书包");
+            Chat.actionBar(player, "&7空手才能取下别人的背包");
         } else {
-            Chat.actionBar(player, "&7手里拿着别人的书包，先按住右键扔出去");
+            Chat.actionBar(player, "&7手里拿着别人的背包，先按住右键扔出去");
         }
     }
 
-    /** 玩家右键空展示框外的空气/方块，且手里拿着偷来的书包 → 开始蓄力。 */
+    /** 玩家右键空展示框外的空气/方块，且手里拿着偷来的背包 → 开始蓄力。 */
     public void startCharge(Player player) {
         UUID id = player.getUniqueId();
         if (!roundActive || state != State.RUNNING || !playing.contains(id)) {
@@ -1582,11 +1671,11 @@ public final class SeatGrabManager {
         velocity.setY(direction.getY() * speed * 0.6 + chargeUp());
         spawnDroppedBag(player.getWorld(), player.getEyeLocation().subtract(0, 0.3, 0), bag, owner, velocity);
         player.playSound(player.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 1.0f);
-        Chat.actionBar(player, "&c你把书包扔出去了！&7（力度 " + Math.round(power * 100) + "%）");
+        Chat.actionBar(player, "&c你把背包扔出去了！&7（力度 " + Math.round(power * 100) + "%）");
         updateActionBar();
     }
 
-    /** 蓄力时被击退笔打中：书包原地掉落，不会被扔出去。 */
+    /** 蓄力时被击退笔打中：背包原地掉落，不会被扔出去。 */
     private void dropCarriedBag(Player player) {
         UUID id = player.getUniqueId();
         UUID owner = carrying.remove(id);
@@ -1601,7 +1690,7 @@ public final class SeatGrabManager {
         clearStolenItemFromInventory(player, owner);
         ItemStack bag = bagItem(owner);
         spawnDroppedBag(player.getWorld(), player.getLocation().add(0, 0.3, 0), bag, owner, new Vector(0, 0, 0));
-        Chat.actionBar(player, "&c你被击退，书包掉在原地了！");
+        Chat.actionBar(player, "&c你被击退，背包掉在原地了！");
     }
 
     private void clearStolenItemFromInventory(Player player, UUID owner) {
@@ -1627,7 +1716,7 @@ public final class SeatGrabManager {
         droppedBags.put(item.getUniqueId(), item);
     }
 
-    /** 只有失主能捡回自己的书包。 */
+    /** 只有失主能捡回自己的背包。 */
     public void handlePickup(org.bukkit.event.entity.EntityPickupItemEvent event) {
         ItemStack stack = event.getItem().getItemStack();
         if (!isBagItem(stack)) {
@@ -1644,13 +1733,13 @@ public final class SeatGrabManager {
         }
         droppedBags.remove(event.getItem().getUniqueId());
         clearGlow(event.getItem());
-        Chat.actionBar(picker, "&a你捡回了自己的书包！");
+        Chat.actionBar(picker, "&a你捡回了自己的背包！");
         picker.playSound(picker.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.2f);
     }
 
     // ---------- 击退笔 ----------
 
-    /** 击退笔命中：0 伤害，但对方有原版受击动画 + 击退；蓄力中的书包原地掉落。 */
+    /** 击退笔命中：0 伤害，但对方有原版受击动画 + 击退；蓄力中的背包原地掉落。 */
     public boolean penHit(Player attacker, Player victim) {
         if (!roundActive || state != State.RUNNING) {
             return false;
@@ -1919,7 +2008,7 @@ public final class SeatGrabManager {
             if (chargeStart != null) {
                 bar.append(" &7| &c蓄力 &f").append(chargeBar(roundTicks - chargeStart));
             } else if (carrying.containsKey(id)) {
-                bar.append(" &7| &c按住右键蓄力扔书包");
+                bar.append(" &7| &c按住右键蓄力扔背包");
             }
             Chat.actionBar(player, bar.toString());
         }
@@ -1987,8 +2076,8 @@ public final class SeatGrabManager {
         }
         out.add("排配置：" + String.join("；", rowText));
         out.add("展示框 " + frames.size() + " 个，本回合座位 " + seatFrames.size()
-                + "，已坐 " + filledSeats() + "，拿起书包 " + carrying.size()
-                + "，蓄力中 " + charging.size() + "，地上书包 " + droppedBags.size());
+                + "，已坐 " + filledSeats() + "，拿起背包 " + carrying.size()
+                + "，蓄力中 " + charging.size() + "，地上背包 " + droppedBags.size());
         List<UUID> ranked = new ArrayList<>(scores.keySet());
         ranked.sort(Comparator.comparingInt((UUID id) -> scores.getOrDefault(id, 0)).reversed());
         List<String> scoreText = new ArrayList<>();
