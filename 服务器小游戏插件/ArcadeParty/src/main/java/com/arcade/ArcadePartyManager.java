@@ -376,7 +376,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         changed |= setDefault("games.redlight.join-command", "redlight join");
         changed |= setDefault("games.redlight.start-command", "redlight start");
         changed |= setDefault("games.seatgrab.display", "抢位占座");
-        changed |= setDefault("games.seatgrab.enabled", true);
+        changed |= setDefault("games.seatgrab.enabled", false);
         changed |= setDefault("games.seatgrab.arena-aware", false);
         changed |= setDefault("games.seatgrab.max-players", 16);
         changed |= setDefault("games.seatgrab.join-command", "seatgrab join");

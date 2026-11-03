@@ -206,7 +206,7 @@ games:
     start-command: 'redlight start'
   seatgrab:
     display: 抢位占座
-    enabled: true
+    enabled: false
     arena-aware: false
     max-players: 16
     join-command: 'seatgrab join'
