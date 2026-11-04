@@ -50,8 +50,8 @@ public final class ToyItems {
 
     /** 材质 + 药水 + 名字 + 描述拼成的指纹，用来判断物品栏里的旧道具是否还是旧外观。 */
     private static String lookTag(ToyDefinition definition) {
-        // v3：1.1.3 及以前的道具丢了显示名（base() 没写回 ItemMeta），换前缀让它们全部重建一次
-        return "v3|" + definition.material().name()
+        // v4：名字/lore 改为正体（noItalic），换前缀让旧道具重建一次
+        return "v4|" + definition.material().name()
                 + "|" + (definition.potion() == null ? "-" : definition.potion().name())
                 + "|" + definition.name() + "|" + String.join("|", definition.lore());
     }
@@ -82,7 +82,7 @@ public final class ToyItems {
             if (meta instanceof PotionMeta potion && definition.potion() != null) {
                 potion.setBasePotionType(definition.potion());
             }
-            meta.displayName(Chat.color(definition.name()));
+            meta.displayName(Chat.noItalic(Chat.color(definition.name())));
             stack.setItemMeta(meta);
         }
         return stack;
@@ -91,7 +91,7 @@ public final class ToyItems {
     private static List<net.kyori.adventure.text.Component> chatList(List<String> lines) {
         List<net.kyori.adventure.text.Component> result = new ArrayList<>(lines.size());
         for (String line : lines) {
-            result.add(Chat.color(line));
+            result.add(Chat.noItalic(Chat.color(line)));
         }
         return result;
     }
