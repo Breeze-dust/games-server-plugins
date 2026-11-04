@@ -21,7 +21,9 @@
   - `squash-amount`（弹跳时模型最多缩小多少，0.15 = 最扁时 85%）、`squash-period-ticks`（弹跳周期，40 刻 = 2 秒）；
     `squash-amount: 0` = 关闭弹跳
   - `cooldown-millis`（右键开关冷却）
-  - `hide-from-owner`（默认 **false**：第三人称能看到自己的分身；设为 true 只给其他玩家看）
+  - `hide-from-owner`（默认 **false**：第三人称能看到自己的分身；设为 true 只给其他玩家看）。
+    **注意**：这个默认值只在配置里没有该键时生效；旧版生成的 `plugins/LobbyToys/config.yml` 里可能还是 `true`，
+    需要手动改成 `false` 再 `/lobbytoys reload`（reload 会立刻对已在场的分身生效，不用重新开关）。
   - `toys.<id>`：**名字 `name`、代表道具 `material`、药水 `potion`、描述 `lore` 都在这里改**，支持 `&` 颜色代码；
     名字与 lore 统一用 `Chat.noItalic`（**正体**，Minecraft 默认把物品名渲染成斜体）。
     材质名写错/留空会自动回退默认值**并在控制台打警告**（不会加载失败）。键名（`clone`）是玩具 id，不要改。

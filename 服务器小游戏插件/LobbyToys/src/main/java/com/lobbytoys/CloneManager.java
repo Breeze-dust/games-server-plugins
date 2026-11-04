@@ -71,6 +71,22 @@ public final class CloneManager {
         return sessions.containsKey(playerId);
     }
 
+    /** 配置里的 hide-from-owner 改了以后，让已经在场的分身立刻按新设置显示/隐藏。 */
+    public void refreshVisibility() {
+        boolean hide = plugin.settings().hideFromOwner;
+        for (Map.Entry<UUID, Session> entry : sessions.entrySet()) {
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player == null || !player.isOnline()) {
+                continue;
+            }
+            if (hide) {
+                player.hideEntity(plugin, entry.getValue().clone);
+            } else {
+                player.showEntity(plugin, entry.getValue().clone);
+            }
+        }
+    }
+
     public void stop(UUID playerId, boolean notify) {
         Session session = sessions.remove(playerId);
         if (session == null) {

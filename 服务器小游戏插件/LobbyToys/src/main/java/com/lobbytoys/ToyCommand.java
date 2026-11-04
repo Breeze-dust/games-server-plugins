@@ -107,6 +107,8 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         String base = "toys." + selected.id();
         Chat.send(player, "&7配置原文：material=&f" + plugin.getConfig().getString(base + ".material")
                 + " &7potion=&f" + plugin.getConfig().getString(base + ".potion"));
+        Chat.send(player, "&7hide-from-owner=&f" + plugin.settings().hideFromOwner
+                + " &7worlds=&f" + plugin.settings().worlds);
         Chat.send(player, "&7已选玩具：&f" + selected.id()
                 + " &7期望外观：&f" + items.expectedLook(selected));
     }

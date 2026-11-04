@@ -33,6 +33,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
         Bukkit.getScheduler().runTaskTimer(this, listener::refillAll, 100L, 100L);
 
         getLogger().info("主城小玩具（LobbyToys）v" + getPluginMeta().getVersion() + " 已启用。");
+        if (settings.hideFromOwner) {
+            getLogger().info("hide-from-owner=true：召唤者本人看不到自己的分身（F5 第三人称也看不到）；想看到请改成 false。");
+        }
     }
 
     @Override
@@ -55,5 +58,8 @@ public final class LobbyToysPlugin extends JavaPlugin {
         reloadConfig();
         settings = Settings.load(getConfig());
         registry.reload(getConfig());
+        if (clones != null) {
+            clones.refreshVisibility();
+        }
     }
 }
