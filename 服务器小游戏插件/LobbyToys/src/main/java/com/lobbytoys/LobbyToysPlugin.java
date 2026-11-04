@@ -14,7 +14,7 @@ public final class LobbyToysPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         settings = Settings.load(getConfig());
-        registry = new ToyRegistry(getConfig());
+        registry = new ToyRegistry(this, getConfig());
 
         ToyItems items = new ToyItems(this, registry);
         clones = new CloneManager(this);

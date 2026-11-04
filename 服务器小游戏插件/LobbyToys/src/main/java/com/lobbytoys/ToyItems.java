@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -47,10 +48,12 @@ public final class ToyItems {
         return stack;
     }
 
-    /** 材质 + 名字 + 描述拼成的指纹，用来判断物品栏里的旧道具是否还是旧外观。 */
+    /** 材质 + 药水 + 名字 + 描述拼成的指纹，用来判断物品栏里的旧道具是否还是旧外观。 */
     private static String lookTag(ToyDefinition definition) {
-        // v2：1.1.3 及以前的道具丢了显示名（base() 没写回 ItemMeta），换前缀让它们全部重建一次
-        return "v2|" + definition.material().name() + "|" + definition.name() + "|" + String.join("|", definition.lore());
+        // v3：1.1.3 及以前的道具丢了显示名（base() 没写回 ItemMeta），换前缀让它们全部重建一次
+        return "v3|" + definition.material().name()
+                + "|" + (definition.potion() == null ? "-" : definition.potion().name())
+                + "|" + definition.name() + "|" + String.join("|", definition.lore());
     }
 
     /** 菜单里的图标，带「已装备 / 点击切换」，不带玩具标记（不能被当成真玩具带走）。 */
@@ -75,6 +78,9 @@ public final class ToyItems {
         if (meta != null) {
             if (meta instanceof SkullMeta skull) {
                 skull.setPlayerProfile(owner.getPlayerProfile());
+            }
+            if (meta instanceof PotionMeta potion && definition.potion() != null) {
+                potion.setBasePotionType(definition.potion());
             }
             meta.displayName(Chat.color(definition.name()));
             stack.setItemMeta(meta);

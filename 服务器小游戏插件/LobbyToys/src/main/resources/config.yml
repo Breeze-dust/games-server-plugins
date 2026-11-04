@@ -29,12 +29,15 @@ hide-from-owner: false
 # ========== 小玩具外观 ==========
 # 名字、代表道具、描述都可以在这里改；支持 & 颜色代码。
 # material 用 Bukkit 材质名（如 PLAYER_HEAD、SLIME_BALL、FIREWORK_ROCKET）；
-# 写错或留空会回退到默认值，不会导致加载失败。
+# 写错或留空会回退到默认值，并在控制台打警告，不会导致加载失败。
+# 水瓶不是 WATER_BOTTLE：要写 material: POTION + potion: WATER。
+# potion 可选，只对 POTION / SPLASH_POTION / LINGERING_POTION 生效（如 WATER、STRENGTH）。
 # 键名 clone 是玩具 id，不要改。
 toys:
   clone:
     name: "&b分身玩具"
     material: PLAYER_HEAD
+    # potion: WATER
     lore:
       - "&7右键 召唤 / 收回 你的分身"
       - "&8只能在主城使用"

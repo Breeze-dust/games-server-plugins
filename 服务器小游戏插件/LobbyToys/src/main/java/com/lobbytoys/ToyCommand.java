@@ -104,6 +104,9 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         Chat.send(player, "&7插件版本：&f" + plugin.getPluginMeta().getVersion());
         Chat.send(player, "&7手里：&f" + items.describe(player.getInventory().getItemInMainHand()));
         ToyType selected = items.selected(player);
+        String base = "toys." + selected.id();
+        Chat.send(player, "&7配置原文：material=&f" + plugin.getConfig().getString(base + ".material")
+                + " &7potion=&f" + plugin.getConfig().getString(base + ".potion"));
         Chat.send(player, "&7已选玩具：&f" + selected.id()
                 + " &7期望外观：&f" + items.expectedLook(selected));
     }
