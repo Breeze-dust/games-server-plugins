@@ -47,6 +47,9 @@
     现在的弹跳是整体缩小再恢复（`squash-amount`），视觉上是「压一下」；要真正的 squash-stretch 只能上资源包 +
     `ItemDisplay` 自定义人形模型（还需为非等比 `Transformation` 做模型），本插件没有走这条路。
   - 分身**空手**（`configure` 里 `getEquipment().clear()`），不会拿着物品栏里的玩具。
+  - **旧道具自动换新**：道具 PDC 里存了一个「外观指纹」（`lobbytoys:toy-look` = 材质|名字|描述）。
+    进服时和每 5 秒的兜底任务里，只要指纹和当前配置不一致就原地重建；1.0.0 用的旧标记 `lobbytoys:clone-toy`
+    也认，会被当作分身在第一次检查时迁移成新道具。所以改完配置**不 reload 也会在 5 秒内生效**（reload 是立刻生效）。
   - 分身位置 = 玩家位置（每刻 teleport），所以玩家与分身在同一个点。`hide-from-owner: false` 时第一人称可能看到分身模型内壁，
     受不了就改回 `true`（代价是 F5 看不到自己）。
   - 隐身是药水效果：如果玩家原本就处于隐身（记录在 `Session.hadInvisibility`），收回时不会移除它。

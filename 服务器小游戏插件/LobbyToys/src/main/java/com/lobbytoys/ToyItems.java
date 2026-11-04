@@ -20,12 +20,17 @@ public final class ToyItems {
     private final NamespacedKey toyKey;
     private final NamespacedKey iconKey;
     private final NamespacedKey selectedKey;
+    private final NamespacedKey lookKey;
+    /** 1.0.0 用的旧标记，读到时按「分身」处理并会被自动换成新道具。 */
+    private final NamespacedKey legacyKey;
 
     public ToyItems(Plugin plugin, ToyRegistry registry) {
         this.registry = registry;
         this.toyKey = new NamespacedKey(plugin, "toy-id");
         this.iconKey = new NamespacedKey(plugin, "menu-icon");
         this.selectedKey = new NamespacedKey(plugin, "selected-toy");
+        this.lookKey = new NamespacedKey(plugin, "toy-look");
+        this.legacyKey = new NamespacedKey(plugin, "clone-toy");
     }
 
     /** 物品栏里那个可右键的玩具。 */
@@ -36,9 +41,15 @@ public final class ToyItems {
         if (meta != null) {
             meta.lore(chatList(definition.lore()));
             meta.getPersistentDataContainer().set(toyKey, PersistentDataType.STRING, type.id());
+            meta.getPersistentDataContainer().set(lookKey, PersistentDataType.STRING, lookTag(definition));
             stack.setItemMeta(meta);
         }
         return stack;
+    }
+
+    /** 材质 + 名字 + 描述拼成的指纹，用来判断物品栏里的旧道具是否还是旧外观。 */
+    private static String lookTag(ToyDefinition definition) {
+        return definition.material().name() + "|" + definition.name() + "|" + String.join("|", definition.lore());
     }
 
     /** 菜单里的图标，带「已装备 / 点击切换」，不带玩具标记（不能被当成真玩具带走）。 */
@@ -78,7 +89,16 @@ public final class ToyItems {
     }
 
     public ToyType typeOf(ItemStack stack) {
-        return readId(stack, toyKey);
+        ToyType type = readId(stack, toyKey);
+        if (type != null) {
+            return type;
+        }
+        if (stack == null || !stack.hasItemMeta()) {
+            return null;
+        }
+        boolean legacy = stack.getItemMeta().getPersistentDataContainer()
+                .has(legacyKey, PersistentDataType.BYTE);
+        return legacy ? ToyType.CLONE : null;
     }
 
     /** 配置里写的名字（带 & 颜色代码），用于聊天提示。 */
@@ -174,5 +194,32 @@ public final class ToyItems {
             }
         }
         return changed;
+    }
+
+    /** 只替换外观已过时的玩具（材质/名字/描述跟当前配置不一致，或旧版本创建、没有指纹）。 */
+    public boolean refreshStale(Player player) {
+        PlayerInventory inventory = player.getInventory();
+        boolean changed = false;
+
+        ItemStack offhand = inventory.getItemInOffHand();
+        ToyType offhandType = typeOf(offhand);
+        if (offhandType != null && isStale(offhand, offhandType)) {
+            inventory.setItemInOffHand(create(player, offhandType));
+            changed = true;
+        }
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            ToyType type = typeOf(stack);
+            if (type != null && isStale(stack, type)) {
+                inventory.setItem(slot, create(player, type));
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private boolean isStale(ItemStack stack, ToyType type) {
+        String tag = stack.getItemMeta().getPersistentDataContainer().get(lookKey, PersistentDataType.STRING);
+        return !lookTag(registry.get(type)).equals(tag);
     }
 }
