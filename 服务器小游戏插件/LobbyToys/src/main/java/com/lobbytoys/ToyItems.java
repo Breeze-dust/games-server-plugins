@@ -222,4 +222,24 @@ public final class ToyItems {
         String tag = stack.getItemMeta().getPersistentDataContainer().get(lookKey, PersistentDataType.STRING);
         return !lookTag(registry.get(type)).equals(tag);
     }
+
+    /** 排障用：把物品上的玩具标记原样打出来。 */
+    public String describe(ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) {
+            return "空手";
+        }
+        if (!stack.hasItemMeta()) {
+            return stack.getType().name() + "（无 meta，不是玩具）";
+        }
+        var pdc = stack.getItemMeta().getPersistentDataContainer();
+        return stack.getType().name()
+                + " toy-id=" + pdc.get(toyKey, PersistentDataType.STRING)
+                + " look=" + pdc.get(lookKey, PersistentDataType.STRING)
+                + " legacy=" + pdc.has(legacyKey, PersistentDataType.BYTE);
+    }
+
+    /** 当前配置下这个玩具应有的外观指纹，排障时一起打出来对比。 */
+    public String expectedLook(ToyType type) {
+        return lookTag(registry.get(type));
+    }
 }

@@ -39,6 +39,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
             case "menu" -> openMenu(sender);
             case "give" -> give(sender, args);
             case "off" -> off(sender);
+            case "debug" -> debug(sender);
             case "reload" -> reload(sender);
             default -> help(sender, label);
         }
@@ -91,6 +92,22 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         clones.stop(player.getUniqueId(), true);
     }
 
+    private void debug(CommandSender sender) {
+        if (!isAdmin(sender)) {
+            Chat.send(sender, "&c只有管理员能看调试信息。");
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            Chat.send(sender, "&c只有玩家能看手里的道具。");
+            return;
+        }
+        Chat.send(player, "&7插件版本：&f" + plugin.getPluginMeta().getVersion());
+        Chat.send(player, "&7手里：&f" + items.describe(player.getInventory().getItemInMainHand()));
+        ToyType selected = items.selected(player);
+        Chat.send(player, "&7已选玩具：&f" + selected.id()
+                + " &7期望外观：&f" + items.expectedLook(selected));
+    }
+
     private void reload(CommandSender sender) {
         if (!isAdmin(sender)) {
             Chat.send(sender, "&c只有管理员能重载配置。");
@@ -112,6 +129,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&7/" + label + " menu &8- 打开小玩具菜单");
         Chat.send(sender, "&7/" + label + " give [玩家] &8- 发放小玩具");
         Chat.send(sender, "&7/" + label + " off &8- 收回自己的分身");
+        Chat.send(sender, "&7/" + label + " debug &8- 查看插件版本与手持道具的玩具标记");
         Chat.send(sender, "&7/" + label + " reload &8- 重载配置");
         Chat.send(sender, "&7右键玩具：召唤 / 收回分身（仅主城可用）");
     }
@@ -125,7 +143,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("menu", "give", "off", "reload", "help"), args[0]);
+            return filter(List.of("menu", "give", "off", "debug", "reload", "help"), args[0]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
             List<String> names = new ArrayList<>();

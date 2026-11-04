@@ -9,8 +9,9 @@
 - **入口**：`LobbyToys/src/main/java/com/lobbytoys/LobbyToysPlugin.java#onEnable`
   （`saveDefaultConfig` → `Settings` + `ToyRegistry` → `CloneManager` 每刻 tick 任务 → 注册 `ToyListener` + `ToyMenu` →
   `/lobbytoys` 命令 → 每 100 刻 `ToyListener#refillAll` 给主城玩家补道具）。
-- **命令**：`/lobbytoys menu`、`/lobbytoys give [玩家]`、`/lobbytoys off`、`/lobbytoys reload`、`/lobbytoys help`；
+- **命令**：`/lobbytoys menu`、`/lobbytoys give [玩家]`、`/lobbytoys off`、`/lobbytoys debug`、`/lobbytoys reload`、`/lobbytoys help`；
   别名 `toys` / `toy`。权限 `lobbytoys.use`（默认 true）、`lobbytoys.admin`（默认 op）。
+  `/lobbytoys debug` 会输出插件版本、手持道具上的 `toy-id` / `toy-look` / 旧标记，以及当前配置的期望指纹，排障先用它。
 - **HubCore 集成**：`HubCore` 的 `MenuLayout#ensureToysMenuEntry()` 在检测到本插件时，自动在主菜单第一个空槽放
   「小玩具」（PLAYER_HEAD，动作 `cmd:lobbytoys menu`，所有人可见）；已有同动作条目就不重复添加。
   **改 HubCore 的这处逻辑 ⇒ 按仓库规矩所有 jar 要一起重传。**

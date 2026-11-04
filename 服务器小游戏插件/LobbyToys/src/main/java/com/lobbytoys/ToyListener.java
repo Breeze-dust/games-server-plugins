@@ -103,7 +103,9 @@ public final class ToyListener implements Listener {
     private void ensureToy(Player player) {
         if (items.hasAny(player)) {
             // 旧版本留下的道具 / 配置改过外观：原地换成当前的
-            items.refreshStale(player);
+            if (items.refreshStale(player)) {
+                plugin.getLogger().info("已把 " + player.getName() + " 物品栏里的玩具刷新为当前配置外观。");
+            }
             return;
         }
         ItemStack toy = items.create(player, items.selected(player));

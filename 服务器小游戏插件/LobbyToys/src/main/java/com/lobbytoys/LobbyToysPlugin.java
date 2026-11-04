@@ -32,7 +32,7 @@ public final class LobbyToysPlugin extends JavaPlugin {
 
         Bukkit.getScheduler().runTaskTimer(this, listener::refillAll, 100L, 100L);
 
-        getLogger().info("主城小玩具（LobbyToys）已启用。");
+        getLogger().info("主城小玩具（LobbyToys）v" + getPluginMeta().getVersion() + " 已启用。");
     }
 
     @Override
