@@ -49,7 +49,8 @@ public final class ToyItems {
 
     /** 材质 + 名字 + 描述拼成的指纹，用来判断物品栏里的旧道具是否还是旧外观。 */
     private static String lookTag(ToyDefinition definition) {
-        return definition.material().name() + "|" + definition.name() + "|" + String.join("|", definition.lore());
+        // v2：1.1.3 及以前的道具丢了显示名（base() 没写回 ItemMeta），换前缀让它们全部重建一次
+        return "v2|" + definition.material().name() + "|" + definition.name() + "|" + String.join("|", definition.lore());
     }
 
     /** 菜单里的图标，带「已装备 / 点击切换」，不带玩具标记（不能被当成真玩具带走）。 */
@@ -76,6 +77,7 @@ public final class ToyItems {
                 skull.setPlayerProfile(owner.getPlayerProfile());
             }
             meta.displayName(Chat.color(definition.name()));
+            stack.setItemMeta(meta);
         }
         return stack;
     }
