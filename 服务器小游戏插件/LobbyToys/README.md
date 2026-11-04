@@ -56,6 +56,8 @@
     所以水瓶不会喝水、食物不会进食、方块不会放置；另有 `PlayerItemConsumeEvent` 兜底。
   - **进游戏自动结束**：`HubAPI.gameOf(uuid)` 非空（任意小游戏上报了状态）时，`CloneManager` 每 20 刻收回分身并移除隐身，
     `refillAll` / `giveLater` 不再补发玩具。天坑的战斗区域就在主城世界 `world` 内，换世界检测不到，所以用 HubAPI 的游戏状态判断。
+  - **分身不参与推挤**：分身与玩家同坐标，所以 `configure` 里同时设了 `setCollidable(false)`、`setNoPhysics(true)`，
+    并把它加入计分板队伍 `lobbytoys`（`COLLISION_RULE = NEVER`），否则原版实体分离会把玩家顶开。
   - 分身**空手**（`configure` 里 `getEquipment().clear()`），不会拿着物品栏里的玩具。
   - **改道具构造后一定要确认 `stack.setItemMeta(meta)`**：1.1.0–1.1.3 的 `base()` 漏了这一句，
     导致道具丢显示名/头颅皮肤（客户端显示成「玩家的头」），而外观指纹仍与配置一致、刷新逻辑不会重建——

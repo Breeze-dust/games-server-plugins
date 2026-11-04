@@ -13,6 +13,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -26,6 +28,8 @@ import java.util.UUID;
 public final class CloneManager {
 
     private static final int INVISIBILITY_TICKS = 20 * 60;
+    /** 分身专用队伍：碰撞规则 NEVER，保证不推玩家、也不被玩家推。 */
+    private static final String NO_COLLISION_TEAM = "lobbytoys";
 
     private final LobbyToysPlugin plugin;
     private final Map<UUID, Session> sessions = new HashMap<>();
@@ -102,6 +106,7 @@ public final class CloneManager {
         }
         for (Map.Entry<UUID, Session> entry : sessions.entrySet()) {
             Session session = entry.getValue();
+            leaveNoCollisionTeam(session.clone);
             if (session.clone.isValid()) {
                 session.clone.remove();
             }
@@ -149,11 +154,14 @@ public final class CloneManager {
         clone.setImmovable(true);
         clone.setInvulnerable(true);
         clone.setCollidable(false);
+        clone.setNoPhysics(true);
         clone.setGravity(false);
         clone.setSilent(true);
         clone.setPersistent(false);
         clone.setCustomNameVisible(false);
         clone.setMainHand(player.getMainHand());
+
+        joinNoCollisionTeam(clone);
 
         SkinParts.Mutable parts = SkinParts.allParts().mutableCopy();
         clone.setSkinParts(parts);
@@ -163,6 +171,29 @@ public final class CloneManager {
         Location start = player.getLocation();
         start.setPitch(0.0f);
         clone.teleport(start);
+    }
+
+    /**
+     * 分身和玩家站在同一坐标，必须完全不参与实体推挤，否则原版分离会把玩家顶开。
+     * COLLISION_RULE=NEVER 的队伍会让 EntitySelector.pushableBy 直接返回空集。
+     */
+    private static void joinNoCollisionTeam(Mannequin clone) {
+        Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+        Team team = board.getTeam(NO_COLLISION_TEAM);
+        if (team == null) {
+            team = board.registerNewTeam(NO_COLLISION_TEAM);
+        }
+        if (team.getOption(Team.Option.COLLISION_RULE) != Team.OptionStatus.NEVER) {
+            team.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
+        }
+        team.addEntity(clone);
+    }
+
+    private static void leaveNoCollisionTeam(Mannequin clone) {
+        Team team = Bukkit.getScoreboardManager().getMainScoreboard().getTeam(NO_COLLISION_TEAM);
+        if (team != null) {
+            team.removeEntry(clone.getUniqueId().toString());
+        }
     }
 
     private void tick() {
@@ -219,6 +250,7 @@ public final class CloneManager {
     }
 
     private void teardown(Player player, Session session, boolean notify) {
+        leaveNoCollisionTeam(session.clone);
         if (session.clone.isValid()) {
             session.clone.remove();
         }
