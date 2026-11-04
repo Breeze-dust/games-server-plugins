@@ -14,7 +14,6 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
 
 public final class ToyListener implements Listener {
 
@@ -34,13 +33,17 @@ public final class ToyListener implements Listener {
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
-        if (!items.isToy(event.getItem())) {
+        ToyType type = items.typeOf(event.getItem());
+        if (type == null) {
             return;
         }
         event.setCancelled(true);
         event.setUseInteractedBlock(Event.Result.DENY);
         event.setUseItemInHand(Event.Result.DENY);
-        clones.toggle(event.getPlayer());
+
+        switch (type) {
+            case CLONE -> clones.toggle(event.getPlayer());
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -98,23 +101,10 @@ public final class ToyListener implements Listener {
     }
 
     private void ensureToy(Player player) {
-        PlayerInventory inventory = player.getInventory();
-        if (items.isToy(inventory.getItemInOffHand())) {
+        if (items.hasAny(player)) {
             return;
         }
-        for (ItemStack stack : inventory.getContents()) {
-            if (items.isToy(stack)) {
-                return;
-            }
-        }
-
-        ItemStack toy = items.create(player);
-        int slot = plugin.settings().itemSlot;
-        ItemStack current = inventory.getItem(slot);
-        if (current == null || current.getType().isAir()) {
-            inventory.setItem(slot, toy);
-        } else {
-            inventory.addItem(toy);
-        }
+        ItemStack toy = items.create(player, items.selected(player));
+        items.give(player.getInventory(), toy, plugin.settings().itemSlot);
     }
 }

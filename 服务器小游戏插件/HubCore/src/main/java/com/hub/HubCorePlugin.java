@@ -59,6 +59,8 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
         menuLayout.ensureSpectateMenuEntry();
         // 把三个小游戏收进「迷你小游戏」子菜单（只迁移一次）
         menuLayout.ensureMiniGameList();
+        // 主城小玩具存在时，在第一个空槽放「小玩具」入口（cmd:lobbytoys menu）
+        menuLayout.ensureToysMenuEntry();
         // 把小游戏插件要用的能力交给公共库（HubManager 实现 HubService）
         HubAPI.register(manager);
 

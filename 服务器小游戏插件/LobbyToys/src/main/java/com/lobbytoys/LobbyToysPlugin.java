@@ -18,8 +18,10 @@ public final class LobbyToysPlugin extends JavaPlugin {
         clones = new CloneManager(this);
         ToyListener listener = new ToyListener(this, clones, items);
         getServer().getPluginManager().registerEvents(listener, this);
+        ToyMenu menu = new ToyMenu(this, items);
+        getServer().getPluginManager().registerEvents(menu, this);
 
-        ToyCommand command = new ToyCommand(this, clones, items);
+        ToyCommand command = new ToyCommand(this, clones, items, menu);
         PluginCommand pluginCommand = getCommand("lobbytoys");
         if (pluginCommand != null) {
             pluginCommand.setExecutor(command);

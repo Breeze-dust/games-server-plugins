@@ -25,7 +25,7 @@ public final class Settings {
         this.bobAmplitude = Math.max(0.0, config.getDouble("bob-amplitude", 0.18));
         this.bobPeriodTicks = Math.max(10, config.getInt("bob-period-ticks", 60));
         this.cooldownMillis = Math.max(0L, config.getLong("cooldown-millis", 1500L));
-        this.hideFromOwner = config.getBoolean("hide-from-owner", true);
+        this.hideFromOwner = config.getBoolean("hide-from-owner", false);
     }
 
     public static Settings load(FileConfiguration config) {

@@ -18,11 +18,13 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
     private final LobbyToysPlugin plugin;
     private final CloneManager clones;
     private final ToyItems items;
+    private final ToyMenu menu;
 
-    public ToyCommand(LobbyToysPlugin plugin, CloneManager clones, ToyItems items) {
+    public ToyCommand(LobbyToysPlugin plugin, CloneManager clones, ToyItems items, ToyMenu menu) {
         this.plugin = plugin;
         this.clones = clones;
         this.items = items;
+        this.menu = menu;
     }
 
     @Override
@@ -34,12 +36,21 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         }
 
         switch (args[0].toLowerCase(Locale.ROOT)) {
+            case "menu" -> openMenu(sender);
             case "give" -> give(sender, args);
             case "off" -> off(sender);
             case "reload" -> reload(sender);
             default -> help(sender, label);
         }
         return true;
+    }
+
+    private void openMenu(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            Chat.send(sender, "&c只有玩家能打开小玩具菜单。");
+            return;
+        }
+        menu.open(player);
     }
 
     private void give(CommandSender sender, String[] args) {
@@ -61,10 +72,10 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        target.getInventory().addItem(items.create(target));
-        Chat.send(sender, "&a已给 " + target.getName() + " 发放分身玩具。");
+        items.equip(target, items.selected(target), plugin.settings().itemSlot);
+        Chat.send(sender, "&a已给 " + target.getName() + " 发放小玩具。");
         if (!target.equals(sender)) {
-            Chat.send(target, "&a你收到了一个分身玩具，右键试试。");
+            Chat.send(target, "&a你收到了一个小玩具，右键试试。");
         }
     }
 
@@ -91,7 +102,8 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
 
     private void help(CommandSender sender, String label) {
         Chat.send(sender, "&b主城小玩具");
-        Chat.send(sender, "&7/" + label + " give [玩家] &8- 发放分身玩具");
+        Chat.send(sender, "&7/" + label + " menu &8- 打开小玩具菜单");
+        Chat.send(sender, "&7/" + label + " give [玩家] &8- 发放小玩具");
         Chat.send(sender, "&7/" + label + " off &8- 收回自己的分身");
         Chat.send(sender, "&7/" + label + " reload &8- 重载配置");
         Chat.send(sender, "&7右键玩具：召唤 / 收回分身（仅主城可用）");
@@ -106,7 +118,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("give", "off", "reload", "help"), args[0]);
+            return filter(List.of("menu", "give", "off", "reload", "help"), args[0]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
             List<String> names = new ArrayList<>();

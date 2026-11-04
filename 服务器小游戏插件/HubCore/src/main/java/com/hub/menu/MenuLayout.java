@@ -473,6 +473,45 @@ public final class MenuLayout {
     }
 
     /**
+     * 安装了主城小玩具（LobbyToys）时，在主菜单第一个空槽放「小玩具」入口。
+     * 已有 cmd:lobbytoys menu 条目时不动。
+     */
+    public void ensureToysMenuEntry() {
+        if (!hasMain() || plugin.getServer().getPluginManager().getPlugin("LobbyToys") == null) {
+            return;
+        }
+        ConfigurationSection items = plugin.getConfig().getConfigurationSection("menu.items");
+        if (items != null) {
+            for (String key : items.getKeys(false)) {
+                String[] parsed = parseAction(items.getString(key + ".action"));
+                if (parsed != null && "cmd".equals(parsed[0]) && parsed[3] != null
+                        && parsed[3].toLowerCase(Locale.ROOT).startsWith("lobbytoys menu")) {
+                    return;
+                }
+            }
+        }
+        int slot = -1;
+        for (int s = 0; s < size(Place.MAIN, null); s++) {
+            if (!plugin.getConfig().isConfigurationSection(itemPathMain(s))) {
+                slot = s;
+                break;
+            }
+        }
+        if (slot < 0) {
+            return;
+        }
+        String path = itemPathMain(slot);
+        plugin.getConfig().set(path + ".material", "PLAYER_HEAD");
+        plugin.getConfig().set(path + ".name", "&b&l小玩具");
+        plugin.getConfig().set(path + ".lore", List.of(
+                "&7切换你物品栏里的小玩具",
+                "&7目前有：分身（自转 + 上下弹动）"));
+        plugin.getConfig().set(path + ".action", "cmd:lobbytoys menu");
+        plugin.saveConfig();
+        plugin.getLogger().info("已在菜单第 " + slot + " 格添加小玩具入口（cmd:lobbytoys menu）。");
+    }
+
+    /**
      * 安装了街机派对时，在主菜单加一个只有 OP 看得见的「派对设置」入口。
      * 已有 cmd:arcade menu 条目时只补 op-only，不重复添加。
      */

@@ -18,5 +18,7 @@ bob-period-ticks: 60
 # 右键开关的冷却（毫秒）
 cooldown-millis: 1500
 
-# 是否对召唤者本人隐藏分身（避免第一人称镜头穿模；其他玩家仍能看到）
-hide-from-owner: true
+# 是否对召唤者本人隐藏分身。
+# false = 第三人称（F5）也能看到自己的分身跟着自己转；
+# true  = 只有其他玩家看得到（第一人称不会被模型挡住，但 F5 看不到自己）。
+hide-from-owner: false
