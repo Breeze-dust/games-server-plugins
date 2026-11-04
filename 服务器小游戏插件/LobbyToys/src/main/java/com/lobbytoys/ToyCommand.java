@@ -97,7 +97,14 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.reloadSettings();
-        Chat.send(sender, "&aLobbyToys 配置已重载。");
+        int refreshed = 0;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (items.refresh(player)) {
+                refreshed++;
+            }
+        }
+        Chat.send(sender, "&aLobbyToys 配置已重载"
+                + (refreshed > 0 ? "，已刷新 " + refreshed + " 名玩家的小玩具。" : "。"));
     }
 
     private void help(CommandSender sender, String label) {

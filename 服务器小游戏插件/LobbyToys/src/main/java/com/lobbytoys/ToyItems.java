@@ -151,4 +151,28 @@ public final class ToyItems {
         }
         return false;
     }
+
+    /**
+     * 按当前配置重建玩家物品栏里的玩具（原地替换，保持槽位）。
+     * ItemStack 的材质是创建时定死的，改配置后不重建的话旧道具不会变。
+     * 返回是否改动了物品栏。
+     */
+    public boolean refresh(Player player) {
+        PlayerInventory inventory = player.getInventory();
+        boolean changed = false;
+
+        ToyType offhand = typeOf(inventory.getItemInOffHand());
+        if (offhand != null) {
+            inventory.setItemInOffHand(create(player, offhand));
+            changed = true;
+        }
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ToyType type = typeOf(inventory.getItem(slot));
+            if (type != null) {
+                inventory.setItem(slot, create(player, type));
+                changed = true;
+            }
+        }
+        return changed;
+    }
 }
