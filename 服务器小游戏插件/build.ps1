@@ -48,7 +48,7 @@ foreach ($exe in 'javac.exe', 'jar.exe') {
 
 # Compile order == dependency order:
 #   MiniGameLib provides com.hub.api/com.hub.util, HubCore and every game plugin use it.
-$allPlugins = @('MiniGameLib', 'HubCore', 'GameWorlds', 'GuessTheBuild', 'DuelArena', 'HotPotato', 'TntRun', 'MurderMystery', 'SkyPit', 'FootballArena', 'ColorParty', 'BuildRun', 'LuckyPillar', 'JumpFill', 'LandClaim', 'TNTBattle', 'Quark', 'KnockbackBattle', 'GroupRace', 'DigToBottom', 'AnvilBattle', 'AnimalSlaughter', 'SnakeParty', 'ArcadeParty', 'MemoryFlip', 'HillKing', 'OneShot', 'FireJumper', 'ArrowRain', 'RedLight', 'SeatGrab')
+$allPlugins = @('MiniGameLib', 'HubCore', 'GameWorlds', 'GuessTheBuild', 'DuelArena', 'HotPotato', 'TntRun', 'MurderMystery', 'SkyPit', 'FootballArena', 'ColorParty', 'BuildRun', 'LuckyPillar', 'JumpFill', 'LandClaim', 'TNTBattle', 'Quark', 'KnockbackBattle', 'GroupRace', 'DigToBottom', 'AnvilBattle', 'AnimalSlaughter', 'SnakeParty', 'ArcadeParty', 'MemoryFlip', 'HillKing', 'OneShot', 'FireJumper', 'ArrowRain', 'RedLight', 'SeatGrab', 'LobbyToys')
 if ($Only) {
     if ($allPlugins -notcontains $Only) {
         throw "-Only $Only is not a known plugin. Known: $($allPlugins -join ', ')"
@@ -57,6 +57,7 @@ if ($Only) {
     $plugins = switch ($Only) {
         'MiniGameLib' { @('MiniGameLib') }
         'HubCore'     { @('MiniGameLib', 'HubCore') }
+        'LobbyToys'   { @('MiniGameLib', 'LobbyToys') }
         default       { @('MiniGameLib', 'HubCore', $Only) }
     }
 } else {

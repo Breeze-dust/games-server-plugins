@@ -18,7 +18,7 @@
 
 ## 2. 项目是什么（30 秒）
 
-Paper 26.2 / Java 25，端口 25560，`online-mode=false`，一个主城 + 9 个小游戏，共 12 个自研插件：
+Paper 26.2 / Java 25，端口 25560，`online-mode=false`，一个主城 + 9 个小游戏，共 13 个自研插件：
 
 ```
 MiniGameLib（公共库：HubAPI / Chat / SetupMode / WaitCountdown / PlayerStats）
@@ -28,6 +28,8 @@ HubCore（主城：菜单、tab、游戏注册表、回主城道具）   GameWor
 9 款小游戏：GuessTheBuild(建筑猜猜乐) DuelArena(单挑 PvP) TntRun HotPotato(烫手山芋)
            MurderMystery(密室杀手) SkyPit(天坑) FootballArena(绿茵足球) ColorParty(色盲派对)
            BuildRun(你建我跑)
+
+LobbyToys（主城小玩具：分身自转 + 上下弹动，仅主城，depend MiniGameLib）
 ```
 
 - 依赖方向：**小游戏 → MiniGameLib**，**HubCore → MiniGameLib**；GameWorlds 独立。
@@ -50,7 +52,7 @@ HubCore（主城：菜单、tab、游戏注册表、回主城道具）   GameWor
 ## 4. 命令（复制即用，全部相对仓库根 `D:\BuildBattle`）
 
 ```powershell
-D:\BuildBattle\build.bat                      # 编译全部 12 个插件（产物 .build\out\）
+D:\BuildBattle\build.bat                      # 编译全部 13 个插件（产物 .build\out\）
 D:\BuildBattle\build.bat -Only SkyPit         # 只编一个（自动带上 MiniGameLib/HubCore）
 D:\BuildBattle\build.bat -Deploy              # 编译并复制到 server\plugins\
 powershell -ExecutionPolicy Bypass -File verify.ps1        # 上传前预检：YAML 语法 + 关键配置 + jar 指纹

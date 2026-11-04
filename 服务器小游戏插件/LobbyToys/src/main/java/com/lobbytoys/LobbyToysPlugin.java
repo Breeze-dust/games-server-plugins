@@ -1,0 +1,49 @@
+package com.lobbytoys;
+
+import org.bukkit.Bukkit;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public final class LobbyToysPlugin extends JavaPlugin {
+
+    private Settings settings;
+    private CloneManager clones;
+
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+        settings = Settings.load(getConfig());
+
+        ToyItems items = new ToyItems(this);
+        clones = new CloneManager(this);
+        ToyListener listener = new ToyListener(this, clones, items);
+        getServer().getPluginManager().registerEvents(listener, this);
+
+        ToyCommand command = new ToyCommand(this, clones, items);
+        PluginCommand pluginCommand = getCommand("lobbytoys");
+        if (pluginCommand != null) {
+            pluginCommand.setExecutor(command);
+            pluginCommand.setTabCompleter(command);
+        }
+
+        Bukkit.getScheduler().runTaskTimer(this, listener::refillAll, 100L, 100L);
+
+        getLogger().info("主城小玩具（LobbyToys）已启用。");
+    }
+
+    @Override
+    public void onDisable() {
+        if (clones != null) {
+            clones.shutdown();
+        }
+    }
+
+    public Settings settings() {
+        return settings;
+    }
+
+    public void reloadSettings() {
+        reloadConfig();
+        settings = Settings.load(getConfig());
+    }
+}

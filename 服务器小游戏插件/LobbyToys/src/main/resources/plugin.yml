@@ -1,0 +1,21 @@
+name: LobbyToys
+version: '1.0.0'
+main: com.lobbytoys.LobbyToysPlugin
+api-version: '1.21'
+description: 主城小玩具：右键生成会自转、上下弹动并跟随你的玩家分身
+
+depend: [MiniGameLib]
+
+commands:
+  lobbytoys:
+    description: 主城小玩具
+    usage: /lobbytoys help
+    aliases: [toys, toy]
+
+permissions:
+  lobbytoys.use:
+    description: 允许使用主城小玩具
+    default: true
+  lobbytoys.admin:
+    description: 允许发放/管理主城小玩具
+    default: op
