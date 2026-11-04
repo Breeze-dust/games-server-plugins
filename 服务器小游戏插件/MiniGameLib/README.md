@@ -4,7 +4,7 @@
 
 - **一句话职责**：小游戏公共库——只提供主城对接契约（HubAPI）、消息（Chat）、建场模式（SetupMode）、等待倒计时（WaitCountdown）与全服唯一玩家记录（PlayerStats）；自身不注册命令、不含玩法代码。
 - **对外 API**：
-  - `com.hub.api.HubAPI`（静态门面）：游戏插件向主城上报玩家状态 / 场地状态、公屏"加入"播报、回主城联动时用它；关键方法 `setGame` / `setPlaying` / `setGameState` / `clearGame` / `setArena` / `removeArena` / `announceJoin`（两参数版 = 只报游戏名；三参数版多带场地名，播报成 `[游戏][场地] 玩家 加入了游戏`，多场地游戏用） / `registerLobbyHandler`（另有 `register` / `isReady` / `getLobby` 等）；主城缺席时全部空操作。
+  - `com.hub.api.HubAPI`（静态门面）：游戏插件向主城上报玩家状态 / 场地状态、公屏"加入"播报、回主城联动时用它；关键方法 `setGame` / `setPlaying` / `setGameState` / `clearGame` / `gameOf`（查玩家当前上报的游戏名，不在游戏中为 null） / `setArena` / `removeArena` / `announceJoin`（两参数版 = 只报游戏名；三参数版多带场地名，播报成 `[游戏][场地] 玩家 加入了游戏`，多场地游戏用） / `registerLobbyHandler`（另有 `register` / `isReady` / `getLobby` 等）；主城缺席时全部空操作。
   - `com.hub.api.HubService`：HubCore 侧实现、在它 `onEnable` 里 `HubAPI.register(...)` 接进来的接口；小游戏只调 HubAPI，不要实现它。
   - `com.hub.api.GameState`：玩家/场地状态枚举，只有 `WAITING`（等待中）与 `PLAYING`（已开始）。
   - `com.hub.util.Chat`：所有文字与颜色统一走它；`send` / `broadcast` / `title` / `actionBar` / `color` / `toLegacy`（`&` 与 `§` 都认）。

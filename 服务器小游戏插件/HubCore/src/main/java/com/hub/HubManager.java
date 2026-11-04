@@ -838,6 +838,13 @@ public class HubManager implements HubService {
         spectating.remove(player);
     }
 
+    /** 玩家当前上报的游戏显示名；不在任何游戏中返回 null。 */
+    @Override
+    public String gameOf(UUID player) {
+        PlayerGame pg = gameMap.get(player);
+        return pg == null ? null : pg.game();
+    }
+
     /** 小游戏插件覆盖玩家 tab 名字颜色（如绿茵足球红/蓝队）；null/空串恢复默认。 */
     @Override
     public void setTabNameColor(UUID player, String colorCode) {

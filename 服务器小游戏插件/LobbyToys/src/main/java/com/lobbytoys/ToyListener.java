@@ -11,6 +11,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -27,7 +28,11 @@ public final class ToyListener implements Listener {
         this.items = items;
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    /**
+     * LOWEST + 不跳过已取消：抢在别的插件之前吞掉右键，阻止道具的原版用途
+     * （水瓶喝水、食物进食、方块放置等）。
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onInteract(PlayerInteractEvent event) {
         Action action = event.getAction();
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) {
@@ -40,9 +45,14 @@ public final class ToyListener implements Listener {
         event.setCancelled(true);
         event.setUseInteractedBlock(Event.Result.DENY);
         event.setUseItemInHand(Event.Result.DENY);
+        clones.toggle(event.getPlayer());
+    }
 
-        switch (type) {
-            case CLONE -> clones.toggle(event.getPlayer());
+    /** 兜底：万一交互事件没拦住（某些药水/食物路径），也不让玩具被吃掉或喝掉。 */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onConsume(PlayerItemConsumeEvent event) {
+        if (items.isToy(event.getItem())) {
+            event.setCancelled(true);
         }
     }
 
@@ -85,6 +95,9 @@ public final class ToyListener implements Listener {
             if (player.getGameMode() == GameMode.SPECTATOR) {
                 continue;
             }
+            if (plugin.isPlaying(player)) {
+                continue;
+            }
             ensureToy(player);
         }
     }
@@ -94,7 +107,8 @@ public final class ToyListener implements Listener {
             return;
         }
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline() && plugin.settings().isAllowedWorld(player.getWorld())) {
+            if (player.isOnline() && plugin.settings().isAllowedWorld(player.getWorld())
+                    && !plugin.isPlaying(player)) {
                 ensureToy(player);
             }
         }, 30L);

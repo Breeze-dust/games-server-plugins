@@ -50,6 +50,10 @@
   - **原版客户端对玩家类实体只有等比缩放**（`Attribute.SCALE`），没有分轴缩放，所以做不到「垂直压扁的同时变宽」。
     现在的弹跳是整体缩小再恢复（`squash-amount`），视觉上是「压一下」；要真正的 squash-stretch 只能上资源包 +
     `ItemDisplay` 自定义人形模型（还需为非等比 `Transformation` 做模型），本插件没有走这条路。
+  - **右键只触发玩具**：`onInteract` 注册在 `LOWEST` 且不跳过已取消，先于其他插件取消并 `DENY` 交互/使用，
+    所以水瓶不会喝水、食物不会进食、方块不会放置；另有 `PlayerItemConsumeEvent` 兜底。
+  - **进游戏自动结束**：`HubAPI.gameOf(uuid)` 非空（任意小游戏上报了状态）时，`CloneManager` 每 20 刻收回分身并移除隐身，
+    `refillAll` / `giveLater` 不再补发玩具。天坑的战斗区域就在主城世界 `world` 内，换世界检测不到，所以用 HubAPI 的游戏状态判断。
   - 分身**空手**（`configure` 里 `getEquipment().clear()`），不会拿着物品栏里的玩具。
   - **改道具构造后一定要确认 `stack.setItemMeta(meta)`**：1.1.0–1.1.3 的 `base()` 漏了这一句，
     导致道具丢显示名/头颅皮肤（客户端显示成「玩家的头」），而外观指纹仍与配置一致、刷新逻辑不会重建——

@@ -31,6 +31,14 @@ public interface HubService {
     void clearGame(UUID player);
 
     /**
+     * 玩家当前上报的游戏名（显示名）；不在任何游戏中返回 null。
+     * 默认实现返回 null，旧版主城不实现时调用方按"不在游戏中"处理。
+     */
+    default String gameOf(UUID player) {
+        return null;
+    }
+
+    /**
      * 覆盖玩家 tab 列表名字的颜色（对局内按队伍染色，如绿茵足球的红/蓝队）。
      * 主城每秒刷新 tab 时，会把该颜色套在"游戏分区名单"的名字和"玩家列表名"的名字上，
      * 状态前缀（[等待中·游戏名] / [已加入·游戏名]）保持原样。

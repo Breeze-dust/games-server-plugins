@@ -48,6 +48,10 @@ public final class CloneManager {
             Chat.actionBar(player, "&c分身玩具只能在主城使用");
             return;
         }
+        if (plugin.isPlaying(player)) {
+            Chat.actionBar(player, "&c游戏中不能使用小玩具");
+            return;
+        }
 
         long now = System.currentTimeMillis();
         Long last = lastUse.get(player.getUniqueId());
@@ -160,7 +164,8 @@ public final class CloneManager {
 
             if (player == null || !player.isOnline() || player.isDead()
                     || !settings.isAllowedWorld(player.getWorld())
-                    || !session.clone.isValid()) {
+                    || !session.clone.isValid()
+                    || (ticks % 20 == 0 && plugin.isPlaying(player))) {
                 iterator.remove();
                 teardown(player, session, false);
                 continue;

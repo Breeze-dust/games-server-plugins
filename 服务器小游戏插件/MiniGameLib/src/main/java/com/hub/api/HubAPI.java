@@ -85,6 +85,12 @@ public final class HubAPI {
         }
     }
 
+    /** 玩家当前上报的游戏名；不在任何游戏中返回 null（主城缺席时同样返回 null）。 */
+    public static String gameOf(UUID player) {
+        HubService s = service;
+        return s == null ? null : s.gameOf(player);
+    }
+
     /**
      * 覆盖玩家 tab 列表名字的颜色（对局内按队伍染色，如绿茵足球红/蓝队）。
      *

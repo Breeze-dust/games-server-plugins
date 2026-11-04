@@ -46,6 +46,11 @@ public final class LobbyToysPlugin extends JavaPlugin {
         return settings;
     }
 
+    /** 玩家当前是否在小游戏里（HubCore 上报的游戏状态，跨世界/同世界区域都算）。 */
+    public boolean isPlaying(org.bukkit.entity.Player player) {
+        return com.hub.api.HubAPI.gameOf(player.getUniqueId()) != null;
+    }
+
     public void reloadSettings() {
         reloadConfig();
         settings = Settings.load(getConfig());
