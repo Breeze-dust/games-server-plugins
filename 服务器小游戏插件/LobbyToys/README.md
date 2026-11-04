@@ -5,7 +5,9 @@
 - **一句话职责**：主城专用的「小玩具」系统。右键玩具道具 → 生成一个**用你自己皮肤的人形分身**（26.2 原生 `Mannequin` 实体），
   分身跟着你移动、原地自转、整体缩放弹跳；你的本体被隐身藏起来，**你的镜头/朝向完全不动**。
   默认 `hide-from-owner: false`，所以你在第三人称（F5）也能看到自己的分身；其他玩家同样看得到。
-  再右键一次收回。主菜单里点「小玩具」可打开切换菜单。
+  再右键一次收回。主菜单里点「小玩具」可打开切换菜单（目前有 **分身玩具** 与 **缩小药水** 两种）。
+- **缩小药水**：右键把自己的 `Attribute.SCALE` 设成 `shrink-scale`（默认 0.5），**模型和碰撞箱一起缩小**；
+  再右键、离开主城、进入小游戏、死亡、下线、关服都会自动恢复原大小。分身也会跟着你一起缩小。
 - **入口**：`LobbyToys/src/main/java/com/lobbytoys/LobbyToysPlugin.java#onEnable`
   （`saveDefaultConfig` → `Settings` + `ToyRegistry` → `CloneManager` 每刻 tick 任务 → 注册 `ToyListener` + `ToyMenu` →
   `/lobbytoys` 命令 → 每 100 刻 `ToyListener#refillAll` 给主城玩家补道具）。
@@ -20,6 +22,7 @@
   - `spin-degrees-per-tick`（4.0 = 4.5 秒一圈）
   - `squash-amount`（弹跳时模型最多缩小多少，0.15 = 最扁时 85%）、`squash-period-ticks`（弹跳周期，40 刻 = 2 秒）；
     `squash-amount: 0` = 关闭弹跳
+  - `shrink-scale`（缩小药水把玩家缩到原来的多少，0.2–1.0，默认 0.5）
   - `cooldown-millis`（右键开关冷却）
   - `hide-from-owner`（默认 **false**：第三人称能看到自己的分身；设为 true 只给其他玩家看）。
     **注意**：这个默认值只在配置里没有该键时生效；旧版生成的 `plugins/LobbyToys/config.yml` 里可能还是 `true`，
@@ -35,6 +38,7 @@
   | 需求 | 文件 |
   | --- | --- |
   | 分身生成/隐身/跟随/自转/缩放弹跳/清理 | `LobbyToys/src/main/java/com/lobbytoys/CloneManager.java` |
+  | 缩小药水的缩放切换与自动恢复 | `LobbyToys/src/main/java/com/lobbytoys/ShrinkManager.java` |
   | 玩具种类与缺省名字/道具/描述 | `LobbyToys/src/main/java/com/lobbytoys/ToyType.java` |
   | 从 config 读 `toys.<id>`（外观覆盖） | `LobbyToys/src/main/java/com/lobbytoys/ToyRegistry.java` |
   | 道具/菜单图标/选中持久化 | `LobbyToys/src/main/java/com/lobbytoys/ToyItems.java` |
@@ -77,10 +81,13 @@
   1. 主城进服，快捷栏第 9 格（slot 8）出现配置里指定的小玩具道具（默认玩家头颅）。
   2. 右键：**F5 第三人称能看到分身跟着你走、原地自转、周期性地压扁/恢复**，分身空手；本人镜头方向不会被转动。
   3. 再右键收回，分身消失、本体恢复可见。
-  4. 打开主菜单，点「小玩具」→ 弹出切换菜单，点图标提示「已切换」，物品栏里的玩具被替换。
+  4. 打开主菜单，点「小玩具」→ 弹出切换菜单，点图标提示「已切换」，物品栏里的玩具被替换；
+     **切换玩具会把上一个玩具的效果收掉**（例如从分身切到缩小药水，分身会先收回）。
   5. 改 `config.yml` 的 `toys.clone.name/material/lore` → `/lobbytoys reload`：在线玩家物品栏里的玩具会被**原地重建**成新外观
      （`ItemStack` 材质创建时固定，所以必须重建；reload 时会遍历在线玩家替换，无需手动重新拿）。
   6. 在非 `world` 世界右键：动作栏提示「分身玩具只能在主城使用」。
+  7. 缩小药水：右键身形变小、碰撞箱同步变小；再右键恢复；离开主城/进游戏会自动恢复。
+     `/lobbytoys debug` 里 `shrink-scale` 相关行为不单独输出，但可在 `config.yml` 核对。
 - **未确认 / TODO**：
   - 无客户端环境，**缩放弹跳的实际手感、第一人称穿模程度未实机验证**；太跳就调小 `squash-amount`、
     调大 `squash-period-ticks`，或设 `squash-amount: 0` 关掉。

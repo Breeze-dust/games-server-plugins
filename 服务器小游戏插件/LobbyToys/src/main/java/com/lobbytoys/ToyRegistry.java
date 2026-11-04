@@ -63,14 +63,14 @@ public final class ToyRegistry {
     private PotionType readPotion(FileConfiguration config, String base, ToyType type) {
         String raw = config.getString(base + ".potion");
         if (raw == null || raw.isBlank()) {
-            return null;
+            return type.defaultPotion();
         }
         try {
             return PotionType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             plugin.getLogger().warning(base + ".potion=" + raw
                     + " 不是有效的药水类型（如 WATER / AWKWARD / STRENGTH），已忽略。");
-            return null;
+            return type.defaultPotion();
         }
     }
 
@@ -79,6 +79,7 @@ public final class ToyRegistry {
         if (definition != null) {
             return definition;
         }
-        return new ToyDefinition(type.id(), type.defaultName(), type.defaultMaterial(), null, type.defaultLore());
+        return new ToyDefinition(type.id(), type.defaultName(), type.defaultMaterial(),
+                type.defaultPotion(), type.defaultLore());
     }
 }

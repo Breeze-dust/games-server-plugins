@@ -9,6 +9,7 @@ public final class LobbyToysPlugin extends JavaPlugin {
     private Settings settings;
     private ToyRegistry registry;
     private CloneManager clones;
+    private ShrinkManager shrinks;
 
     @Override
     public void onEnable() {
@@ -18,9 +19,10 @@ public final class LobbyToysPlugin extends JavaPlugin {
 
         ToyItems items = new ToyItems(this, registry);
         clones = new CloneManager(this);
-        ToyListener listener = new ToyListener(this, clones, items);
+        shrinks = new ShrinkManager(this);
+        ToyListener listener = new ToyListener(this, clones, shrinks, items);
         getServer().getPluginManager().registerEvents(listener, this);
-        ToyMenu menu = new ToyMenu(this, items);
+        ToyMenu menu = new ToyMenu(this, items, clones, shrinks);
         getServer().getPluginManager().registerEvents(menu, this);
 
         ToyCommand command = new ToyCommand(this, clones, items, menu);
@@ -42,6 +44,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
     public void onDisable() {
         if (clones != null) {
             clones.shutdown();
+        }
+        if (shrinks != null) {
+            shrinks.shutdown();
         }
     }
 

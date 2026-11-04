@@ -221,10 +221,15 @@ public final class CloneManager {
             session.yaw = (session.yaw + settings.spinDegreesPerTick) % 360.0;
             session.phase++;
 
-            if (session.scale != null && settings.squashAmount > 0.0) {
-                // 0..1 的正弦波：0 = 原大，1 = 压到最扁
+            // 分身跟着玩家一起缩小（缩小药水），再叠加自带的缩放弹跳
+            double playerScale = 1.0;
+            AttributeInstance playerScaleAttr = player.getAttribute(Attribute.SCALE);
+            if (playerScaleAttr != null) {
+                playerScale = playerScaleAttr.getValue();
+            }
+            if (session.scale != null) {
                 double wave = (Math.sin(session.phase * (Math.PI * 2.0 / settings.squashPeriodTicks)) + 1.0) / 2.0;
-                session.scale.setBaseValue(1.0 - settings.squashAmount * wave);
+                session.scale.setBaseValue(playerScale * (1.0 - settings.squashAmount * wave));
             }
 
             Location target = player.getLocation();

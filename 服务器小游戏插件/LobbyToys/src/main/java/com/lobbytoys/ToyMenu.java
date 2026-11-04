@@ -21,10 +21,14 @@ public final class ToyMenu implements Listener {
 
     private final LobbyToysPlugin plugin;
     private final ToyItems items;
+    private final CloneManager clones;
+    private final ShrinkManager shrinks;
 
-    public ToyMenu(LobbyToysPlugin plugin, ToyItems items) {
+    public ToyMenu(LobbyToysPlugin plugin, ToyItems items, CloneManager clones, ShrinkManager shrinks) {
         this.plugin = plugin;
         this.items = items;
+        this.clones = clones;
+        this.shrinks = shrinks;
     }
 
     public void open(Player player) {
@@ -73,8 +77,17 @@ public final class ToyMenu implements Listener {
         if (type == null) {
             return;
         }
+        ToyType previous = items.selected(player);
 
         items.equip(player, type, plugin.settings().itemSlot);
+        if (previous != type) {
+            // 切换玩具时把上一个玩具的效果收掉，避免没有道具也能一直生效
+            if (previous == ToyType.CLONE) {
+                clones.stop(player.getUniqueId(), true);
+            } else if (previous == ToyType.SHRINK) {
+                shrinks.stop(player.getUniqueId(), true);
+            }
+        }
         Chat.send(player, "&a已切换小玩具：" + items.name(type));
         Bukkit.getScheduler().runTask(plugin, () -> open(player));
     }

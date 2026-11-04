@@ -20,11 +20,13 @@ public final class ToyListener implements Listener {
 
     private final LobbyToysPlugin plugin;
     private final CloneManager clones;
+    private final ShrinkManager shrinks;
     private final ToyItems items;
 
-    public ToyListener(LobbyToysPlugin plugin, CloneManager clones, ToyItems items) {
+    public ToyListener(LobbyToysPlugin plugin, CloneManager clones, ShrinkManager shrinks, ToyItems items) {
         this.plugin = plugin;
         this.clones = clones;
+        this.shrinks = shrinks;
         this.items = items;
     }
 
@@ -45,7 +47,11 @@ public final class ToyListener implements Listener {
         event.setCancelled(true);
         event.setUseInteractedBlock(Event.Result.DENY);
         event.setUseItemInHand(Event.Result.DENY);
-        clones.toggle(event.getPlayer());
+
+        switch (type) {
+            case CLONE -> clones.toggle(event.getPlayer());
+            case SHRINK -> shrinks.toggle(event.getPlayer());
+        }
     }
 
     /** 兜底：万一交互事件没拦住（某些药水/食物路径），也不让玩具被吃掉或喝掉。 */
@@ -65,6 +71,7 @@ public final class ToyListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
+        shrinks.resetPersisted(event.getPlayer());
         giveLater(event.getPlayer());
     }
 
@@ -75,12 +82,14 @@ public final class ToyListener implements Listener {
             giveLater(player);
         } else {
             clones.stop(player.getUniqueId(), false);
+            shrinks.stop(player.getUniqueId(), false);
         }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         clones.stop(event.getPlayer().getUniqueId(), false);
+        shrinks.stop(event.getPlayer().getUniqueId(), false);
     }
 
     /** 每 5 秒兜底：主城里的玩家没有玩具就补一个（/hub 清背包后也能自动拿回来）。 */

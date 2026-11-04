@@ -1,5 +1,5 @@
 name: LobbyToys
-version: '1.1.9'
+version: '1.2.0'
 main: com.lobbytoys.LobbyToysPlugin
 api-version: '1.21'
 description: 主城小玩具：右键生成会自转、上下弹动并跟随你的玩家分身

@@ -1,6 +1,7 @@
 package com.lobbytoys;
 
 import org.bukkit.Material;
+import org.bukkit.potion.PotionType;
 
 import java.util.List;
 
@@ -10,18 +11,24 @@ import java.util.List;
  */
 public enum ToyType {
 
-    CLONE("clone", "&b分身玩具", Material.PLAYER_HEAD,
-            List.of("&7右键 召唤 / 收回 你的分身", "&8只能在主城使用"));
+    CLONE("clone", "&b分身玩具", Material.PLAYER_HEAD, null,
+            List.of("&7右键 召唤 / 收回 你的分身", "&8只能在主城使用")),
+
+    SHRINK("shrink", "&d缩小药水", Material.POTION, PotionType.THICK,
+            List.of("&7右键 缩小 / 恢复自己的身形", "&8只能在主城使用"));
 
     private final String id;
     private final String defaultName;
     private final Material defaultMaterial;
+    private final PotionType defaultPotion;
     private final List<String> defaultLore;
 
-    ToyType(String id, String defaultName, Material defaultMaterial, List<String> defaultLore) {
+    ToyType(String id, String defaultName, Material defaultMaterial, PotionType defaultPotion,
+            List<String> defaultLore) {
         this.id = id;
         this.defaultName = defaultName;
         this.defaultMaterial = defaultMaterial;
+        this.defaultPotion = defaultPotion;
         this.defaultLore = defaultLore;
     }
 
@@ -35,6 +42,10 @@ public enum ToyType {
 
     public Material defaultMaterial() {
         return defaultMaterial;
+    }
+
+    public PotionType defaultPotion() {
+        return defaultPotion;
     }
 
     public List<String> defaultLore() {

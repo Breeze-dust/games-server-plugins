@@ -15,6 +15,8 @@ public final class Settings {
     public final double squashAmount;
     /** 缩放弹跳的周期（刻）。 */
     public final int squashPeriodTicks;
+    /** 缩小药水把玩家缩到原来的多少（0.2 - 1.0）。 */
+    public final double shrinkScale;
     public final long cooldownMillis;
     public final boolean hideFromOwner;
 
@@ -26,6 +28,7 @@ public final class Settings {
         this.spinDegreesPerTick = config.getDouble("spin-degrees-per-tick", 4.0);
         this.squashAmount = Math.max(0.0, Math.min(0.6, config.getDouble("squash-amount", 0.15)));
         this.squashPeriodTicks = Math.max(10, config.getInt("squash-period-ticks", 40));
+        this.shrinkScale = Math.max(0.2, Math.min(1.0, config.getDouble("shrink-scale", 0.5)));
         this.cooldownMillis = Math.max(0L, config.getLong("cooldown-millis", 1500L));
         this.hideFromOwner = config.getBoolean("hide-from-owner", false);
     }

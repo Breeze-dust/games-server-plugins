@@ -18,6 +18,9 @@ spin-degrees-per-tick: 4.0
 squash-amount: 0.15
 squash-period-ticks: 40
 
+# 缩小药水把玩家缩到原来的多少（0.2 - 1.0），模型和碰撞箱会一起缩小
+shrink-scale: 0.5
+
 # 右键开关的冷却（毫秒）
 cooldown-millis: 1500
 
@@ -40,4 +43,11 @@ toys:
     # potion: WATER
     lore:
       - "&7右键 召唤 / 收回 你的分身"
+      - "&8只能在主城使用"
+  shrink:
+    name: "&d缩小药水"
+    material: POTION
+    potion: THICK
+    lore:
+      - "&7右键 缩小 / 恢复自己的身形"
       - "&8只能在主城使用"
