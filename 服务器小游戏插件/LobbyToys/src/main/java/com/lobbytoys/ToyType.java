@@ -5,40 +5,40 @@ import org.bukkit.Material;
 import java.util.List;
 
 /**
- * 玩具清单。加新玩具：在这里加一项，再在 {@link ToyListener#onInteract} 里按类型分发即可。
- * 菜单图标、物品名、lore 都从这里取，避免三处各写一份。
+ * 玩具种类（行为）。显示名、描述、代表道具都可以在 config.yml 的 toys.<id> 里覆盖，
+ * 这里的值只是缺省值。加新玩具：在这里加一项，再在 {@link ToyListener#onInteract} 的 switch 里加分支。
  */
 public enum ToyType {
 
-    CLONE("clone", "分身玩具", Material.PLAYER_HEAD,
+    CLONE("clone", "&b分身玩具", Material.PLAYER_HEAD,
             List.of("&7右键 召唤 / 收回 你的分身", "&8只能在主城使用"));
 
     private final String id;
-    private final String displayName;
-    private final Material icon;
-    private final List<String> lore;
+    private final String defaultName;
+    private final Material defaultMaterial;
+    private final List<String> defaultLore;
 
-    ToyType(String id, String displayName, Material icon, List<String> lore) {
+    ToyType(String id, String defaultName, Material defaultMaterial, List<String> defaultLore) {
         this.id = id;
-        this.displayName = displayName;
-        this.icon = icon;
-        this.lore = lore;
+        this.defaultName = defaultName;
+        this.defaultMaterial = defaultMaterial;
+        this.defaultLore = defaultLore;
     }
 
     public String id() {
         return id;
     }
 
-    public String displayName() {
-        return displayName;
+    public String defaultName() {
+        return defaultName;
     }
 
-    public Material icon() {
-        return icon;
+    public Material defaultMaterial() {
+        return defaultMaterial;
     }
 
-    public List<String> lore() {
-        return lore;
+    public List<String> defaultLore() {
+        return defaultLore;
     }
 
     public static ToyType byId(String id) {

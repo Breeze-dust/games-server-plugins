@@ -1,7 +1,6 @@
 package com.lobbytoys;
 
 import com.hub.util.Chat;
-import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -17,11 +16,13 @@ import java.util.List;
 /** 玩具道具与菜单图标的构造/识别，全部靠 PDC 标记，不认材质和名字。 */
 public final class ToyItems {
 
+    private final ToyRegistry registry;
     private final NamespacedKey toyKey;
     private final NamespacedKey iconKey;
     private final NamespacedKey selectedKey;
 
-    public ToyItems(Plugin plugin) {
+    public ToyItems(Plugin plugin, ToyRegistry registry) {
+        this.registry = registry;
         this.toyKey = new NamespacedKey(plugin, "toy-id");
         this.iconKey = new NamespacedKey(plugin, "menu-icon");
         this.selectedKey = new NamespacedKey(plugin, "selected-toy");
@@ -29,10 +30,11 @@ public final class ToyItems {
 
     /** 物品栏里那个可右键的玩具。 */
     public ItemStack create(Player owner, ToyType type) {
-        ItemStack stack = base(owner, type);
+        ToyDefinition definition = registry.get(type);
+        ItemStack stack = base(owner, definition);
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            meta.lore(chatList(type.lore()));
+            meta.lore(chatList(definition.lore()));
             meta.getPersistentDataContainer().set(toyKey, PersistentDataType.STRING, type.id());
             stack.setItemMeta(meta);
         }
@@ -41,10 +43,11 @@ public final class ToyItems {
 
     /** 菜单里的图标，带「已装备 / 点击切换」，不带玩具标记（不能被当成真玩具带走）。 */
     public ItemStack createIcon(Player viewer, ToyType type, boolean equipped) {
-        ItemStack stack = base(viewer, type);
+        ToyDefinition definition = registry.get(type);
+        ItemStack stack = base(viewer, definition);
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            List<String> lore = new ArrayList<>(type.lore());
+            List<String> lore = new ArrayList<>(definition.lore());
             lore.add("");
             lore.add(equipped ? "&a✔ 已装备" : "&e点击切换到这个小玩具");
             meta.lore(chatList(lore));
@@ -54,14 +57,14 @@ public final class ToyItems {
         return stack;
     }
 
-    private ItemStack base(Player owner, ToyType type) {
-        ItemStack stack = new ItemStack(type.icon());
+    private ItemStack base(Player owner, ToyDefinition definition) {
+        ItemStack stack = new ItemStack(definition.material());
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
             if (meta instanceof SkullMeta skull) {
                 skull.setPlayerProfile(owner.getPlayerProfile());
             }
-            meta.displayName(Chat.color("&b" + type.displayName()));
+            meta.displayName(Chat.color(definition.name()));
         }
         return stack;
     }
@@ -76,6 +79,11 @@ public final class ToyItems {
 
     public ToyType typeOf(ItemStack stack) {
         return readId(stack, toyKey);
+    }
+
+    /** 配置里写的名字（带 & 颜色代码），用于聊天提示。 */
+    public String name(ToyType type) {
+        return registry.get(type).name();
     }
 
     public ToyType iconOf(ItemStack stack) {

@@ -11,8 +11,10 @@ public final class Settings {
     public final boolean giveOnJoin;
     public final int itemSlot;
     public final double spinDegreesPerTick;
-    public final double bobAmplitude;
-    public final int bobPeriodTicks;
+    /** 弹跳时模型最多缩小多少（0.15 = 最扁时缩到 85%）。0 = 不缩放。 */
+    public final double squashAmount;
+    /** 缩放弹跳的周期（刻）。 */
+    public final int squashPeriodTicks;
     public final long cooldownMillis;
     public final boolean hideFromOwner;
 
@@ -22,8 +24,8 @@ public final class Settings {
         this.giveOnJoin = config.getBoolean("give-on-join", true);
         this.itemSlot = Math.max(0, Math.min(8, config.getInt("item-slot", 8)));
         this.spinDegreesPerTick = config.getDouble("spin-degrees-per-tick", 4.0);
-        this.bobAmplitude = Math.max(0.0, config.getDouble("bob-amplitude", 0.18));
-        this.bobPeriodTicks = Math.max(10, config.getInt("bob-period-ticks", 60));
+        this.squashAmount = Math.max(0.0, Math.min(0.6, config.getDouble("squash-amount", 0.15)));
+        this.squashPeriodTicks = Math.max(10, config.getInt("squash-period-ticks", 40));
         this.cooldownMillis = Math.max(0L, config.getLong("cooldown-millis", 1500L));
         this.hideFromOwner = config.getBoolean("hide-from-owner", false);
     }

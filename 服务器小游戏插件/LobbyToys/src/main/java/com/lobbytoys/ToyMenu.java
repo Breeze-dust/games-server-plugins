@@ -75,7 +75,7 @@ public final class ToyMenu implements Listener {
         }
 
         items.equip(player, type, plugin.settings().itemSlot);
-        Chat.send(player, "&a已切换小玩具：&f" + type.displayName());
+        Chat.send(player, "&a已切换小玩具：" + items.name(type));
         Bukkit.getScheduler().runTask(plugin, () -> open(player));
     }
 

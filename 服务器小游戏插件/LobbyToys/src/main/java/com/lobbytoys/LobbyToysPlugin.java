@@ -7,14 +7,16 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class LobbyToysPlugin extends JavaPlugin {
 
     private Settings settings;
+    private ToyRegistry registry;
     private CloneManager clones;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         settings = Settings.load(getConfig());
+        registry = new ToyRegistry(getConfig());
 
-        ToyItems items = new ToyItems(this);
+        ToyItems items = new ToyItems(this, registry);
         clones = new CloneManager(this);
         ToyListener listener = new ToyListener(this, clones, items);
         getServer().getPluginManager().registerEvents(listener, this);
@@ -47,5 +49,6 @@ public final class LobbyToysPlugin extends JavaPlugin {
     public void reloadSettings() {
         reloadConfig();
         settings = Settings.load(getConfig());
+        registry.reload(getConfig());
     }
 }

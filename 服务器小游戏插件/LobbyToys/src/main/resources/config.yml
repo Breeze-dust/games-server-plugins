@@ -11,9 +11,12 @@ item-slot: 8
 
 # 分身自转速度（度/刻，20 刻 = 1 秒；4.0 = 每 4.5 秒转一圈）
 spin-degrees-per-tick: 4.0
-# 分身上下弹动的幅度（格）与周期（刻）
-bob-amplitude: 0.18
-bob-period-ticks: 60
+
+# 弹跳：模型整体缩放的最大幅度（0.15 = 最扁时缩到 85%）与周期（刻）
+# 说明：原版客户端对玩家模型只支持等比缩放，做不到"垂直压扁的同时变宽"；
+#       0 = 关闭弹跳（模型保持原大小，只自转）。
+squash-amount: 0.15
+squash-period-ticks: 40
 
 # 右键开关的冷却（毫秒）
 cooldown-millis: 1500
@@ -22,3 +25,16 @@ cooldown-millis: 1500
 # false = 第三人称（F5）也能看到自己的分身跟着自己转；
 # true  = 只有其他玩家看得到（第一人称不会被模型挡住，但 F5 看不到自己）。
 hide-from-owner: false
+
+# ========== 小玩具外观 ==========
+# 名字、代表道具、描述都可以在这里改；支持 & 颜色代码。
+# material 用 Bukkit 材质名（如 PLAYER_HEAD、SLIME_BALL、FIREWORK_ROCKET）；
+# 写错或留空会回退到默认值，不会导致加载失败。
+# 键名 clone 是玩具 id，不要改。
+toys:
+  clone:
+    name: "&b分身玩具"
+    material: PLAYER_HEAD
+    lore:
+      - "&7右键 召唤 / 收回 你的分身"
+      - "&8只能在主城使用"

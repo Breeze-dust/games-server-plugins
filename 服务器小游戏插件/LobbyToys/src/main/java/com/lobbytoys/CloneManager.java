@@ -6,10 +6,10 @@ import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.EntityEquipment;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 每个玩家最多一个分身：Mannequin 站在玩家所在位置，每刻跟随 + 自转 + 正弦上下弹动。
+ * 每个玩家最多一个分身：Mannequin 站在玩家所在位置，每刻跟随 + 自转 + 缩放弹跳。
  * 玩家本体用隐身效果藏起来，镜头/朝向一律不动。
  */
 public final class CloneManager {
@@ -112,8 +112,11 @@ public final class CloneManager {
             player.hideEntity(plugin, clone);
         }
 
-        sessions.put(player.getUniqueId(),
-                new Session(clone, player.hasPotionEffect(PotionEffectType.INVISIBILITY), base.getYaw()));
+        sessions.put(player.getUniqueId(), new Session(
+                clone,
+                player.hasPotionEffect(PotionEffectType.INVISIBILITY),
+                base.getYaw(),
+                clone.getAttribute(Attribute.SCALE)));
         applyInvisibility(player);
         Chat.actionBar(player, plugin.settings().hideFromOwner
                 ? "&a分身已开启 &7（其他玩家能看到你的分身）"
@@ -135,29 +138,11 @@ public final class CloneManager {
         SkinParts.Mutable parts = SkinParts.allParts().mutableCopy();
         clone.setSkinParts(parts);
 
-        copyEquipment(player, clone);
+        clone.getEquipment().clear();
 
         Location start = player.getLocation();
         start.setPitch(0.0f);
         clone.teleport(start);
-    }
-
-    private static void copyEquipment(Player source, Mannequin target) {
-        EntityEquipment from = source.getEquipment();
-        EntityEquipment to = target.getEquipment();
-        if (from == null || to == null) {
-            return;
-        }
-        to.setHelmet(orAir(from.getHelmet()));
-        to.setChestplate(orAir(from.getChestplate()));
-        to.setLeggings(orAir(from.getLeggings()));
-        to.setBoots(orAir(from.getBoots()));
-        to.setItemInMainHand(orAir(from.getItemInMainHand()));
-        to.setItemInOffHand(orAir(from.getItemInOffHand()));
-    }
-
-    private static ItemStack orAir(ItemStack stack) {
-        return stack == null ? new ItemStack(org.bukkit.Material.AIR) : stack;
     }
 
     private void tick() {
@@ -184,11 +169,13 @@ public final class CloneManager {
             session.yaw = (session.yaw + settings.spinDegreesPerTick) % 360.0;
             session.phase++;
 
-            double bob = Math.sin(session.phase * (Math.PI * 2.0 / settings.bobPeriodTicks))
-                    * settings.bobAmplitude;
-            Location base = player.getLocation();
-            Location target = base.clone();
-            target.setY(base.getY() + bob);
+            if (session.scale != null && settings.squashAmount > 0.0) {
+                // 0..1 的正弦波：0 = 原大，1 = 压到最扁
+                double wave = (Math.sin(session.phase * (Math.PI * 2.0 / settings.squashPeriodTicks)) + 1.0) / 2.0;
+                session.scale.setBaseValue(1.0 - settings.squashAmount * wave);
+            }
+
+            Location target = player.getLocation();
             target.setYaw((float) session.yaw);
             target.setPitch(0.0f);
 
@@ -228,12 +215,14 @@ public final class CloneManager {
     private static final class Session {
         private final Mannequin clone;
         private final boolean hadInvisibility;
+        private final AttributeInstance scale;
         private double yaw;
         private double phase;
 
-        private Session(Mannequin clone, boolean hadInvisibility, float startYaw) {
+        private Session(Mannequin clone, boolean hadInvisibility, float startYaw, AttributeInstance scale) {
             this.clone = clone;
             this.hadInvisibility = hadInvisibility;
+            this.scale = scale;
             this.yaw = startYaw;
             this.phase = 0;
         }
