@@ -50,7 +50,7 @@
   - 炮口记录的是玩家眼睛位置；如果炮口埋在方块里，炮弹会在飞出几格后自爆，建议把炮口放在船沿外侧。
   - 爆炸半径是球形距离，站在落点正上方/相邻格也可能被淘汰。
   - 局内取消所有原版伤害（包括摔落），所以只有爆炸和落水会淘汰；落水判定用 `isInWater()`，浅水也算。
-  - 已接入 ArcadeParty：`games.bombard`（`bombard join` / `bombard start`），街机派对过渡时会正常拉人进场。
+  - 已接入 ArcadeParty：`games.bombard`（`bombard join` / `bombard start`），街机派对过渡时会正常拉人进场。**默认 `enabled: false`**（场地还没建时抽到会开不了局），建好场地并 `/bombard save` 后在 `/arcade menu` 里点开；也可以直接改 `config.yml` 的 `games.bombard.enabled: true`。
   - 玩家记录命名空间 `bombard`，写入 `server/plugins/MiniGameLib/players.yml`。
 - **验证**：
   1. `/bombard list` 显示场地已就绪、炮口 N 个；`/bombard scan` 可落点 > 0。

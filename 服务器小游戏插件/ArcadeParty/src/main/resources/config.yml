@@ -199,7 +199,8 @@ games:
     start-command: 'arrowrain start'
   bombard:
     display: 轰炸区
-    enabled: true
+    # 需要先建好海岛并配好场地；建好后在 /arcade menu 里启用
+    enabled: false
     arena-aware: false
     max-players: 16
     join-command: 'bombard join'
