@@ -1,0 +1,20 @@
+# ========== 密室杀手房间配置 ==========
+# 每个场地的金锭刷新逻辑可以独立配置；没写的项沿用 config.yml 的全局默认值。
+# 改完执行 /mm reload 即可生效，无需重启。
+#
+# 可用字段：
+#   gold-spawn-enabled   是否给这个场地的金块自动补金锭（true / false）
+#   gold-spawn-interval  每隔多少秒补一次（秒）
+#   gold-spawn-amount    每次补几个金块
+#   gold-per-death       这个场地里每名玩家死亡掉几个金锭
+#
+# 场地名必须和 config.yml 的 arenas.<场名> 完全一致（区分大小写）。
+# 示例（取消注释后生效）：
+# rooms:
+#   "圣诞工厂":
+#     gold-spawn-enabled: true
+#     gold-spawn-interval: 10
+#     gold-spawn-amount: 1
+#     gold-per-death: 1
+
+rooms: {}

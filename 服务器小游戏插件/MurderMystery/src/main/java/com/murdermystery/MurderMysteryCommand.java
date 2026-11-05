@@ -320,6 +320,53 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
                 }
                 return true;
             }
+            case "slot" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (!(sender instanceof Player p)) {
+                    Chat.send(sender, "&c该命令需要玩家执行（要对着拉杆使用）。");
+                    return true;
+                }
+                String action = args.length >= 2 ? args[1].toLowerCase() : "list";
+                switch (action) {
+                    case "add" -> m.addSlotMachineLever(p);
+                    case "remove", "del" -> m.removeSlotMachineLever(p);
+                    case "list" -> {
+                        String arena = m.arenaAt(p.getLocation());
+                        if (arena == null) {
+                            arena = m.arenaOf(p.getUniqueId());
+                        }
+                        List<Location> levers = m.slotMachineLevers(arena);
+                        String arenaLabel = arena == null ? "全部场地" : "场地「" + arena + "」";
+                        Chat.send(sender, "&6" + arenaLabel + "的老虎机拉杆（" + levers.size()
+                                + " 个，启动花费 &e" + m.slotCostGold() + "&6 金锭）：");
+                        for (int i = 0; i < levers.size(); i++) {
+                            Location l = levers.get(i);
+                            Chat.send(sender, "&e#" + (i + 1) + " &f" + l.getWorld().getName() + " "
+                                    + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                        }
+                        Chat.send(sender, "&7效果与权重在 mechanisms.yml 的 slot-machine.effects。");
+                    }
+                    default -> Chat.send(sender, "&c用法：/mm slot add|remove|list");
+                }
+                return true;
+            }
+            case "rooms" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (m.getArenas().isEmpty()) {
+                    Chat.send(sender, "&7暂无场。");
+                    return true;
+                }
+                Chat.send(sender, "&6====== 房间配置（rooms.yml）======");
+                for (MurderMysteryArena a : m.getArenas().values()) {
+                    Chat.send(sender, "&e" + a.getName() + "&f：补货 "
+                            + (m.goldSpawnEnabled(a) ? "&a开" : "&c关")
+                            + " &7｜间隔 &f" + m.goldSpawnInterval(a) + "s"
+                            + " &7｜每次 &f" + m.goldSpawnAmount(a) + " 个金块"
+                            + " &7｜死亡掉 &f" + m.goldPerDeath(a) + " 金锭");
+                }
+                Chat.send(sender, "&7改 server/plugins/MurderMystery/rooms.yml 后 /mm reload 生效。");
+                return true;
+            }
             case "reload" -> {
                 if (!admin) { noPerm(sender); return true; }
                 int count = m.reloadConfigAndRescanGold();
@@ -373,6 +420,8 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/mm goldblocks <名>&f 列出该场所有金块坐标  &e/mm reload&f 重载配置并重新扫描金块");
             Chat.send(sender, "&e/mm vending add|remove|list&f 对准「钻石块+按钮」登记/取消售货机（货物权重在 items.yml）");
             Chat.send(sender, "&e/mm teleporter add|remove|list&f 对准拉杆登记传送器；&e/mm teleporter point&f 把脚下位置加为落点（机关参数在 mechanisms.yml）");
+            Chat.send(sender, "&e/mm slot add|remove|list&f 对准拉杆登记老虎机（效果权重在 mechanisms.yml）");
+            Chat.send(sender, "&e/mm rooms&f 查看每个房间的金锭刷新设置（在 rooms.yml 改，/mm reload 生效）");
             Chat.send(sender, "&e/mm stats reset&f 清空全部战绩");
         }
     }
@@ -390,7 +439,7 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             if (admin) {
                 subs.addAll(List.of("create", "remove", "edit", "rename", "setup", "setup-exit",
                         "pos1", "pos2", "center", "lobby", "save", "start", "joinsign",
-                        "goldblocks", "vending", "teleporter", "reload"));
+                        "goldblocks", "vending", "teleporter", "slot", "rooms", "reload"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
         } else if (args.length == 2) {
@@ -399,6 +448,9 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             }
             if (args[0].equalsIgnoreCase("teleporter")) {
                 out.addAll(List.of("add", "remove", "point", "list"));
+            }
+            if (args[0].equalsIgnoreCase("slot")) {
+                out.addAll(List.of("add", "remove", "list"));
             }
             if (List.of("join", "edit", "rename", "setup", "remove", "joinsign", "goldblocks")
                     .contains(args[0].toLowerCase())) {

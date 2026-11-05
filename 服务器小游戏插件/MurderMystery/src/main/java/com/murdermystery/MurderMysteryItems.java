@@ -24,9 +24,6 @@ public final class MurderMysteryItems {
                           int amount, String name, List<String> lore) {
     }
 
-    public record Good(String itemId, double weight) {
-    }
-
     public static final class EffectDef {
         private final String key;
         private final ConfigurationSection section;
@@ -34,7 +31,7 @@ public final class MurderMysteryItems {
         private final double weight;
         private final boolean allowMurderer;
 
-        private EffectDef(String key, ConfigurationSection section) {
+        public EffectDef(String key, ConfigurationSection section) {
             this.key = key;
             this.section = section;
             this.enabled = section.getBoolean("enabled", true);
@@ -78,10 +75,7 @@ public final class MurderMysteryItems {
 
     private final MurderMysteryPlugin plugin;
     private final Map<String, ItemDef> items = new LinkedHashMap<>();
-    private final List<Good> goods = new ArrayList<>();
     private final List<EffectDef> effects = new ArrayList<>();
-    private double vendingCooldownSeconds = 3.0;
-    private int vendingCostGold = 2;
 
     public MurderMysteryItems(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
@@ -118,22 +112,6 @@ public final class MurderMysteryItems {
             }
         }
 
-        List<Good> parsedGoods = new ArrayList<>();
-        ConfigurationSection goodsRoot = yml.getConfigurationSection("vending.goods");
-        if (goodsRoot != null) {
-            for (String key : goodsRoot.getKeys(false)) {
-                ConfigurationSection sec = goodsRoot.getConfigurationSection(key);
-                if (sec == null) {
-                    continue;
-                }
-                String itemId = sec.getString("item", key).toLowerCase(Locale.ROOT);
-                double weight = Math.max(0.0, sec.getDouble("weight", 1.0));
-                if (weight > 0) {
-                    parsedGoods.add(new Good(itemId, weight));
-                }
-            }
-        }
-
         List<EffectDef> parsedEffects = new ArrayList<>();
         ConfigurationSection effectRoot = yml.getConfigurationSection("effects.gt-soda");
         if (effectRoot != null) {
@@ -151,20 +129,10 @@ public final class MurderMysteryItems {
 
         items.clear();
         items.putAll(parsedItems);
-        goods.clear();
-        goods.addAll(parsedGoods);
         effects.clear();
         effects.addAll(parsedEffects);
-        vendingCooldownSeconds = Math.max(0.0, yml.getDouble("vending.cooldown-seconds", 3.0));
-        vendingCostGold = Math.max(0, yml.getInt("vending.cost-gold", 2));
-
-        for (Good good : goods) {
-            if (!items.containsKey(good.itemId())) {
-                plugin.getLogger().warning("items.yml：售货机货物「" + good.itemId() + "」在 items 里不存在，已忽略。");
-            }
-        }
         plugin.getLogger().info("密室杀手道具：已加载 " + items.size() + " 件道具、"
-                + goods.size() + " 件售货机货物、" + effects.size() + " 个汽水事件。");
+                + effects.size() + " 个汽水事件。");
     }
 
     public ItemDef item(String id) {
@@ -179,40 +147,6 @@ public final class MurderMysteryItems {
             }
         }
         return null;
-    }
-
-    public double vendingCooldownSeconds() {
-        return vendingCooldownSeconds;
-    }
-
-    /** 每次从售货机抽货扣除的金锭数量（0 = 免费）。 */
-    public int vendingCostGold() {
-        return vendingCostGold;
-    }
-
-    /** 按权重抽一件货物；没有可用货物时返回 null。 */
-    public Good pickGood(Random random) {
-        List<Good> pool = new ArrayList<>();
-        double total = 0.0;
-        for (Good good : goods) {
-            ItemDef def = item(good.itemId());
-            if (def != null && def.enabled()) {
-                pool.add(good);
-                total += good.weight();
-            }
-        }
-        if (pool.isEmpty() || total <= 0) {
-            return null;
-        }
-        double roll = random.nextDouble() * total;
-        Good last = pool.get(pool.size() - 1);
-        for (Good good : pool) {
-            roll -= good.weight();
-            if (roll <= 0) {
-                return good;
-            }
-        }
-        return last;
     }
 
     /** 按权重抽一个汽水事件；杀手触发时跳过 allow-murderer=false 的事件。 */

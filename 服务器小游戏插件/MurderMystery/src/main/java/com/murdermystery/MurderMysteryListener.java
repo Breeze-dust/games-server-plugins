@@ -160,6 +160,12 @@ public class MurderMysteryListener implements Listener {
                 event.setCancelled(true);
                 return;
             }
+            // 烫手山芋：拿着它攻击别人 = 把山芋和剩余倒计时一起转手（不重置倒计时）
+            if (m.isHotPotato(attacker.getInventory().getItemInMainHand())) {
+                event.setCancelled(true);
+                m.handleHotPotatoAttack(arena, attacker, victim);
+                return;
+            }
             // 迈达斯之手：下一次近战攻击（空手也算）直接杀死对方，并把尸体换成金锭
             if (m.hasMidas(attacker.getUniqueId())) {
                 event.setCancelled(true);
@@ -504,6 +510,12 @@ public class MurderMysteryListener implements Listener {
         if (plugin.getManager().isShopItem(dropped)) {
             event.setCancelled(true);
             plugin.getManager().notifyShopLocked(p);
+            return;
+        }
+        // 烫手山芋只能拿去塞给别人，不能丢地上
+        if (plugin.getManager().isHotPotato(dropped)) {
+            event.setCancelled(true);
+            plugin.getManager().notifyHotPotatoLocked(p);
             return;
         }
         // 职业装备（杀手铁剑/追踪指南针、猎人弓）局内一律不可丢弃：

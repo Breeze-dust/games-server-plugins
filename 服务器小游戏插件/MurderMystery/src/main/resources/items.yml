@@ -51,37 +51,8 @@ items:
     amount: 5
 
 # ========== 售货机 ==========
-# 售货机由「钻石块 + 按钮」组成，OP 对准按钮执行 /mm vending add 登记；
-# 对局中右键已登记的按钮，从下面的 goods 列表按权重随机给玩家一件货物。
-vending:
-  # 每次从售货机抽货扣除的金锭数量；0 = 免费
-  cost-gold: 2
-  # 同一名玩家两次抽货之间的冷却（秒）
-  cooldown-seconds: 3
-  # 货物列表（单独一份）：item 填上面 items 里的 id，weight 是出现权重。
-  # 权重可以随便调，填 0 表示不会出现；想暂时下架某个货物就把它删掉或注释掉。
-  goods:
-    gt-soda:
-      item: gt-soda
-      weight: 25
-    steak:
-      item: steak
-      weight: 20
-    arrow:
-      item: arrow
-      weight: 20
-    truth-stone:
-      item: truth-stone
-      weight: 10
-    death-note:
-      item: death-note
-      weight: 10
-    shop-sword:
-      item: shop-sword
-      weight: 8
-    shop-crossbow:
-      item: shop-crossbow
-      weight: 7
+# 售货机的价格、冷却、货物权重已经移到 mechanisms.yml 的 vending 段。
+# 这里只保留 items 里的道具定义；售货机货物通过 item id 引用本文件。
 
 # ========== GT混沌汽水的事件 ==========
 # enabled: 是否启用；weight: 触发权重（越大越容易抽到，0 = 不会抽到）

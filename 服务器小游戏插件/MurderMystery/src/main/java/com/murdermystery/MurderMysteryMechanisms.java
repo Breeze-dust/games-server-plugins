@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.function.Function;
 
 /**
@@ -26,6 +27,12 @@ public final class MurderMysteryMechanisms {
     private static final String DATA_FILE = "mechanisms-data.yml";
     /** 传送器类型 id（以后新增拉杆机关就加自己的类型）。 */
     public static final String TELEPORTER = "teleporter";
+    /** 老虎机类型 id。 */
+    public static final String SLOT_MACHINE = "slot-machine";
+
+    /** 售货机货物：道具 id + 权重。 */
+    public record Good(String itemId, double weight) {
+    }
 
     private final MurderMysteryPlugin plugin;
     /** 机关类型 -> 场地名 -> 拉杆坐标。 */
@@ -41,9 +48,22 @@ public final class MurderMysteryMechanisms {
     private String teleporterNoTargetMessage = "&c传送器还没有其他可用的传送点。";
     private String teleporterSound = "ENTITY_ENDERMAN_TELEPORT";
 
+    // 售货机
+    private boolean vendingEnabled = true;
+    private int vendingCostGold = 2;
+    private double vendingCooldownSeconds = 3.0;
+    private final List<Good> vendingGoods = new ArrayList<>();
+
+    // 老虎机
+    private boolean slotMachineEnabled = true;
+    private int slotCostGold = 2;
+    private double slotCooldownSeconds = 1.0;
+    private final List<MurderMysteryItems.EffectDef> slotEffects = new ArrayList<>();
+
     public MurderMysteryMechanisms(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
         ensureType(TELEPORTER);
+        ensureType(SLOT_MACHINE);
     }
 
     public void load() {
@@ -66,7 +86,64 @@ public final class MurderMysteryMechanisms {
         teleporterMessage = yml.getString("teleporter.message", teleporterMessage);
         teleporterNoTargetMessage = yml.getString("teleporter.no-target-message", teleporterNoTargetMessage);
         teleporterSound = yml.getString("teleporter.sound", teleporterSound);
+        loadVending(yml);
+        loadSlotMachine(yml);
         loadData(arenaResolver);
+    }
+
+    private void loadVending(YamlConfiguration yml) {
+        vendingEnabled = yml.getBoolean("vending.enabled", true);
+        vendingCostGold = Math.max(0, yml.getInt("vending.cost-gold", 2));
+        vendingCooldownSeconds = Math.max(0.0, yml.getDouble("vending.cooldown-seconds", 3.0));
+        vendingGoods.clear();
+        parseGoods(yml.getConfigurationSection("vending.goods"), vendingGoods);
+        if (!vendingGoods.isEmpty()) {
+            return;
+        }
+        // 兼容上一版：售货机配置还在 items.yml 的 vending 段
+        File itemsFile = new File(plugin.getDataFolder(), "items.yml");
+        if (!itemsFile.exists()) {
+            return;
+        }
+        YamlConfiguration itemsYml = YamlConfiguration.loadConfiguration(itemsFile);
+        parseGoods(itemsYml.getConfigurationSection("vending.goods"), vendingGoods);
+        if (!vendingGoods.isEmpty()) {
+            plugin.getLogger().warning("售货机配置仍在 items.yml 的 vending 段；建议移到 mechanisms.yml，当前会继续兼容读取。");
+        }
+    }
+
+    private void parseGoods(ConfigurationSection root, List<Good> out) {
+        if (root == null) {
+            return;
+        }
+        for (String key : root.getKeys(false)) {
+            ConfigurationSection sec = root.getConfigurationSection(key);
+            if (sec == null) {
+                continue;
+            }
+            String itemId = sec.getString("item", key).toLowerCase(Locale.ROOT);
+            double weight = Math.max(0.0, sec.getDouble("weight", 1.0));
+            if (weight > 0) {
+                out.add(new Good(itemId, weight));
+            }
+        }
+    }
+
+    private void loadSlotMachine(YamlConfiguration yml) {
+        slotMachineEnabled = yml.getBoolean("slot-machine.enabled", true);
+        slotCostGold = Math.max(0, yml.getInt("slot-machine.cost-gold", 2));
+        slotCooldownSeconds = Math.max(0.0, yml.getDouble("slot-machine.cooldown-seconds", 1.0));
+        slotEffects.clear();
+        ConfigurationSection root = yml.getConfigurationSection("slot-machine.effects");
+        if (root == null) {
+            return;
+        }
+        for (String key : root.getKeys(false)) {
+            ConfigurationSection sec = root.getConfigurationSection(key);
+            if (sec != null) {
+                slotEffects.add(new MurderMysteryItems.EffectDef(key, sec));
+            }
+        }
     }
 
     private void loadData(Function<Location, String> arenaResolver) {
@@ -206,6 +283,82 @@ public final class MurderMysteryMechanisms {
 
     public String teleporterSound() {
         return teleporterSound;
+    }
+
+    public boolean vendingEnabled() {
+        return vendingEnabled;
+    }
+
+    /** 每次抽货扣除的金锭数量（0 = 免费）。 */
+    public int vendingCostGold() {
+        return vendingCostGold;
+    }
+
+    public double vendingCooldownSeconds() {
+        return vendingCooldownSeconds;
+    }
+
+    /** 按权重抽一件售货机货物；没有可用货物时返回 null。 */
+    public Good pickGood(Random random) {
+        double total = 0.0;
+        for (Good good : vendingGoods) {
+            total += good.weight();
+        }
+        if (total <= 0) {
+            return null;
+        }
+        double roll = random.nextDouble() * total;
+        Good last = vendingGoods.get(vendingGoods.size() - 1);
+        for (Good good : vendingGoods) {
+            roll -= good.weight();
+            if (roll <= 0) {
+                return good;
+            }
+        }
+        return last;
+    }
+
+    public boolean slotMachineEnabled() {
+        return slotMachineEnabled;
+    }
+
+    /** 每次启动老虎机扣除的金锭数量（0 = 免费）。 */
+    public int slotCostGold() {
+        return slotCostGold;
+    }
+
+    public double slotCooldownSeconds() {
+        return slotCooldownSeconds;
+    }
+
+    /** 某个场地的老虎机拉杆；arena 为 null 时返回全部场地的。 */
+    public List<Location> slotMachineLevers(String arena) {
+        return flatten(levers.get(SLOT_MACHINE), arena);
+    }
+
+    /** 按权重抽一个老虎机效果；全部关闭/权重为 0 时返回 null。 */
+    public MurderMysteryItems.EffectDef pickSlotEffect(Random random) {
+        List<MurderMysteryItems.EffectDef> pool = new ArrayList<>();
+        double total = 0.0;
+        for (MurderMysteryItems.EffectDef effect : slotEffects) {
+            if (!effect.enabled() || effect.weight() <= 0) {
+                continue;
+            }
+            pool.add(effect);
+            total += effect.weight();
+        }
+        if (pool.isEmpty() || total <= 0) {
+            return null;
+        }
+        double roll = random.nextDouble() * total;
+        MurderMysteryItems.EffectDef last = pool.get(pool.size() - 1);
+        for (MurderMysteryItems.EffectDef effect : pool) {
+            roll -= effect.weight();
+            if (roll <= 0) {
+                return effect;
+            }
+        }
+        return last;
     }
 
     /** 某个场地的传送器拉杆；arena 为 null 时返回所有场地的。 */

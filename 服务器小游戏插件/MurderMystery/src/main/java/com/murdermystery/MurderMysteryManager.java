@@ -116,6 +116,8 @@ public class MurderMysteryManager {
     private static final String GT_SODA_KEY = "mm-gt-soda";
     /** 售货机给出的货物标记（局末/离开时统一清掉，避免带出对局世界）。 */
     private static final String VENDING_ITEM_KEY = "mm-vending-item";
+    /** 烫手山芋标记。 */
+    private static final String HOT_POTATO_KEY = "mm-hot-potato";
     /** 售货机变出来的鸡身上记录它对应的玩家 UUID。 */
     private static final String CHICKEN_OWNER_KEY = "mm-chicken-owner";
     /** 杀手的追踪指南针固定放在快捷栏最后一格。 */
@@ -148,6 +150,8 @@ public class MurderMysteryManager {
     private final MurderMysteryItems items;
     /** mechanisms.yml：机关参数；登记数据在 mechanisms-data.yml。 */
     private final MurderMysteryMechanisms mechanisms;
+    /** rooms.yml：每个场地的金锭刷新设置。 */
+    private final MurderMysteryRooms rooms;
     private final Random random = new Random();
     private final Map<String, MurderMysteryArena> arenas = new LinkedHashMap<>();
     private final Map<UUID, String> playerArena = new LinkedHashMap<>();
@@ -185,6 +189,10 @@ public class MurderMysteryManager {
     private final Map<UUID, Double> originalScale = new LinkedHashMap<>();
     /** 玩家上次使用传送器的时间（冷却用）。 */
     private final Map<UUID, Long> teleporterCooldown = new LinkedHashMap<>();
+    /** 玩家上次启动老虎机的时间（冷却用）。 */
+    private final Map<UUID, Long> slotCooldown = new LinkedHashMap<>();
+    /** 烫手山芋：持有者 -> 爆炸时间戳（ms）。 */
+    private final Map<UUID, Long> hotPotatoDeadlines = new LinkedHashMap<>();
 
     // ---------- 角色分配的公平性历史（详见 assignRoles） ----------
     /** 角色历史文件名（单独一份，不塞进会被 saveAll 回写的 config.yml）。 */
@@ -268,6 +276,8 @@ public class MurderMysteryManager {
     private final NamespacedKey vendingItemKey;
     /** 鸡实体上记录对应的玩家 UUID。 */
     private final NamespacedKey chickenOwnerKey;
+    /** 烫手山芋标记。 */
+    private final NamespacedKey hotPotatoKey;
 
     /** 一只“鸡形态”玩家：对其他玩家隐藏玩家本体，用这只鸡代替外观。 */
     private static final class ChickenRig {
@@ -285,6 +295,7 @@ public class MurderMysteryManager {
         this.liveSidebar = new LiveSidebar(plugin);
         this.items = new MurderMysteryItems(plugin);
         this.mechanisms = new MurderMysteryMechanisms(plugin);
+        this.rooms = new MurderMysteryRooms(plugin);
         this.setup = new SetupMode(plugin, SETUP_TOOL_KEY);
         this.throwKey = new NamespacedKey(plugin, THROW_KEY);
         this.shopKey = new NamespacedKey(plugin, SHOP_KEY);
@@ -300,6 +311,7 @@ public class MurderMysteryManager {
         this.gtSodaKey = new NamespacedKey(plugin, GT_SODA_KEY);
         this.vendingItemKey = new NamespacedKey(plugin, VENDING_ITEM_KEY);
         this.chickenOwnerKey = new NamespacedKey(plugin, CHICKEN_OWNER_KEY);
+        this.hotPotatoKey = new NamespacedKey(plugin, HOT_POTATO_KEY);
         for (Role role : Role.values()) {
             roleMisses.put(role, new LinkedHashMap<>());
         }
@@ -350,7 +362,12 @@ public class MurderMysteryManager {
     }
 
     public int goldPerDeath() {
-        return cfgInt("gold-per-death", 1);
+        return Math.max(1, cfgInt("gold-per-death", 1));
+    }
+
+    /** 这个场地每名玩家死亡掉几个金锭（rooms.yml 可单独覆盖）。 */
+    public int goldPerDeath(MurderMysteryArena a) {
+        return rooms.goldPerDeath(a == null ? null : a.getName(), goldPerDeath());
     }
 
     public int swordCost() {
@@ -403,8 +420,23 @@ public class MurderMysteryManager {
         return cfgInt("gold-spawn-interval", 10);
     }
 
+    /** 这个场地每隔多少秒补一次金锭（rooms.yml 可单独覆盖）。 */
+    public int goldSpawnInterval(MurderMysteryArena a) {
+        return rooms.spawnInterval(a == null ? null : a.getName(), Math.max(1, goldSpawnInterval()));
+    }
+
+    /** 这个场地是否自动补金锭（rooms.yml 可单独关闭）。 */
+    public boolean goldSpawnEnabled(MurderMysteryArena a) {
+        return rooms.spawnEnabled(a == null ? null : a.getName(), true);
+    }
+
     public int goldSpawnAmount() {
         return cfgInt("gold-spawn-amount", 2);
+    }
+
+    /** 这个场地每次补几个金块（rooms.yml 可单独覆盖）。 */
+    public int goldSpawnAmount(MurderMysteryArena a) {
+        return rooms.spawnAmount(a == null ? null : a.getName(), Math.max(1, goldSpawnAmount()));
     }
 
     // ---------- 加载与保存 ----------
@@ -440,6 +472,7 @@ public class MurderMysteryManager {
         items.load(); // 道具总表 / 售货机货物 / GT混沌汽水事件
         loadVendingMachines();
         mechanisms.load(this::arenaAt); // 机关参数与已登记的拉杆/传送点（按场地隔离）
+        rooms.load(); // 每个场地的金锭刷新设置
         ConfigurationSection js = plugin.getConfig().getConfigurationSection("join-signs");
         if (js != null) {
             for (String name : js.getKeys(false)) {
@@ -1680,7 +1713,7 @@ public class MurderMysteryManager {
         drawEndgameReveal(a);
         String time = String.format("%02d:%02d", left / 60, left % 60);
         int innocentsLeft = a.innocentsLeft();
-        for (UUID id : a.getPlayers()) {
+        for (UUID id : new ArrayList<>(a.getPlayers())) {
             Player p = Bukkit.getPlayer(id);
             if (p == null || !p.isOnline()) {
                 continue;
@@ -1708,6 +1741,13 @@ public class MurderMysteryManager {
                 Chat.actionBar(p, "&a无辜者 | 金币 &e" + goldCount(p)
                         + "&f（右键商店购买武器）｜ 剩余无辜者 &e" + innocentsLeft + "&f ｜ 时间 &e" + time);
             }
+            // 烫手山芋倒计时覆盖状态栏；到点爆炸后直接结束本次 tick
+            if (updateHotPotato(a, p, now)) {
+                break;
+            }
+        }
+        if (a.getState() != MurderMysteryArena.State.RUNNING) {
+            return; // 烫手山芋爆炸可能已经结束对局
         }
         updateLiveBoard(a, left);
     }
@@ -1841,7 +1881,7 @@ public class MurderMysteryManager {
         victim.getWorld().playSound(victim.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 1f, 1.2f);
         eliminate(a, victim); // 死亡不出任何提示（谁死了要自己买死亡名单）
         victim.getWorld().dropItemNaturally(victim.getLocation(),
-                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath())));
+                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
         // 升级提示只发给杀手本人：公屏播报会把杀手身份暴露给全场
         Chat.send(murderer, "&6你的杀手之剑升级到 &e" + Math.min(5, kills) + "&6 级！");
         checkMurdererWin(a);
@@ -1875,7 +1915,7 @@ public class MurderMysteryManager {
     public void handleInnocentKill(MurderMysteryArena a, Player killer, Player murderer, String weapon) {
         recordKill(killer.getUniqueId());
         murderer.getWorld().dropItemNaturally(murderer.getLocation(),
-                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath())));
+                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
         eliminate(a, murderer);
         // 结算横幅写明"杀手被谁消灭了"
         endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + murderer.getName() + "&f）被 &e" + killer.getName()
@@ -1890,10 +1930,10 @@ public class MurderMysteryManager {
     public void handleMutualDeath(MurderMysteryArena a, Player attacker, Player victim, String weapon) {
         recordKill(attacker.getUniqueId());
         victim.getWorld().dropItemNaturally(victim.getLocation(),
-                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath())));
+                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
         eliminate(a, victim);
         attacker.getWorld().dropItemNaturally(attacker.getLocation(),
-                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath())));
+                new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
         eliminate(a, attacker);
         checkMurdererWin(a);
     }
@@ -3073,6 +3113,9 @@ public class MurderMysteryManager {
         if (!isVendingButton(button)) {
             return false;
         }
+        if (!mechanisms.vendingEnabled()) {
+            return false;
+        }
         String arenaName = playerArena.get(p.getUniqueId());
         MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
         if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
@@ -3094,7 +3137,7 @@ public class MurderMysteryManager {
             Chat.actionBar(p, "&e售货机冷却中（&f" + Math.max(1, (ready - now + 999) / 1000) + "s&e）");
             return true;
         }
-        MurderMysteryItems.Good good = items.pickGood(random);
+        MurderMysteryMechanisms.Good good = mechanisms.pickGood(random);
         if (good == null) {
             msg(p, "&c售货机里暂时没有可用的货物（检查 items.yml 的 vending.goods）。");
             return true;
@@ -3104,7 +3147,7 @@ public class MurderMysteryManager {
             msg(p, "&c这件货物配置无效（" + good.itemId() + "），检查 items.yml。");
             return true;
         }
-        int cost = items.vendingCostGold();
+        int cost = mechanisms.vendingCostGold();
         if (cost > 0 && goldCount(p) < cost) {
             msg(p, "&c金锭不足：售货机要 &e" + cost + " 金锭&c（你只有 &e" + goldCount(p) + "&c）。");
             return true;
@@ -3113,7 +3156,7 @@ public class MurderMysteryManager {
             removeGold(p, cost);
         }
         giveOrDrop(p, out);
-        long cooldownMs = (long) Math.ceil(items.vendingCooldownSeconds() * 1000.0);
+        long cooldownMs = (long) Math.ceil(mechanisms.vendingCooldownSeconds() * 1000.0);
         if (cooldownMs > 0) {
             vendingCooldown.put(id, now + cooldownMs);
         }
@@ -3267,6 +3310,7 @@ public class MurderMysteryManager {
         }
         return switch (type) {
             case MurderMysteryMechanisms.TELEPORTER -> handleTeleporterUse(p, block);
+            case MurderMysteryMechanisms.SLOT_MACHINE -> handleSlotMachineUse(p, block);
             default -> false;
         };
     }
@@ -3370,6 +3414,286 @@ public class MurderMysteryManager {
             back.setPowered(false);
             block.setBlockData(back, false);
         }, 10L);
+    }
+
+    // ---------- 老虎机 ----------
+
+    public List<Location> slotMachineLevers(String arena) {
+        return mechanisms.slotMachineLevers(arena);
+    }
+
+    /** 老虎机每次启动的金锭花费（命令显示用）。 */
+    public int slotCostGold() {
+        return mechanisms.slotCostGold();
+    }
+
+    public boolean addSlotMachineLever(Player p) {
+        Block target = p.getTargetBlockExact(8);
+        if (target == null || target.getType() != Material.LEVER) {
+            msg(p, "&c请对准一个拉杆。");
+            return false;
+        }
+        String arena = arenaAt(target.getLocation());
+        if (arena == null) {
+            msg(p, "&c这个拉杆不在任何场地选区内：机关必须先放进场地范围（pos1/pos2）。");
+            return false;
+        }
+        if (!mechanisms.addLever(MurderMysteryMechanisms.SLOT_MACHINE, arena, target.getLocation())) {
+            msg(p, "&e这个拉杆已经登记过机关了。");
+            return false;
+        }
+        msg(p, "&a已登记老虎机拉杆（场地「" + arena + "」）：&f" + shortLoc(target.getLocation()) + "&a。");
+        return true;
+    }
+
+    public boolean removeSlotMachineLever(Player p) {
+        Block target = p.getTargetBlockExact(8);
+        if (target == null || target.getType() != Material.LEVER) {
+            msg(p, "&c请对准要取消的拉杆。");
+            return false;
+        }
+        if (!mechanisms.isLeverOfType(MurderMysteryMechanisms.SLOT_MACHINE, target.getLocation())) {
+            msg(p, "&c这个拉杆没有登记为老虎机。");
+            return false;
+        }
+        if (!mechanisms.removeLever(target.getLocation())) {
+            msg(p, "&c取消失败：拉杆登记数据不存在。");
+            return false;
+        }
+        msg(p, "&a已取消登记老虎机拉杆：&f" + shortLoc(target.getLocation()) + "&a。");
+        return true;
+    }
+
+    /** 右键老虎机拉杆：扣金锭后按权重触发一个效果。 */
+    public boolean handleSlotMachineUse(Player p, Block block) {
+        if (!mechanisms.slotMachineEnabled()) {
+            return false;
+        }
+        if (block == null || block.getType() != Material.LEVER
+                || !mechanisms.isLeverOfType(MurderMysteryMechanisms.SLOT_MACHINE, block.getLocation())) {
+            return false;
+        }
+        String leverArena = mechanisms.leverArenaAt(block.getLocation());
+        String arenaName = playerArena.get(p.getUniqueId());
+        MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
+        if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
+                || !a.getPlayers().contains(p.getUniqueId())) {
+            return false;
+        }
+        if (leverArena == null || !leverArena.equals(a.getName())) {
+            return false;
+        }
+        if (!a.contains(block.getLocation())) {
+            msg(p, "&c这个老虎机不在这局场地范围内。");
+            return true;
+        }
+        UUID id = p.getUniqueId();
+        long now = System.currentTimeMillis();
+        long ready = slotCooldown.getOrDefault(id, 0L);
+        if (now < ready) {
+            Chat.actionBar(p, "&6老虎机冷却中（&f" + Math.max(1, (ready - now + 999) / 1000) + "s&6）");
+            return true;
+        }
+        int cost = mechanisms.slotCostGold();
+        if (cost > 0 && goldCount(p) < cost) {
+            msg(p, "&c金锭不足：老虎机要 &e" + cost + " 金锭&c（你只有 &e" + goldCount(p) + "&c）。");
+            return true;
+        }
+        MurderMysteryItems.EffectDef effect = mechanisms.pickSlotEffect(random);
+        if (effect == null) {
+            msg(p, "&c老虎机里暂时没有可触发的效果（检查 mechanisms.yml 的 slot-machine.effects）。");
+            return true;
+        }
+        if (cost > 0) {
+            removeGold(p, cost);
+        }
+        animateLever(block);
+        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
+        long cooldownMs = (long) Math.ceil(mechanisms.slotCooldownSeconds() * 1000.0);
+        if (cooldownMs > 0) {
+            slotCooldown.put(id, now + cooldownMs);
+        }
+        applySlotMachineEffect(a, p, effect);
+        return true;
+    }
+
+    private void applySlotMachineEffect(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        switch (effect.key()) {
+            case "double-gold" -> {
+                int before = goldCount(p);
+                int target = Math.max(before * 2, effect.getInt("min-reward", 6));
+                int gain = Math.max(0, target - before);
+                if (gain > 0) {
+                    giveGold(p, gain);
+                }
+                String text = effect.getString("message",
+                                "&6&l大奖！&f{player} 的金锭翻倍，现在有 &e{gold} &f金锭！")
+                        .replace("{player}", p.getName())
+                        .replace("{gold}", String.valueOf(before + gain))
+                        .replace("{amount}", String.valueOf(gain));
+                sendSlotMessage(a, p, effect, text);
+            }
+            case "gain-5", "gain-3" -> {
+                int amount = Math.max(1, effect.getInt("amount", effect.key().equals("gain-5") ? 5 : 3));
+                giveGold(p, amount);
+                String text = effect.getString("message", "&a你获得了 &e{amount}&a 金锭。")
+                        .replace("{player}", p.getName())
+                        .replace("{amount}", String.valueOf(amount))
+                        .replace("{gold}", String.valueOf(goldCount(p)));
+                sendSlotMessage(a, p, effect, text);
+            }
+            case "lose-2" -> {
+                int amount = Math.min(Math.max(1, effect.getInt("amount", 2)), goldCount(p));
+                removeGold(p, amount);
+                String text = effect.getString("message", "&c你失去了 &e{amount}&c 金锭……")
+                        .replace("{player}", p.getName())
+                        .replace("{amount}", String.valueOf(amount));
+                sendSlotMessage(a, p, effect, text);
+            }
+            case "hot-potato" -> giveHotPotato(a, p, effect);
+            default -> msg(p, "&7老虎机没有反应……（未知效果：" + effect.key() + "）");
+        }
+    }
+
+    private void sendSlotMessage(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect, String text) {
+        if (effect.getBoolean("broadcast", effect.key().equals("double-gold"))) {
+            broadcast(a, text);
+        } else {
+            msg(p, text);
+        }
+    }
+
+    private void giveGold(Player p, int amount) {
+        int left = amount;
+        while (left > 0) {
+            int stack = Math.min(64, left);
+            giveOrDrop(p, new ItemStack(Material.GOLD_INGOT, stack));
+            left -= stack;
+        }
+    }
+
+    // ---------- 烫手山芋 ----------
+
+    public boolean isHotPotato(ItemStack it) {
+        return it != null && it.hasItemMeta()
+                && it.getItemMeta().getPersistentDataContainer().has(hotPotatoKey, PersistentDataType.STRING);
+    }
+
+    private ItemStack hotPotatoItem() {
+        ItemStack it = new ItemStack(Material.BAKED_POTATO);
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(LEGACY.deserialize("&c烫手山芋")));
+            meta.lore(List.of(
+                    LEGACY.deserialize("&7拿着它攻击其他玩家可以转手"),
+                    LEGACY.deserialize("&c倒计时结束会爆炸，炸死持有者")));
+            meta.getPersistentDataContainer().set(hotPotatoKey, PersistentDataType.STRING, "1");
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    private boolean hasHotPotatoItem(Player p) {
+        for (ItemStack it : p.getInventory().getContents()) {
+            if (isHotPotato(it)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void giveHotPotato(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        int seconds = Math.max(1, effect.getInt("duration-seconds", 30));
+        UUID id = p.getUniqueId();
+        Long previous = hotPotatoDeadlines.put(id, System.currentTimeMillis() + seconds * 1000L);
+        if (!hasHotPotatoItem(p)) {
+            giveOrDrop(p, hotPotatoItem());
+        }
+        // 第一次拿到时才向全房间播报；持有中再抽到只刷新倒计时
+        if (previous == null) {
+            broadcast(a, effect.getString("broadcast-message", "&c&l有人获得了烫手山芋！"));
+        }
+        msg(p, effect.getString("message",
+                        "&c你拿到了烫手山芋！&7拿着它攻击别人可以转手，否则 &e{seconds}&7 秒后爆炸。")
+                .replace("{seconds}", String.valueOf(seconds)));
+        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 0.8f);
+    }
+
+    /**
+     * 拿着烫手山芋攻击别人：把山芋和剩余倒计时一起转给对方（倒计时不重置）。
+     *
+     * @return true = 这次攻击被烫手山芋处理（事件应取消）
+     */
+    public boolean handleHotPotatoAttack(MurderMysteryArena a, Player attacker, Player victim) {
+        UUID aid = attacker.getUniqueId();
+        UUID vid = victim.getUniqueId();
+        if (aid.equals(vid) || !a.getPlayers().contains(aid) || !a.getPlayers().contains(vid)) {
+            return false;
+        }
+        ItemStack hand = attacker.getInventory().getItemInMainHand();
+        if (!isHotPotato(hand)) {
+            return false;
+        }
+        if (hotPotatoDeadlines.containsKey(vid)) {
+            msg(attacker, "&c" + victim.getName() + " 已经拿着烫手山芋了。");
+            return true;
+        }
+        Long deadline = hotPotatoDeadlines.get(aid);
+        if (deadline == null) {
+            deadline = System.currentTimeMillis() + 30_000L; // 异常兜底：没有记录时按 30 秒算
+        }
+        if (hand.getAmount() > 1) {
+            hand.setAmount(hand.getAmount() - 1);
+        } else {
+            attacker.getInventory().setItemInMainHand(null);
+        }
+        hotPotatoDeadlines.remove(aid);
+        hotPotatoDeadlines.put(vid, deadline);
+        giveOrDrop(victim, hotPotatoItem());
+        long left = Math.max(0, (deadline - System.currentTimeMillis() + 999) / 1000);
+        msg(attacker, "&a你把烫手山芋塞给了 &e" + victim.getName() + "&a！");
+        msg(victim, "&c" + attacker.getName() + " 把烫手山芋塞给了你！&7还有 &e" + left + "&7 秒爆炸！");
+        attacker.playSound(attacker.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 0.9f);
+        victim.playSound(victim.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 0.7f);
+        return true;
+    }
+
+    private void explodeHotPotato(MurderMysteryArena a, Player p) {
+        UUID id = p.getUniqueId();
+        hotPotatoDeadlines.remove(id);
+        Location loc = p.getLocation().clone();
+        World world = loc.getWorld();
+        if (world != null) {
+            world.spawnParticle(Particle.EXPLOSION_EMITTER, loc, 1, 0, 0, 0, 0);
+            world.playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 1f, 1f);
+        }
+        boolean wasMurderer = a.isMurderer(id);
+        msg(p, "&c&l烫手山芋爆炸了！");
+        eliminate(a, p); // 只淘汰本人，不算任何人的击杀
+        if (wasMurderer) {
+            endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + p.getName() + "&f）被烫手山芋炸死了。");
+        } else {
+            checkMurdererWin(a);
+        }
+    }
+
+    /** 经验栏上方（action bar）显示烫手山芋倒计时；到点则爆炸。返回 true = 本次 tick 应停止。 */
+    private boolean updateHotPotato(MurderMysteryArena a, Player p, long now) {
+        Long deadline = hotPotatoDeadlines.get(p.getUniqueId());
+        if (deadline == null) {
+            return false;
+        }
+        long left = (deadline - now + 999) / 1000;
+        if (left <= 0) {
+            explodeHotPotato(a, p);
+            return true;
+        }
+        Chat.actionBar(p, "&c烫手山芋：&f" + left + "&c 秒后爆炸（攻击别人可转手）");
+        return false;
+    }
+
+    public void notifyHotPotatoLocked(Player p) {
+        msg(p, "&c烫手山芋不能丢弃，只能拿着它攻击别人转手。");
     }
 
     // ---------- GT混沌汽水 ----------
@@ -3748,6 +4072,8 @@ public class MurderMysteryManager {
         cancelDoom(p.getUniqueId());
         midasHands.remove(p.getUniqueId());
         teleporterCooldown.remove(p.getUniqueId()); // 机关冷却也一起清掉
+        slotCooldown.remove(p.getUniqueId());
+        hotPotatoDeadlines.remove(p.getUniqueId());
     }
 
     /** 局末/离开时把汽水和售货机货物从背包清掉，避免带出对局世界。 */
@@ -3755,7 +4081,7 @@ public class MurderMysteryManager {
         ItemStack[] contents = p.getInventory().getContents();
         for (int i = 0; i < contents.length; i++) {
             ItemStack it = contents[i];
-            if (it != null && (isGtSoda(it) || isVendingItem(it))) {
+            if (it != null && (isGtSoda(it) || isVendingItem(it) || isHotPotato(it))) {
                 p.getInventory().setItem(i, null);
             }
         }
@@ -3791,6 +4117,8 @@ public class MurderMysteryManager {
         midasHands.clear();
         vendingCooldown.clear();
         teleporterCooldown.clear();
+        slotCooldown.clear();
+        hotPotatoDeadlines.clear();
     }
 
 
@@ -4296,9 +4624,12 @@ public class MurderMysteryManager {
 
     /** 按间隔在场地范围内随机生成掉落金锭（玩家可拾取）。 */
     private void maybeSpawnGold(MurderMysteryArena a) {
+        if (!goldSpawnEnabled(a)) {
+            return;
+        }
         long now = System.currentTimeMillis();
         long last = lastGoldSpawn.getOrDefault(a.getName(), 0L);
-        if (now - last < goldSpawnInterval() * 1000L) {
+        if (now - last < goldSpawnInterval(a) * 1000L) {
             return;
         }
         lastGoldSpawn.put(a.getName(), now);
@@ -4329,7 +4660,7 @@ public class MurderMysteryManager {
         // 主逻辑：按顺序从上次的位置往后找，补满 want 个（最多绕一圈）
         List<Location> golds = goldBlocks.get(a.getName());
         if (golds != null && !golds.isEmpty()) {
-            int want = Math.max(1, goldSpawnAmount());
+            int want = Math.max(1, goldSpawnAmount(a));
             int cursor = goldCursor.getOrDefault(a.getName(), 0);
             int placed = 0;
             for (int step = 0; step < golds.size() && placed < want; step++) {
@@ -4360,7 +4691,7 @@ public class MurderMysteryManager {
         }
 
         // 兜底：地图里没有金块 / 还没扫完 → 随机柱子从 maxY 往下找可到达的地面
-        for (int i = 0; i < Math.max(1, goldSpawnAmount()); i++) {
+        for (int i = 0; i < Math.max(1, goldSpawnAmount(a)); i++) {
             for (int attempt = 0; attempt < 10; attempt++) {
                 int x = minX + (int) (Math.random() * (maxX - minX + 1));
                 int z = minZ + (int) (Math.random() * (maxZ - minZ + 1));
@@ -4534,6 +4865,7 @@ public class MurderMysteryManager {
             items.load();
             loadVendingMachines();
             mechanisms.load(this::arenaAt);
+            rooms.load();
         } else {
             load(); // 重读场地/告示牌/战绩/items.yml/mechanisms.yml
         }
