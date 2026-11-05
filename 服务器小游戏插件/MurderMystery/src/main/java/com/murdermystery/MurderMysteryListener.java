@@ -284,6 +284,13 @@ public class MurderMysteryListener implements Listener {
             return;
         }
 
+        // 拉杆机关（目前是传送器）：按登记的类型分派，对局中右键触发
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
+                && m.handleLeverUse(p, event.getClickedBlock())) {
+            event.setCancelled(true);
+            return;
+        }
+
         // 售货机按钮（钻石块 + 按钮）：对局中右键随机抽一件货物
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
                 && m.handleVendingClick(p, event.getClickedBlock())) {

@@ -29,6 +29,7 @@ import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Sign;
+import org.bukkit.block.data.type.Switch;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.World;
@@ -145,6 +146,8 @@ public class MurderMysteryManager {
     private final LiveSidebar liveSidebar;
     /** items.yml：道具总表、售货机货物、GT混沌汽水事件配置。 */
     private final MurderMysteryItems items;
+    /** mechanisms.yml：机关参数；登记数据在 mechanisms-data.yml。 */
+    private final MurderMysteryMechanisms mechanisms;
     private final Random random = new Random();
     private final Map<String, MurderMysteryArena> arenas = new LinkedHashMap<>();
     private final Map<UUID, String> playerArena = new LinkedHashMap<>();
@@ -180,6 +183,8 @@ public class MurderMysteryManager {
     private final Map<UUID, ChickenRig> chickens = new LinkedHashMap<>();
     /** 被“胀气”放大过的玩家：UUID -> 原始体型，时间到/淘汰/局末恢复。 */
     private final Map<UUID, Double> originalScale = new LinkedHashMap<>();
+    /** 玩家上次使用传送器的时间（冷却用）。 */
+    private final Map<UUID, Long> teleporterCooldown = new LinkedHashMap<>();
 
     // ---------- 角色分配的公平性历史（详见 assignRoles） ----------
     /** 角色历史文件名（单独一份，不塞进会被 saveAll 回写的 config.yml）。 */
@@ -279,6 +284,7 @@ public class MurderMysteryManager {
         this.plugin = plugin;
         this.liveSidebar = new LiveSidebar(plugin);
         this.items = new MurderMysteryItems(plugin);
+        this.mechanisms = new MurderMysteryMechanisms(plugin);
         this.setup = new SetupMode(plugin, SETUP_TOOL_KEY);
         this.throwKey = new NamespacedKey(plugin, THROW_KEY);
         this.shopKey = new NamespacedKey(plugin, SHOP_KEY);
@@ -433,6 +439,7 @@ public class MurderMysteryManager {
         ensureRoleChanceDefaults();
         items.load(); // 道具总表 / 售货机货物 / GT混沌汽水事件
         loadVendingMachines();
+        mechanisms.load(); // 机关参数与已登记的拉杆/传送点
         ConfigurationSection js = plugin.getConfig().getConfigurationSection("join-signs");
         if (js != null) {
             for (String name : js.getKeys(false)) {
@@ -3103,6 +3110,169 @@ public class MurderMysteryManager {
         plugin.getConfig().set("vending-machines", new ArrayList<>(vendingMachines));
     }
 
+    // ---------- 传送器（拉杆机关） ----------
+
+    public List<Location> teleporterLevers() {
+        return mechanisms.teleporterLevers();
+    }
+
+    public List<Location> teleporterPoints() {
+        return mechanisms.teleporterPoints();
+    }
+
+    /** 对准拉杆登记为传送器。 */
+    public boolean addTeleporterLever(Player p) {
+        Block target = p.getTargetBlockExact(8);
+        if (target == null || target.getType() != Material.LEVER) {
+            msg(p, "&c请对准一个拉杆。");
+            return false;
+        }
+        if (!mechanisms.addLever(MurderMysteryMechanisms.TELEPORTER, target.getLocation())) {
+            msg(p, "&e这个拉杆已经登记过别的机关了。");
+            return false;
+        }
+        msg(p, "&a已登记传送器拉杆：&f" + shortLoc(target.getLocation()) + "&a。");
+        return true;
+    }
+
+    /** 取消对准拉杆的登记。 */
+    public boolean removeTeleporterLever(Player p) {
+        Block target = p.getTargetBlockExact(8);
+        if (target == null || target.getType() != Material.LEVER) {
+            msg(p, "&c请对准要取消的拉杆。");
+            return false;
+        }
+        if (!mechanisms.isLeverOfType(MurderMysteryMechanisms.TELEPORTER, target.getLocation())) {
+            msg(p, "&c这个拉杆没有登记为传送器。");
+            return false;
+        }
+        if (!mechanisms.removeLever(target.getLocation())) {
+            msg(p, "&c取消失败：拉杆登记数据不存在。");
+            return false;
+        }
+        msg(p, "&a已取消登记拉杆：&f" + shortLoc(target.getLocation()) + "&a。");
+        return true;
+    }
+
+    /** 把玩家当前站的位置登记为一个传送落点。 */
+    public void addTeleporterPoint(Player p) {
+        Location loc = p.getLocation().clone();
+        mechanisms.addPoint(loc);
+        msg(p, "&a已登记传送点 &f#" + mechanisms.teleporterPoints().size()
+                + "&a：&f" + shortLoc(loc) + "&a。");
+    }
+
+    /** 按 1 开始的编号删除传送点。 */
+    public boolean removeTeleporterPoint(Player p, int indexOneBased) {
+        if (!mechanisms.removePoint(indexOneBased)) {
+            msg(p, "&c没有这个编号的传送点（用 &e/mm teleporter list&c 查看）。");
+            return false;
+        }
+        msg(p, "&a已删除传送点 &f#" + indexOneBased + "&a。");
+        return true;
+    }
+
+    /**
+     * 右键拉杆的统一入口：按拉杆登记的类型分派（以后新增拉杆机关只需要在这里加一个 case）。
+     *
+     * @return true = 这个拉杆属于本插件（事件应取消）；false = 普通拉杆，放行
+     */
+    public boolean handleLeverUse(Player p, Block block) {
+        if (block == null || block.getType() != Material.LEVER) {
+            return false;
+        }
+        String type = mechanisms.leverTypeAt(block.getLocation());
+        if (type == null) {
+            return false;
+        }
+        return switch (type) {
+            case MurderMysteryMechanisms.TELEPORTER -> handleTeleporterUse(p, block);
+            default -> false;
+        };
+    }
+
+    /**
+     * 右键已登记的拉杆：随机传送到本场地内其他已登记落点。
+     *
+     * @return true = 这是本插件的传送器（事件应取消）；false = 不是传送器或不在对局中，放行普通拉杆
+     */
+    public boolean handleTeleporterUse(Player p, Block block) {
+        if (!mechanisms.teleporterEnabled()) {
+            return false;
+        }
+        if (block == null || block.getType() != Material.LEVER
+                || !mechanisms.isLeverOfType(MurderMysteryMechanisms.TELEPORTER, block.getLocation())) {
+            return false;
+        }
+        String arenaName = playerArena.get(p.getUniqueId());
+        MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
+        if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
+                || !a.getPlayers().contains(p.getUniqueId())) {
+            return false; // 不在对局里就当普通拉杆用
+        }
+        if (!a.contains(block.getLocation())) {
+            msg(p, "&c这个传送器不在这局场地范围内。");
+            return true;
+        }
+        UUID id = p.getUniqueId();
+        long now = System.currentTimeMillis();
+        long ready = teleporterCooldown.getOrDefault(id, 0L);
+        if (now < ready) {
+            Chat.actionBar(p, "&d传送器冷却中（&f" + Math.max(1, (ready - now + 999) / 1000) + "s&d）");
+            return true;
+        }
+        int minDistance = mechanisms.teleporterMinDistance();
+        double minSq = (double) minDistance * minDistance;
+        List<Location> candidates = new ArrayList<>();
+        for (Location point : mechanisms.teleporterPoints()) {
+            if (point.getWorld() == null || !point.getWorld().equals(block.getWorld())) {
+                continue;
+            }
+            if (!a.contains(point)) {
+                continue;
+            }
+            if (point.distanceSquared(p.getLocation()) < minSq) {
+                continue;
+            }
+            candidates.add(point);
+        }
+        if (candidates.isEmpty()) {
+            msg(p, mechanisms.teleporterNoTargetMessage());
+            return true;
+        }
+        Location dest = candidates.get(random.nextInt(candidates.size()));
+        animateLever(block);
+        p.teleport(dest);
+        Sound sound = parseSound(mechanisms.teleporterSound(), Sound.ENTITY_ENDERMAN_TELEPORT);
+        if (dest.getWorld() != null) {
+            dest.getWorld().playSound(dest, sound, 1f, 1f);
+            dest.getWorld().spawnParticle(Particle.PORTAL, dest.clone().add(0.0, 1.0, 0.0),
+                    40, 0.4, 0.8, 0.4, 0.1);
+        }
+        long cooldownMs = (long) Math.ceil(mechanisms.teleporterCooldownSeconds() * 1000.0);
+        if (cooldownMs > 0) {
+            teleporterCooldown.put(id, now + cooldownMs);
+        }
+        sendIfPresent(p, mechanisms.teleporterMessage());
+        return true;
+    }
+
+    /** 拉杆的视觉反馈：手动拉下，10 tick 后回弹（事件被取消，原版不会自己动）。 */
+    private void animateLever(Block block) {
+        if (!(block.getBlockData() instanceof Switch sw)) {
+            return;
+        }
+        sw.setPowered(true);
+        block.setBlockData(sw, false);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (block.getType() != Material.LEVER || !(block.getBlockData() instanceof Switch back)) {
+                return;
+            }
+            back.setPowered(false);
+            block.setBlockData(back, false);
+        }, 10L);
+    }
+
     // ---------- GT混沌汽水 ----------
 
     /** 右键喝汽水：先抽事件，抽到了才消耗一瓶。 */
@@ -3478,6 +3648,7 @@ public class MurderMysteryManager {
         restoreScale(p);
         cancelDoom(p.getUniqueId());
         midasHands.remove(p.getUniqueId());
+        teleporterCooldown.remove(p.getUniqueId()); // 机关冷却也一起清掉
     }
 
     /** 局末/离开时把汽水和售货机货物从背包清掉，避免带出对局世界。 */
@@ -3520,6 +3691,7 @@ public class MurderMysteryManager {
         originalScale.clear();
         midasHands.clear();
         vendingCooldown.clear();
+        teleporterCooldown.clear();
     }
 
 
@@ -4259,11 +4431,12 @@ public class MurderMysteryManager {
             }
         }
         if (running) {
-            plugin.getLogger().info("有对局正在进行：本次只重载规则数值与 items.yml，场地列表等这局结束再重载。");
+            plugin.getLogger().info("有对局正在进行：本次只重载规则数值、items.yml 与 mechanisms.yml，场地列表等这局结束再重载。");
             items.load();
             loadVendingMachines();
+            mechanisms.load();
         } else {
-            load(); // 重读场地/告示牌/战绩/items.yml
+            load(); // 重读场地/告示牌/战绩/items.yml/mechanisms.yml
         }
         invalidateGoldScan();
         int count = 0;

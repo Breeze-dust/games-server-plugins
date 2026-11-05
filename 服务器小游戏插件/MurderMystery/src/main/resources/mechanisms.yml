@@ -1,0 +1,29 @@
+# ========== 密室杀手机关配置 ==========
+# 本文件专门配置地图机关（目前有「传送器」）。
+# 改完执行 /mm reload 即可生效，无需重启。
+#
+# 机关类型：目前支持 teleporter（传送器）。
+# 每根拉杆都会在 mechanisms-data.yml 里记录自己的 type，以后新增其他用拉杆触发的机关时
+# 会作为新的 type 接入，同一张图里多种拉杆机关互不冲突。
+# 目前所有机关都由命令登记：/mm teleporter add|remove|list|point
+#
+# 传送器用法：
+#   1. 在地图里放一个拉杆；
+#   2. OP 对准拉杆执行 /mm teleporter add 登记；
+#   3. 站到想作为落点的位置执行 /mm teleporter point（可登记多个）；
+#   4. 对局中右键已登记的拉杆，就会随机传送到其他已登记落点。
+#   登记结果保存在同目录的 mechanisms-data.yml，不需要手改。
+
+teleporter:
+  # 是否启用传送器
+  enabled: true
+  # 同一名玩家两次传送之间的冷却（秒）
+  cooldown-seconds: 5
+  # 落点至少要离玩家当前位置多少格（避免随机到自己脚下）
+  min-distance: 3
+  # 传送成功时给玩家本人的提示
+  message: "&d传送器嗡的一声，你被传到了别处……"
+  # 没有可用落点时的提示
+  no-target-message: "&c传送器还没有其他可用的传送点。"
+  # 传送音效（Bukkit Sound 名称）
+  sound: ENTITY_ENDERMAN_TELEPORT

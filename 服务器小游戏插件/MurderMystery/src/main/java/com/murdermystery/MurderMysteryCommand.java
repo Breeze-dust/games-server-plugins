@@ -260,6 +260,55 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
                 }
                 return true;
             }
+            case "teleporter" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (!(sender instanceof Player p)) {
+                    Chat.send(sender, "&c该命令需要玩家执行（要对着拉杆或站在落点使用）。");
+                    return true;
+                }
+                String action = args.length >= 2 ? args[1].toLowerCase() : "list";
+                switch (action) {
+                    case "add" -> m.addTeleporterLever(p);
+                    case "remove", "del" -> m.removeTeleporterLever(p);
+                    case "point" -> {
+                        if (args.length >= 3 && (args[2].equalsIgnoreCase("remove") || args[2].equalsIgnoreCase("del"))) {
+                            if (args.length < 4) {
+                                Chat.send(sender, "&c用法：/mm teleporter point remove <编号>");
+                                return true;
+                            }
+                            try {
+                                m.removeTeleporterPoint(p, Integer.parseInt(args[3]));
+                            } catch (NumberFormatException ex) {
+                                Chat.send(sender, "&c编号必须是数字。");
+                            }
+                        } else {
+                            m.addTeleporterPoint(p);
+                        }
+                    }
+                    case "list" -> {
+                        List<Location> levers = m.teleporterLevers();
+                        List<Location> points = m.teleporterPoints();
+                        Chat.send(sender, "&6传送器拉杆（" + levers.size() + " 个）：");
+                        for (int i = 0; i < levers.size(); i++) {
+                            Location l = levers.get(i);
+                            Chat.send(sender, "&e#" + (i + 1) + " &f" + l.getWorld().getName() + " "
+                                    + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                        }
+                        Chat.send(sender, "&6传送点（" + points.size() + " 个）：");
+                        for (int i = 0; i < points.size(); i++) {
+                            Location l = points.get(i);
+                            Chat.send(sender, "&e#" + (i + 1) + " &f" + l.getWorld().getName() + " "
+                                    + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                        }
+                        if (levers.isEmpty() || points.isEmpty()) {
+                            Chat.send(sender, "&7提示：&e/mm teleporter add&7 对准拉杆登记；"
+                                    + "&e/mm teleporter point&7 把脚下位置加为落点。");
+                        }
+                    }
+                    default -> Chat.send(sender, "&c用法：/mm teleporter add|remove|list|point [remove <编号>]");
+                }
+                return true;
+            }
             case "reload" -> {
                 if (!admin) { noPerm(sender); return true; }
                 int count = m.reloadConfigAndRescanGold();
@@ -312,6 +361,7 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/mm joinsign <名>&f 放加入告示牌  &e/mm save&f 保存  &e/mm start&f 开始");
             Chat.send(sender, "&e/mm goldblocks <名>&f 列出该场所有金块坐标  &e/mm reload&f 重载配置并重新扫描金块");
             Chat.send(sender, "&e/mm vending add|remove|list&f 对准「钻石块+按钮」登记/取消售货机（货物权重在 items.yml）");
+            Chat.send(sender, "&e/mm teleporter add|remove|list&f 对准拉杆登记传送器；&e/mm teleporter point&f 把脚下位置加为落点（机关参数在 mechanisms.yml）");
             Chat.send(sender, "&e/mm stats reset&f 清空全部战绩");
         }
     }
@@ -329,17 +379,24 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             if (admin) {
                 subs.addAll(List.of("create", "remove", "edit", "rename", "setup", "setup-exit",
                         "pos1", "pos2", "center", "lobby", "save", "start", "joinsign",
-                        "goldblocks", "vending", "reload"));
+                        "goldblocks", "vending", "teleporter", "reload"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
         } else if (args.length == 2) {
             if (args[0].equalsIgnoreCase("vending")) {
                 out.addAll(List.of("add", "remove", "list"));
             }
+            if (args[0].equalsIgnoreCase("teleporter")) {
+                out.addAll(List.of("add", "remove", "point", "list"));
+            }
             if (List.of("join", "edit", "rename", "setup", "remove", "joinsign", "goldblocks")
                     .contains(args[0].toLowerCase())) {
                 out.addAll(plugin.getManager().getArenas().keySet().stream()
                         .filter(n -> n.toLowerCase().startsWith(args[1].toLowerCase())).collect(Collectors.toList()));
+            }
+        } else if (args.length == 3) {
+            if (args[0].equalsIgnoreCase("teleporter") && args[1].equalsIgnoreCase("point")) {
+                out.add("remove");
             }
         }
         return out;
