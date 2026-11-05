@@ -3,7 +3,7 @@
 > AI 先读这一段，能省掉读 3300 行源码
 
 - **一句话职责**：每局随机出 1 名杀手（持铁剑、不隐身）、1 名侦探和 1 名猎人，其余是无辜者（**最少 3 人才能开局**）；杀手用铁剑近战一击必杀、杀光所有无辜者才算赢，无辜者捡死亡掉落的金锭去绿宝石商店买「一击必杀石剑/弩」反杀，**猎人开局自带 1 把无限箭的弓**（原版弓手感：按住右键蓄力，松开发射；箭矢命中杀手一击必杀、打到好人两人同归于尽）；杀手被消灭或时间到（线上 300 秒）都是无辜者获胜。**猎人死亡时弓会掉在原地（发光 + 全员 title「猎人的弓掉落了」）；杀手不能捡，其他玩家可以捡起来使用，捡到的人再死亡会再次掉落并再次播报。** 杀手的追踪指南针会自动指向最近的存活无辜者，目标死亡后自动换下一个；**最后 `endgame-reveal.seconds` 秒杀手每秒自动看到连向所有存活好人的粒子线（只发给杀手本人，右键指南针可立即重画）**。
-- **地图机关 / 新道具（2026-11-05）**：**售货机**由「钻石块 + 按钮」组成，OP 对准按钮执行 `/mm vending add` 登记（`/mm vending remove|list` 取消/查看）；对局中右键已登记按钮，会按 `plugins/MurderMystery/items.yml` 里 `vending.goods` 的权重随机给一件货物（直接进背包，满了掉脚下），同一玩家有 `vending.cooldown-seconds` 冷却。**GT混沌汽水**（药水瓶，`items.yml` 的 `items.gt-soda`）：右键随机触发 9 种事件之一（迅捷、限时迅捷、迅捷5后死亡、迈达斯之手、阵营音效、全图嚎叫、可乐播报、变身鸡、胀气变大），每个事件都能在 `items.yml` 的 `effects.gt-soda` 里单独开关、调权重、调时长/等级/音效/金锭数；**抽到事件才消耗一瓶**。迈达斯之手让下一次近战（空手也行）直接杀死对方并把尸体换成金锭，好人误杀好人默认仍两人一起淘汰（可配置关闭）。
+- **地图机关 / 新道具（2026-11-05）**：**售货机**由「钻石块 + 按钮」组成，OP 对准按钮执行 `/mm vending add` 登记（`/mm vending remove|list` 取消/查看）；对局中右键已登记按钮，会按 `plugins/MurderMystery/items.yml` 里 `vending.goods` 的权重随机给一件货物（直接进背包，满了掉脚下），**每次抽货扣 `vending.cost-gold`（默认 2）个金锭，不够就不卖**，同一玩家有 `vending.cooldown-seconds` 冷却。**GT混沌汽水**（药水瓶，`items.yml` 的 `items.gt-soda`）：右键随机触发 9 种事件之一（迅捷、限时迅捷、迅捷5后死亡、迈达斯之手、阵营音效、全图嚎叫、可乐播报、变身鸡、胀气变大），每个事件都能在 `items.yml` 的 `effects.gt-soda` 里单独开关、调权重、调时长/等级/音效/金锭数；**抽到事件才消耗一瓶**。迈达斯之手让下一次近战（空手也行）直接杀死对方并把尸体换成金锭，好人误杀好人默认仍两人一起淘汰（可配置关闭）。**场地选区内的告示牌只有管理员能修改文字**（非管理员右键不会打开编辑器，`SignChangeEvent` 也会被取消）。
 - **入口 / 主流程**：`MurderMystery/src/main/java/com/murdermystery/MurderMysteryPlugin.java#onEnable` → `MurderMysteryManager#load`（读 `arenas` 段 + 战绩，并把场地上报给 HubCore）。
   - 开局：`MurderMysteryManager#start`（同文件）→ 置 `State.RUNNING`、`enableWorldPvp`、`assignRoles`、把玩家分散传送到金块上、
     **只发商店道具**（`holdShopItem`：绿宝石进中间 4 号槽**并把手持槽停在那一格**，人人一个不暴露身份）→ `startRoleCountdown` **两段式倒数**（都在 `roleCountdown` 里，`isRoleCountdown` 拦掉一切伤害）：
@@ -103,9 +103,10 @@
  16. **杀手指南针自动跟踪**：开局拿到指南针后**不按右键**，移动时指针应持续指向最近的存活无辜者；让被指向的人被杀手刀掉（或退出/掉出世界）→
      指南针应在约 0.25 秒内自动转向下一个最近的存活无辜者；右键仍会立即重新锁定最近的玩家并报出距离。多杀手局里指针不会指向其他杀手。
  17. **最后 N 秒粒子指引**：把 `endgame-reveal.seconds` 设为 `60`（或 `50`）→ 对局进入最后 N 秒后，杀手每秒自动看到从自己连向**每个存活好人**的粒子线，终点有竖向粒子标记；粒子只发给杀手，其他玩家看不到。右键指南针会立即重画一次（0.5 秒节流）。把 `seconds` 设为 `0` 可关闭。**粒子会被墙挡住**，只适合指示方向/大致位置；要穿墙的真实轮廓仍需协议库或假实体方案。
- 18. **售货机**：在地图里放一个钻石块、在它侧面/上面安一个按钮，OP 对准按钮执行 `/mm vending add` → 聊天栏应报出按钮坐标；`/mm vending list` 能看到它。对局中右键该按钮 → 应按 `items.yml` 的 `vending.goods` 权重直接给一件货物（聊天栏「售货机吐出了 …」），3 秒内再点只显示冷却；对局外右键仍是普通按钮。`/mm vending remove` 后再点不再发货。
- 19. **GT混沌汽水**：把 `vending.goods` 里 `gt-soda` 权重临时调到很大，从售货机抽到后右键 → 应消耗 1 瓶并随机触发 1 种事件；事件文案/音效/药水效果与 `effects.gt-soda` 配置一致；把某个事件 `enabled: false` 或 `weight: 0` 后 `/mm reload`，它不应再出现。汽水在**对局外右键不会消耗**。
- 20. **特殊事件**：`speed-doom`（默认杀手不能触发）触发时全场聊天栏出现「<玩家>：你跑不过我你信吗」、本人紫色「你觉得你的血条有点发紫」，30 秒后本人被淘汰；`midas` 下一次近战（空手也行）直接杀人、原地掉 5 个金锭且**不留尸体**，好人误杀好人默认两人都淘汰；`chicken` 期间其他玩家只看到一只鸡跟着移动、本人不能右键任何道具，杀手打鸡可把本人淘汰；`inflate` 期间体型变大、移动变慢，5 秒后恢复。局末/`/mm leave`/退出后汽水与售货机货物从背包清掉。
+ 18. **售货机**：在地图里放一个钻石块、在它侧面/上面安一个按钮，OP 对准按钮执行 `/mm vending add` → 聊天栏应报出按钮坐标；`/mm vending list` 能看到它。对局中右键该按钮 → 应先扣 `vending.cost-gold`（默认 2）个金锭，再按 `items.yml` 的 `vending.goods` 权重给一件货物（聊天栏「售货机吐出了 …（花费 2 金锭）」）；**金锭不足 2 个时只提示「金锭不足」，不给货也不扣冷却**；3 秒内再点只显示冷却；对局外右键仍是普通按钮。`/mm vending remove` 后再点不再发货。
+ 19. **场地告示牌保护**：用非管理员账号在场地选区里右键告示牌 → 不应打开编辑器，actionbar 提示「非管理员不能修改场地内的告示牌」；若通过其他方式触发 `SignChangeEvent` 同样会被取消。OP / `mm.admin` 账号可以正常改字（仍然不能破坏/放置方块）。
+ 20. **GT混沌汽水**：把 `vending.goods` 里 `gt-soda` 权重临时调到很大，从售货机抽到后右键 → 应消耗 1 瓶并随机触发 1 种事件；事件文案/音效/药水效果与 `effects.gt-soda` 配置一致；把某个事件 `enabled: false` 或 `weight: 0` 后 `/mm reload`，它不应再出现。汽水在**对局外右键不会消耗**。
+ 21. **特殊事件**：`speed-doom`（默认杀手不能触发）触发时全场聊天栏出现「<玩家>：你跑不过我你信吗」、本人紫色「你觉得你的血条有点发紫」，30 秒后本人被淘汰；`midas` 下一次近战（空手也行）直接杀人、原地掉 5 个金锭且**不留尸体**，好人误杀好人默认两人都淘汰；`chicken` 期间其他玩家只看到一只鸡跟着移动、本人不能右键任何道具，杀手打鸡可把本人淘汰；`inflate` 期间体型变大、移动变慢，5 秒后恢复。局末/`/mm leave`/退出后汽水与售货机货物从背包清掉。
 
 - **未确认 / TODO**：
   - **2026-10-18 真理之石右键打开「选择探测目标」菜单**：新增 `TruthMenuHolder`（`InventoryHolder`，格子→UUID）+
@@ -257,7 +258,7 @@ OP：
 `server/plugins/MurderMystery/items.yml` 记录本游戏所有道具，改完 `/mm reload` 生效：
 
 - `items.<id>`：`enabled`、`type`（`gt-soda` / `shop-sword` / `shop-crossbow` / `arrow` / `truth-stone` / `death-note` / `steak` / `plain`）、`amount`、`name`、`lore`。
-- `vending.goods.<货物>`：`item` 指向 `items` 里的 id，`weight` 是售货机出现权重（0 = 不出现）；`vending.cooldown-seconds` 是同一玩家的抽货冷却。
+- `vending.goods.<货物>`：`item` 指向 `items` 里的 id，`weight` 是售货机出现权重（0 = 不出现）；`vending.cost-gold` 是每次抽货扣除的金锭数（默认 2，0 = 免费），`vending.cooldown-seconds` 是同一玩家的抽货冷却。
 - `effects.gt-soda.<事件>`：每个事件都有 `enabled`、`weight`、`allow-murderer`，以及各自的 `duration-seconds` / `amplifier` / 金锭数 / 音效 / 文案等；事件 key 与实现的对应关系：
   `speed-burst`、`speed-long`、`speed-doom`、`midas`、`faction-sound`、`global-howl`、`cola`、`chicken`、`inflate`。
 

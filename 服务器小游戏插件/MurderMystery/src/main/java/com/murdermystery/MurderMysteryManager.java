@@ -2971,6 +2971,24 @@ public class MurderMysteryManager {
         return new ArrayList<>(vendingMachines);
     }
 
+    /** 管理员（OP 或 mm.admin）才能修改场地内的告示牌。 */
+    public boolean canEditArenaSign(Player p) {
+        return p != null && (p.isOp() || p.hasPermission("mm.admin"));
+    }
+
+    /** 这个位置是否落在任一场地的选区里（告示牌保护用）。 */
+    public boolean isInAnyArena(Location loc) {
+        if (loc == null || loc.getWorld() == null) {
+            return false;
+        }
+        for (MurderMysteryArena a : arenas.values()) {
+            if (a.contains(loc)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 这个方块是不是已登记的售货机按钮。 */
     public boolean isVendingButton(Block block) {
         if (block == null) {
@@ -3049,13 +3067,22 @@ public class MurderMysteryManager {
             msg(p, "&c这件货物配置无效（" + good.itemId() + "），检查 items.yml。");
             return true;
         }
+        int cost = items.vendingCostGold();
+        if (cost > 0 && goldCount(p) < cost) {
+            msg(p, "&c金锭不足：售货机要 &e" + cost + " 金锭&c（你只有 &e" + goldCount(p) + "&c）。");
+            return true;
+        }
+        if (cost > 0) {
+            removeGold(p, cost);
+        }
         giveOrDrop(p, out);
         long cooldownMs = (long) Math.ceil(items.vendingCooldownSeconds() * 1000.0);
         if (cooldownMs > 0) {
             vendingCooldown.put(id, now + cooldownMs);
         }
         p.getWorld().playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
-        msg(p, "&e售货机吐出了 " + itemDisplayName(out) + "&e！");
+        msg(p, "&e售货机吐出了 " + itemDisplayName(out) + "&e！"
+                + (cost > 0 ? "&7（花费 &f" + cost + "&7 金锭）" : ""));
         return true;
     }
 

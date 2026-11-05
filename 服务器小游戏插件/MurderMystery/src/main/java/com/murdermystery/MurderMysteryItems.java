@@ -81,6 +81,7 @@ public final class MurderMysteryItems {
     private final List<Good> goods = new ArrayList<>();
     private final List<EffectDef> effects = new ArrayList<>();
     private double vendingCooldownSeconds = 3.0;
+    private int vendingCostGold = 2;
 
     public MurderMysteryItems(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
@@ -155,6 +156,7 @@ public final class MurderMysteryItems {
         effects.clear();
         effects.addAll(parsedEffects);
         vendingCooldownSeconds = Math.max(0.0, yml.getDouble("vending.cooldown-seconds", 3.0));
+        vendingCostGold = Math.max(0, yml.getInt("vending.cost-gold", 2));
 
         for (Good good : goods) {
             if (!items.containsKey(good.itemId())) {
@@ -181,6 +183,11 @@ public final class MurderMysteryItems {
 
     public double vendingCooldownSeconds() {
         return vendingCooldownSeconds;
+    }
+
+    /** 每次从售货机抽货扣除的金锭数量（0 = 免费）。 */
+    public int vendingCostGold() {
+        return vendingCostGold;
     }
 
     /** 按权重抽一件货物；没有可用货物时返回 null。 */

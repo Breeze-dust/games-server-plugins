@@ -54,6 +54,8 @@ items:
 # 售货机由「钻石块 + 按钮」组成，OP 对准按钮执行 /mm vending add 登记；
 # 对局中右键已登记的按钮，从下面的 goods 列表按权重随机给玩家一件货物。
 vending:
+  # 每次从售货机抽货扣除的金锭数量；0 = 免费
+  cost-gold: 2
   # 同一名玩家两次抽货之间的冷却（秒）
   cooldown-seconds: 3
   # 货物列表（单独一份）：item 填上面 items 里的 id，weight 是出现权重。

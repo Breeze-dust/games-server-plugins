@@ -14,6 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -589,10 +590,34 @@ public class MurderMysteryListener implements Listener {
     /** Paper：右键告示牌先触发本事件，cancel 后 PlayerInteractEvent 不再触发。 */
     @EventHandler
     public void onSignOpen(PlayerSignOpenEvent event) {
-        if (event.getSign() != null && plugin.getManager().isJoinSign(event.getSign().getLocation())) {
-            event.setCancelled(true);
-            plugin.getManager().onSignClick(event.getPlayer(), event.getSign().getLocation());
+        MurderMysteryManager m = plugin.getManager();
+        if (event.getSign() == null) {
+            return;
         }
+        if (m.isJoinSign(event.getSign().getLocation())) {
+            event.setCancelled(true);
+            m.onSignClick(event.getPlayer(), event.getSign().getLocation());
+            return;
+        }
+        // 场地内的告示牌：非管理员不能打开编辑器修改文字
+        if (m.isInAnyArena(event.getSign().getLocation()) && !m.canEditArenaSign(event.getPlayer())) {
+            event.setCancelled(true);
+            Chat.actionBar(event.getPlayer(), "&c非管理员不能修改场地内的告示牌。");
+        }
+    }
+
+    /** 兜底：即使编辑器被绕过，非管理员对场地内告示牌的修改也一律取消。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onSignChange(SignChangeEvent event) {
+        MurderMysteryManager m = plugin.getManager();
+        if (!m.isInAnyArena(event.getBlock().getLocation())) {
+            return;
+        }
+        if (m.canEditArenaSign(event.getPlayer())) {
+            return;
+        }
+        event.setCancelled(true);
+        Chat.actionBar(event.getPlayer(), "&c非管理员不能修改场地内的告示牌。");
     }
 
     /** 存活玩家菜单点击（观战者）：点头像传送到该玩家那里，并取消拿物品。 */
