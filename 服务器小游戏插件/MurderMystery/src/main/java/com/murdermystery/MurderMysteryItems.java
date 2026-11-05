@@ -21,7 +21,8 @@ public final class MurderMysteryItems {
     private static final String FILE_NAME = "items.yml";
 
     public record ItemDef(String id, String type, boolean enabled, Material material,
-                          int amount, String name, List<String> lore) {
+                          int amount, String name, List<String> lore,
+                          boolean murdererOnly, ConfigurationSection section) {
     }
 
     public static final class EffectDef {
@@ -108,7 +109,9 @@ public final class MurderMysteryItems {
                         material,
                         Math.max(1, sec.getInt("amount", 1)),
                         sec.getString("name", ""),
-                        sec.getStringList("lore")));
+                        sec.getStringList("lore"),
+                        sec.getBoolean("murderer-only", false),
+                        sec));
             }
         }
 

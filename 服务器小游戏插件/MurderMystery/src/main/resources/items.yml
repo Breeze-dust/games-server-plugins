@@ -10,6 +10,7 @@
 #   truth-stone    真理之石
 #   death-note     死亡名单
 #   steak          牛排（断头饭）
+#   rpg            RPG（铁锄头，右键发射直线导弹；只能杀手获得/使用）
 #   plain          普通物品（只按 material / name / lore 生成，没有特殊行为）
 
 items:
@@ -49,6 +50,34 @@ items:
     enabled: true
     type: steak
     amount: 5
+
+  rpg:
+    enabled: true
+    type: rpg
+    # 铁锄头代表 RPG
+    material: IRON_HOE
+    amount: 1
+    name: "&cRPG"
+    lore:
+      - "&7右键发射一枚直线飞行的导弹"
+      - "&7命中后爆炸，范围内所有玩家淘汰"
+      - "&8只有杀手能获得和使用"
+    # 只有杀手能抽到（售货机会按这个过滤）
+    murderer-only: true
+    # 爆炸半径（格）
+    explosion-radius: 4.0
+    # 导弹最大飞行距离（格）
+    max-distance: 60.0
+    # 飞行速度（格/tick，20 tick = 1 秒）
+    speed: 1.5
+    # 命中判定：离导弹多近的玩家算被击中（格）
+    hit-radius: 1.0
+    # 使用后是否消耗这把 RPG
+    consume: true
+    # 两次发射的冷却（秒）
+    cooldown-seconds: 3
+    # 爆炸是否也会杀死开火的杀手自己（默认 false）
+    damage-shooter: false
 
 # ========== 售货机 ==========
 # 售货机的价格、冷却、货物权重已经移到 mechanisms.yml 的 vending 段。
@@ -143,3 +172,12 @@ effects:
       slowness-amplifier: 1
       scale: 1.6
       message: "&e胀气了，有点走不动道"
+
+    # 10. 隐身 7 秒：不显示粒子；手中的物品默认隐藏（可关）
+    invisibility:
+      enabled: true
+      weight: 10
+      allow-murderer: true
+      duration-seconds: 7
+      hide-held-item: true
+      message: "&f你变得透明"

@@ -1,11 +1,13 @@
 # MurderMystery（密室杀手）—— 速查卡
 
 > AI 先读这一段，能省掉读 3300 行源码
+> **道具 / 机关改动规则见 [AGENTS.md](AGENTS.md)：新增或修改道具时必须同步 items.yml、mechanisms.yml 和 README。**
 
 - **一句话职责**：每局随机出 1 名杀手（持铁剑、不隐身）、1 名侦探和 1 名猎人，其余是无辜者（**最少 3 人才能开局**）；杀手用铁剑近战一击必杀、杀光所有无辜者才算赢，无辜者捡死亡掉落的金锭去绿宝石商店买「一击必杀石剑/弩」反杀，**猎人开局自带 1 把无限箭的弓**（原版弓手感：按住右键蓄力，松开发射；箭矢命中杀手一击必杀、打到好人两人同归于尽）；杀手被消灭或时间到（线上 300 秒）都是无辜者获胜。**猎人死亡时弓会掉在原地（发光 + 全员 title「猎人的弓掉落了」）；杀手不能捡，其他玩家可以捡起来使用，捡到的人再死亡会再次掉落并再次播报。** 杀手的追踪指南针会自动指向最近的存活无辜者，目标死亡后自动换下一个；**最后 `endgame-reveal.seconds` 秒杀手每秒自动看到连向所有存活好人的粒子线（只发给杀手本人，右键指南针可立即重画）**。
-- **地图机关 / 新道具（2026-11-05）**：**售货机**由「钻石块 + 按钮」组成，OP 对准按钮执行 `/mm vending add` 登记（`/mm vending remove|list` 取消/查看）；对局中右键已登记按钮，会按 `plugins/MurderMystery/mechanisms.yml` 里 `vending.goods` 的权重随机给一件货物（直接进背包，满了掉脚下），**每次抽货扣 `vending.cost-gold`（默认 2）个金锭，不够就不卖**，同一玩家有 `vending.cooldown-seconds` 冷却。**GT混沌汽水**（药水瓶，`items.yml` 的 `items.gt-soda`）：右键随机触发 9 种事件之一（迅捷、限时迅捷、迅捷5后死亡、迈达斯之手、阵营音效、全图嚎叫、可乐播报、变身鸡、胀气变大），每个事件都能在 `items.yml` 的 `effects.gt-soda` 里单独开关、调权重、调时长/等级/音效/金锭数；**抽到事件才消耗一瓶**。迈达斯之手让下一次近战（空手也行）直接杀死对方并把尸体换成金锭，好人误杀好人默认仍两人一起淘汰（可配置关闭）。**场地选区内的告示牌只有管理员能修改文字**（非管理员右键不会打开编辑器，`SignChangeEvent` 也会被取消）。
+- **地图机关 / 新道具（2026-11-05）**：**售货机**由「钻石块 + 按钮」组成，OP 对准按钮执行 `/mm vending add` 登记（`/mm vending remove|list` 取消/查看）；对局中右键已登记按钮，会按 `plugins/MurderMystery/mechanisms.yml` 里 `vending.goods` 的权重随机给一件货物（直接进背包，满了掉脚下），**每次抽货扣 `vending.cost-gold`（默认 2）个金锭，不够就不卖**，同一玩家有 `vending.cooldown-seconds` 冷却。**GT混沌汽水**（药水瓶，`items.yml` 的 `items.gt-soda`）：右键随机触发 10 种事件之一（迅捷、限时迅捷、迅捷5后死亡、迈达斯之手、阵营音效、全图嚎叫、可乐播报、变身鸡、胀气变大、隐身 7 秒），每个事件都能在 `items.yml` 的 `effects.gt-soda` 里单独开关、调权重、调时长/等级/音效/金锭数；**抽到事件才消耗一瓶**。迈达斯之手让下一次近战（空手也行）直接杀死对方并把尸体换成金锭，好人误杀好人默认仍两人一起淘汰（可配置关闭）。**场地选区内的告示牌只有管理员能修改文字**（非管理员右键不会打开编辑器，`SignChangeEvent` 也会被取消）。
 - **老虎机机关（2026-11-06）**：地图上放拉杆，OP 对准执行 `/mm slot add` 登记；对局中右键已登记拉杆，**先扣 `slot-machine.cost-gold`（默认 2）金锭**，再按 `mechanisms.yml` 的 `slot-machine.effects` 权重抽一个效果：金锭翻倍（保底 6，全房间播报）、+5、+3、-2、获得「烫手山芋」。老虎机也按场地隔离，**每根拉杆记录 type 与所属场地**。
 - **烫手山芋**：从老虎机抽出时 30 秒倒计时（action bar 显示），并向全房间播报「有人获得了烫手山芋！」；拿着它攻击其他玩家可把山芋和**剩余倒计时**一起转手（不重置）；倒计时结束在持有者位置爆炸（不破坏地形）并**只淘汰持有者本人，不算任何人的击杀**。不能丢弃。
+- **RPG（2026-11-06）**：铁锄头外观，**只有杀手能获得/使用**（售货机抽货会按 `items.yml` 的 `murderer-only: true` 过滤）。右键朝视线方向发射一枚直线导弹，命中玩家/方块或达到最大距离时爆炸，**爆炸半径内所有好人淘汰**（不误伤其他杀手；默认不伤开火者，可配）。半径、飞行距离、速度、命中判定、是否消耗、冷却都在 `items.yml` 的 `items.rpg` 里配。
 - **房间配置（2026-11-06）**：`plugins/MurderMystery/rooms.yml` 按场地独立配置金锭刷新（`gold-spawn-enabled` / `gold-spawn-interval` / `gold-spawn-amount` / `gold-per-death`），没写的项沿用 config.yml 的全局值；`/mm rooms` 查看每个房间当前生效值。
 - **传送器机关（2026-11-05）**：地图上放一个拉杆，OP 对准执行 `/mm teleporter add` 登记为传送器；站到落点执行 `/mm teleporter point` 登记（可多个），`/mm teleporter list` 查看，`/mm teleporter point remove <编号>` 删除。对局中右键已登记拉杆 → 随机传送到本场地内其他已登记落点（有冷却与最小距离），**每次扣 `teleporter.cost-gold`（默认 5）个金锭，不够就不传**。机关参数在 `plugins/MurderMystery/mechanisms.yml`，登记数据在 `mechanisms-data.yml`。**每根拉杆都记录自己的机关 type 和所属场地**（目前是 `teleporter`），登记时绑定场地、使用时只读同场地数据，**不同地图的机关不会串联**；拉杆和落点都必须放在该场地的 pos1/pos2 选区内。
 - **入口 / 主流程**：`MurderMystery/src/main/java/com/murdermystery/MurderMysteryPlugin.java#onEnable` → `MurderMysteryManager#load`（读 `arenas` 段 + 战绩，并把场地上报给 HubCore）。
@@ -120,6 +122,8 @@
  24. **老虎机**：场地里放拉杆，OP 对准 `/mm slot add`；`/mm slot list` 应列出该场地的老虎机与启动花费。对局中右键拉杆 → 先扣 2 金锭，再按权重触发效果：大奖（金锭翻倍、至少 6 个、全房间聊天栏播报）、+5、+3、-2（不足则扣光）；金锭不足 2 个时只提示、不启动也不扣冷却。把某个效果 `enabled: false` 或 `weight: 0` 后 `/mm reload` 应不再出现。
  25. **烫手山芋**：抽到后背包出现「烫手山芋」，action bar 每秒显示剩余秒数，全房间聊天栏出现「有人获得了烫手山芋！」；30 秒后持有者位置爆炸（不破坏地形）并只淘汰本人（不算击杀）。拿着山芋攻击其他玩家 → 山芋和**剩余倒计时**一起转给对方（对方聊天栏提示剩余秒数，倒计时不重置）；对方已经拿着时只提示、不重复给。山芋按 Q 丢不掉。
  26. **房间配置**：在 `rooms.yml` 给某个场地写 `gold-spawn-interval: 20` / `gold-spawn-amount: 2` / `gold-per-death: 3` → `/mm reload` 后 `/mm rooms` 应显示该场地的值，其他场地仍显示全局值；该场地补金锭间隔变为 20 秒、每次补 2 个金块、死亡掉 3 金锭。设 `gold-spawn-enabled: false` 后该场地不再自动补货。
+ 27. **隐身效果**：把 `effects.gt-soda.invisibility` 权重调高，喝汽水抽到后 → 玩家进入隐身且**不冒药水粒子**，手中物品消失（`hide-held-item: true` 时），聊天栏收到「你变得透明」；7 秒后手中物品自动回到原槽。把 `hide-held-item` 改成 `false` 后，隐身时手中物品应保持可见。
+ 28. **RPG**：把 `items.rpg` 和 `mechanisms.yml` 的 `vending.goods.rpg` 配好后，让杀手从售货机抽到（好人不应抽到 RPG）。杀手右键 → 发射直线飞行的火焰/烟雾导弹，命中玩家/方块/最大距离后爆炸，半径内好人全部淘汰；试着调大 `explosion-radius` 后再开一炮，范围应明显变大；默认自己不会被炸死，`damage-shooter: true` 时应把自己也炸死并判无辜者胜。
 
 - **未确认 / TODO**：
   - **2026-10-18 真理之石右键打开「选择探测目标」菜单**：新增 `TruthMenuHolder`（`InventoryHolder`，格子→UUID）+
@@ -274,9 +278,10 @@ OP：
 
 `server/plugins/MurderMystery/items.yml` 记录本游戏所有道具，改完 `/mm reload` 生效：
 
-- `items.<id>`：`enabled`、`type`（`gt-soda` / `shop-sword` / `shop-crossbow` / `arrow` / `truth-stone` / `death-note` / `steak` / `plain`）、`amount`、`name`、`lore`。
+- `items.<id>`：`enabled`、`type`（`gt-soda` / `shop-sword` / `shop-crossbow` / `arrow` / `truth-stone` / `death-note` / `steak` / `rpg` / `plain`）、`amount`、`name`、`lore`；`murderer-only: true` 的道具只有杀手能抽到。
+- RPG 专属配置（`items.rpg`）：`explosion-radius`（爆炸半径）、`max-distance`、`speed`、`hit-radius`、`consume`、`cooldown-seconds`、`damage-shooter`。
 - `effects.gt-soda.<事件>`：每个事件都有 `enabled`、`weight`、`allow-murderer`，以及各自的 `duration-seconds` / `amplifier` / 金锭数 / 音效 / 文案等；事件 key 与实现的对应关系：
-  `speed-burst`、`speed-long`、`speed-doom`、`midas`、`faction-sound`、`global-howl`、`cola`、`chicken`、`inflate`。
+  `speed-burst`、`speed-long`、`speed-doom`、`midas`、`faction-sound`、`global-howl`、`cola`、`chicken`、`inflate`、`invisibility`（`hide-held-item` 控制是否隐藏手中物品）。
 - **售货机货物、价格、冷却已移到 `mechanisms.yml` 的 `vending` 段**；旧版仍放在这里的配置会继续兼容读取并给出提示。
 
 ### 机关配置（mechanisms.yml）
@@ -284,7 +289,7 @@ OP：
 `server/plugins/MurderMystery/mechanisms.yml` 只放机关参数，由插件读取、不会被改写：
 
 - `vending.enabled` / `vending.cost-gold` / `vending.cooldown-seconds`：售货机开关、每次抽货扣多少金锭（默认 2）、冷却。
-- `vending.goods.<货物>`：`item` 指向 `items.yml` 里的 id，`weight` 是出现权重（0 = 不出现）。
+- `vending.goods.<货物>`：`item` 指向 `items.yml` 里的 id，`weight` 是出现权重（0 = 不出现）。默认含 `rpg`（`items.yml` 里标了 `murderer-only: true`，只有杀手能抽到）。
 - `teleporter.enabled` / `cost-gold` / `cooldown-seconds` / `min-distance`：传送器开关、每次扣多少金锭（默认 5）、冷却、落点最小距离。
 - `teleporter.message` / `no-target-message` / `sound`：成功提示 / 无落点提示 / 传送音效。
 - `slot-machine.enabled` / `cost-gold` / `cooldown-seconds`：老虎机开关、每次启动扣多少金锭（默认 2）、冷却。

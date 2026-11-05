@@ -309,6 +309,12 @@ public class MurderMysteryListener implements Listener {
         if (arenaName != null) {
             MurderMysteryArena a = m.getArena(arenaName);
             if (a != null && a.getState() == MurderMysteryArena.State.RUNNING) {
+                // RPG：杀手右键发射导弹（管理器中再校验身份/冷却/是否消耗）
+                if (item != null && m.isRpg(item)) {
+                    event.setCancelled(true);
+                    m.fireRpg(p);
+                    return;
+                }
                 // 商店弩不在这里拦截：交给原版弩自己装填/发射；猎人弓的无限箭由 EntityShootBowEvent 处理
                 if (item != null && m.isShopItem(item)) {
                     m.openShop(p);

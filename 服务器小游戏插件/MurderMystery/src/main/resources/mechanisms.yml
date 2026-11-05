@@ -50,6 +50,9 @@ vending:
     shop-crossbow:
       item: shop-crossbow
       weight: 7
+    rpg:
+      item: rpg
+      weight: 6
 
 # ========== 传送器 ==========
 teleporter:

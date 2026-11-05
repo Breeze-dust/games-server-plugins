@@ -118,6 +118,8 @@ public class MurderMysteryManager {
     private static final String VENDING_ITEM_KEY = "mm-vending-item";
     /** 烫手山芋标记。 */
     private static final String HOT_POTATO_KEY = "mm-hot-potato";
+    /** RPG 标记（铁锄头，杀手专属）。 */
+    private static final String RPG_KEY = "mm-rpg";
     /** 售货机变出来的鸡身上记录它对应的玩家 UUID。 */
     private static final String CHICKEN_OWNER_KEY = "mm-chicken-owner";
     /** 杀手的追踪指南针固定放在快捷栏最后一格。 */
@@ -193,6 +195,12 @@ public class MurderMysteryManager {
     private final Map<UUID, Long> slotCooldown = new LinkedHashMap<>();
     /** 烫手山芋：持有者 -> 爆炸时间戳（ms）。 */
     private final Map<UUID, Long> hotPotatoDeadlines = new LinkedHashMap<>();
+    /** RPG 冷却（UUID -> 可再次开火的时间戳 ms）。 */
+    private final Map<UUID, Long> rpgCooldown = new LinkedHashMap<>();
+    /** 飞行中的 RPG 导弹任务（局末/关服统一取消）。 */
+    private final List<BukkitTask> rpgMissiles = new ArrayList<>();
+    /** 隐身时被临时收起来的物品（UUID -> 槽位 + 物品），到时恢复。 */
+    private final Map<UUID, HiddenHeld> hiddenHeldItems = new LinkedHashMap<>();
 
     // ---------- 角色分配的公平性历史（详见 assignRoles） ----------
     /** 角色历史文件名（单独一份，不塞进会被 saveAll 回写的 config.yml）。 */
@@ -278,6 +286,8 @@ public class MurderMysteryManager {
     private final NamespacedKey chickenOwnerKey;
     /** 烫手山芋标记。 */
     private final NamespacedKey hotPotatoKey;
+    /** RPG 标记。 */
+    private final NamespacedKey rpgKey;
 
     /** 一只“鸡形态”玩家：对其他玩家隐藏玩家本体，用这只鸡代替外观。 */
     private static final class ChickenRig {
@@ -288,6 +298,10 @@ public class MurderMysteryManager {
             this.entity = entity;
             this.task = task;
         }
+    }
+
+    /** 隐身效果临时收起来的物品。 */
+    private record HiddenHeld(int slot, ItemStack item) {
     }
 
     public MurderMysteryManager(MurderMysteryPlugin plugin) {
@@ -312,6 +326,7 @@ public class MurderMysteryManager {
         this.vendingItemKey = new NamespacedKey(plugin, VENDING_ITEM_KEY);
         this.chickenOwnerKey = new NamespacedKey(plugin, CHICKEN_OWNER_KEY);
         this.hotPotatoKey = new NamespacedKey(plugin, HOT_POTATO_KEY);
+        this.rpgKey = new NamespacedKey(plugin, RPG_KEY);
         for (Role role : Role.values()) {
             roleMisses.put(role, new LinkedHashMap<>());
         }
@@ -2162,6 +2177,7 @@ public class MurderMysteryManager {
         goldCursor.remove(a.getName()); // 下一局重新从第一个金块开始按顺序刷
         roleCountdown.remove(a.getName());
         clearFlyingSwords(); // 场上还在飞的飞剑（雪球 + 铁剑展示实体）一起清掉
+        clearRpgMissiles(); // 还在飞的 RPG 导弹也取消
     }
 
     // ---------- 出界淘汰 ----------
@@ -2891,6 +2907,7 @@ public class MurderMysteryManager {
             case "truth-stone" -> truthStone();
             case "death-note" -> deathNote();
             case "steak" -> new ItemStack(Material.COOKED_BEEF, def.amount());
+            case "rpg" -> rpgItem(def);
             default -> plainConfiguredItem(def);
         };
     }
@@ -2937,6 +2954,194 @@ public class MurderMysteryManager {
     public boolean isGtSoda(ItemStack it) {
         return it != null && it.hasItemMeta()
                 && it.getItemMeta().getPersistentDataContainer().has(gtSodaKey, PersistentDataType.STRING);
+    }
+
+    // ---------- RPG（铁锄头，杀手专属） ----------
+
+    private ItemStack rpgItem(MurderMysteryItems.ItemDef def) {
+        Material mat = def.material() == Material.AIR ? Material.IRON_HOE : def.material();
+        ItemStack it = new ItemStack(mat, def.amount());
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.setUnbreakable(true);
+            meta.displayName(Chat.noItalic(LEGACY.deserialize(
+                    def.name() == null || def.name().isBlank() ? "&cRPG" : def.name())));
+            List<String> rawLore = def.lore() == null || def.lore().isEmpty()
+                    ? List.of("&7右键发射一枚直线飞行的导弹",
+                    "&7命中后爆炸，范围内所有玩家淘汰",
+                    "&8只有杀手能获得和使用")
+                    : def.lore();
+            List<Component> lore = new ArrayList<>();
+            for (String line : rawLore) {
+                lore.add(LEGACY.deserialize(line));
+            }
+            meta.lore(lore);
+            meta.getPersistentDataContainer().set(rpgKey, PersistentDataType.STRING, "1");
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    public boolean isRpg(ItemStack it) {
+        return it != null && it.hasItemMeta()
+                && it.getItemMeta().getPersistentDataContainer().has(rpgKey, PersistentDataType.STRING);
+    }
+
+    /** 右键 RPG：如果是杀手且在对局中，朝视线方向发射一枚直线导弹。 */
+    public void fireRpg(Player p) {
+        String arenaName = playerArena.get(p.getUniqueId());
+        MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
+        if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
+                || !a.getPlayers().contains(p.getUniqueId())) {
+            msg(p, "&7RPG 只在密室杀手对局中有效。");
+            return;
+        }
+        if (!a.isMurderer(p.getUniqueId())) {
+            msg(p, "&c只有杀手才能使用 RPG。");
+            return;
+        }
+        MurderMysteryItems.ItemDef def = items.item("rpg");
+        if (def == null) {
+            msg(p, "&cRPG 没有在 items.yml 里配置。");
+            return;
+        }
+        UUID id = p.getUniqueId();
+        long now = System.currentTimeMillis();
+        long ready = rpgCooldown.getOrDefault(id, 0L);
+        if (now < ready) {
+            Chat.actionBar(p, "&cRPG 冷却中（&f" + Math.max(1, (ready - now + 999) / 1000) + "s&c）");
+            return;
+        }
+        int cooldownSeconds = Math.max(0, def.section().getInt("cooldown-seconds", 3));
+        if (cooldownSeconds > 0) {
+            rpgCooldown.put(id, now + cooldownSeconds * 1000L);
+        }
+        if (def.section().getBoolean("consume", true)) {
+            ItemStack hand = p.getInventory().getItemInMainHand();
+            if (hand.getAmount() > 1) {
+                hand.setAmount(hand.getAmount() - 1);
+            } else {
+                p.getInventory().setItemInMainHand(null);
+            }
+        }
+        Location origin = p.getEyeLocation().clone();
+        org.bukkit.util.Vector dir = p.getLocation().getDirection().normalize();
+        origin.add(dir.clone().multiply(1.0));
+        launchRpgMissile(a, p, origin, dir,
+                Math.max(1.0, def.section().getDouble("explosion-radius", 4.0)),
+                Math.max(5.0, def.section().getDouble("max-distance", 60.0)),
+                Math.max(0.2, def.section().getDouble("speed", 1.5)),
+                Math.max(0.2, def.section().getDouble("hit-radius", 1.0)),
+                def.section().getBoolean("damage-shooter", false));
+        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1f, 1f);
+        Chat.actionBar(p, "&cRPG 已发射！");
+    }
+
+    private void launchRpgMissile(MurderMysteryArena a, Player shooter, Location origin,
+                                  org.bukkit.util.Vector dir, double explosionRadius,
+                                  double maxDistance, double speed, double hitRadius,
+                                  boolean damageShooter) {
+        UUID shooterId = shooter.getUniqueId();
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(plugin, new Runnable() {
+            private final Location pos = origin.clone();
+            private double traveled;
+
+            @Override
+            public void run() {
+                if (a.getState() != MurderMysteryArena.State.RUNNING || !a.getPlayers().contains(shooterId)) {
+                    cancelTask(holder[0]);
+                    return;
+                }
+                World world = pos.getWorld();
+                if (world == null) {
+                    cancelTask(holder[0]);
+                    return;
+                }
+                pos.add(dir.clone().multiply(speed));
+                traveled += speed;
+                world.spawnParticle(Particle.FLAME, pos, 2, 0.05, 0.05, 0.05, 0.01);
+                world.spawnParticle(Particle.SMOKE, pos, 2, 0.05, 0.05, 0.05, 0.01);
+
+                boolean hitPlayer = false;
+                double hitSq = hitRadius * hitRadius;
+                for (UUID victimId : new ArrayList<>(a.getPlayers())) {
+                    Player victim = Bukkit.getPlayer(victimId);
+                    if (victim == null || !victim.isOnline() || !victim.getWorld().equals(world)) {
+                        continue;
+                    }
+                    if (victim.getUniqueId().equals(shooterId) && !damageShooter) {
+                        continue;
+                    }
+                    if (victim.getLocation().distanceSquared(pos) <= hitSq) {
+                        hitPlayer = true;
+                        break;
+                    }
+                }
+                boolean hitBlock = pos.getBlock().getType().isSolid();
+                if (hitPlayer || hitBlock || traveled >= maxDistance) {
+                    cancelTask(holder[0]);
+                    detonateRpg(a, shooter, pos.clone(), explosionRadius, damageShooter);
+                }
+            }
+        }, 1L, 1L);
+        rpgMissiles.add(holder[0]);
+    }
+
+    private void cancelTask(BukkitTask task) {
+        task.cancel();
+        rpgMissiles.remove(task);
+    }
+
+    private void detonateRpg(MurderMysteryArena a, Player shooter, Location at,
+                             double radius, boolean damageShooter) {
+        World world = at.getWorld();
+        if (world == null) {
+            return;
+        }
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, at, 1, 0, 0, 0, 0);
+        world.playSound(at, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.8f);
+        double radiusSq = radius * radius;
+        UUID shooterId = shooter.getUniqueId();
+        List<Player> victims = new ArrayList<>();
+        for (UUID id : new ArrayList<>(a.getPlayers())) {
+            Player victim = Bukkit.getPlayer(id);
+            if (victim == null || !victim.isOnline() || !victim.getWorld().equals(world)) {
+                continue;
+            }
+            if (victim.getLocation().distanceSquared(at) > radiusSq) {
+                continue;
+            }
+            if (victim.getUniqueId().equals(shooterId)) {
+                continue; // 开火者默认免疫，damageShooter 单独处理
+            }
+            if (a.isMurderer(id)) {
+                continue; // 不误伤其他杀手
+            }
+            victims.add(victim);
+        }
+        for (Player victim : victims) {
+            if (a.getState() != MurderMysteryArena.State.RUNNING) {
+                break;
+            }
+            handleMurdererKill(a, shooter, victim);
+        }
+        if (damageShooter && a.getState() == MurderMysteryArena.State.RUNNING
+                && a.getPlayers().contains(shooterId)
+                && shooter.getLocation().distanceSquared(at) <= radiusSq) {
+            eliminate(a, shooter);
+            endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + shooter.getName() + "&f）被自己的 RPG 炸死了。");
+            return;
+        }
+        checkMurdererWin(a);
+    }
+
+    /** 局末/关服：取消还在飞的导弹。 */
+    public void clearRpgMissiles() {
+        for (BukkitTask task : new ArrayList<>(rpgMissiles)) {
+            task.cancel();
+        }
+        rpgMissiles.clear();
     }
 
     /** 售货机给出的货物：带额外标记，局末/离开时统一清掉。 */
@@ -3137,7 +3342,11 @@ public class MurderMysteryManager {
             Chat.actionBar(p, "&e售货机冷却中（&f" + Math.max(1, (ready - now + 999) / 1000) + "s&e）");
             return true;
         }
-        MurderMysteryMechanisms.Good good = mechanisms.pickGood(random);
+        MurderMysteryMechanisms.Good good = mechanisms.pickGood(random, itemId -> {
+            MurderMysteryItems.ItemDef def = items.item(itemId);
+            return def != null && def.enabled()
+                    && (!def.murdererOnly() || a.isMurderer(p.getUniqueId()));
+        });
         if (good == null) {
             msg(p, "&c售货机里暂时没有可用的货物（检查 items.yml 的 vending.goods）。");
             return true;
@@ -3753,6 +3962,7 @@ public class MurderMysteryManager {
             case "cola" -> sendIfPresent(p, effect.getString("message", "&e可乐真好喝木嘿嘿嘿"));
             case "chicken" -> startChicken(a, p, effect);
             case "inflate" -> applyInflate(p, effect);
+            case "invisibility" -> applyInvisibility(p, effect);
             default -> msg(p, "&7汽水没有反应……（未知事件：" + effect.key() + "）");
         }
     }
@@ -4039,6 +4249,44 @@ public class MurderMysteryManager {
         Bukkit.getScheduler().runTaskLater(plugin, () -> restoreScale(p), seconds * 20L + 2L);
     }
 
+    /** 10. 隐身：不显示药水粒子；可选隐藏手中物品（到时自动恢复）。 */
+    private void applyInvisibility(Player p, MurderMysteryItems.EffectDef effect) {
+        int seconds = Math.max(1, effect.getInt("duration-seconds", 7));
+        restoreHiddenHeld(p); // 连续抽到时先把上一件放回去，避免物品被覆盖丢失
+        // addPotion 的 ambient/particles/icon 都是 false，所以不会冒粒子
+        addPotion(p, PotionEffectType.INVISIBILITY, seconds, 0);
+        if (effect.getBoolean("hide-held-item", true)) {
+            int slot = p.getInventory().getHeldItemSlot();
+            ItemStack hand = p.getInventory().getItem(slot);
+            if (hand != null && !hand.getType().isAir()) {
+                hiddenHeldItems.put(p.getUniqueId(), new HiddenHeld(slot, hand.clone()));
+                p.getInventory().setItem(slot, null);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> restoreHiddenHeld(p), seconds * 20L + 2L);
+            }
+        }
+        sendIfPresent(p, effect.getString("message", "&f你变得透明"));
+    }
+
+    /** 隐身结束：把临时收起来的物品放回原槽（背包操过就丢回背包/脚下）。 */
+    private void restoreHiddenHeld(Player p) {
+        if (p == null) {
+            return;
+        }
+        HiddenHeld hidden = hiddenHeldItems.remove(p.getUniqueId());
+        if (hidden == null || !p.isOnline()) {
+            return;
+        }
+        if (playerArena.get(p.getUniqueId()) == null) {
+            return; // 已经离开对局/被淘汰，物品不应再带出来
+        }
+        ItemStack current = p.getInventory().getItem(hidden.slot());
+        if (current == null || current.getType().isAir()) {
+            p.getInventory().setItem(hidden.slot(), hidden.item());
+        } else {
+            giveOrDrop(p, hidden.item());
+        }
+    }
+
     private void applyScale(Player p, double scale) {
         AttributeInstance attr = p.getAttribute(Attribute.SCALE);
         if (attr == null) {
@@ -4074,6 +4322,8 @@ public class MurderMysteryManager {
         teleporterCooldown.remove(p.getUniqueId()); // 机关冷却也一起清掉
         slotCooldown.remove(p.getUniqueId());
         hotPotatoDeadlines.remove(p.getUniqueId());
+        rpgCooldown.remove(p.getUniqueId());
+        hiddenHeldItems.remove(p.getUniqueId());
     }
 
     /** 局末/离开时把汽水和售货机货物从背包清掉，避免带出对局世界。 */
@@ -4081,7 +4331,7 @@ public class MurderMysteryManager {
         ItemStack[] contents = p.getInventory().getContents();
         for (int i = 0; i < contents.length; i++) {
             ItemStack it = contents[i];
-            if (it != null && (isGtSoda(it) || isVendingItem(it) || isHotPotato(it))) {
+            if (it != null && (isGtSoda(it) || isVendingItem(it) || isHotPotato(it) || isRpg(it))) {
                 p.getInventory().setItem(i, null);
             }
         }
@@ -4119,6 +4369,9 @@ public class MurderMysteryManager {
         teleporterCooldown.clear();
         slotCooldown.clear();
         hotPotatoDeadlines.clear();
+        rpgCooldown.clear();
+        hiddenHeldItems.clear();
+        clearRpgMissiles();
     }
 
 
@@ -4618,6 +4871,7 @@ public class MurderMysteryManager {
         goldScans.clear();
         clearFlyingSwords();
         clearGtSodaStates();
+        clearRpgMissiles();
     }
 
     // ---------- 场内金锭定时刷新 ----------

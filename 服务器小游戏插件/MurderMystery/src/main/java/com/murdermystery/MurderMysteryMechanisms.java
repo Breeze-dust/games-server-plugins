@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * 读取 {@code plugins/MurderMystery/mechanisms.yml}（机关参数，手写、插件不改写）
@@ -298,18 +299,23 @@ public final class MurderMysteryMechanisms {
         return vendingCooldownSeconds;
     }
 
-    /** 按权重抽一件售货机货物；没有可用货物时返回 null。 */
-    public Good pickGood(Random random) {
+    /** 按权重抽一件售货机货物；allowed 过滤掉当前玩家不能拿的货物（如杀手专属）。 */
+    public Good pickGood(Random random, Predicate<String> allowed) {
+        List<Good> pool = new ArrayList<>();
         double total = 0.0;
         for (Good good : vendingGoods) {
+            if (allowed != null && !allowed.test(good.itemId())) {
+                continue;
+            }
+            pool.add(good);
             total += good.weight();
         }
-        if (total <= 0) {
+        if (pool.isEmpty() || total <= 0) {
             return null;
         }
         double roll = random.nextDouble() * total;
-        Good last = vendingGoods.get(vendingGoods.size() - 1);
-        for (Good good : vendingGoods) {
+        Good last = pool.get(pool.size() - 1);
+        for (Good good : pool) {
             roll -= good.weight();
             if (roll <= 0) {
                 return good;
