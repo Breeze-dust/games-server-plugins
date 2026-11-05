@@ -4,7 +4,7 @@
 
 - **一句话职责**：每局随机出 1 名杀手（持铁剑、不隐身）、1 名侦探和 1 名猎人，其余是无辜者（**最少 3 人才能开局**）；杀手用铁剑近战一击必杀、杀光所有无辜者才算赢，无辜者捡死亡掉落的金锭去绿宝石商店买「一击必杀石剑/弩」反杀，**猎人开局自带 1 把无限箭的弓**（原版弓手感：按住右键蓄力，松开发射；箭矢命中杀手一击必杀、打到好人两人同归于尽）；杀手被消灭或时间到（线上 300 秒）都是无辜者获胜。**猎人死亡时弓会掉在原地（发光 + 全员 title「猎人的弓掉落了」）；杀手不能捡，其他玩家可以捡起来使用，捡到的人再死亡会再次掉落并再次播报。** 杀手的追踪指南针会自动指向最近的存活无辜者，目标死亡后自动换下一个；**最后 `endgame-reveal.seconds` 秒杀手每秒自动看到连向所有存活好人的粒子线（只发给杀手本人，右键指南针可立即重画）**。
 - **地图机关 / 新道具（2026-11-05）**：**售货机**由「钻石块 + 按钮」组成，OP 对准按钮执行 `/mm vending add` 登记（`/mm vending remove|list` 取消/查看）；对局中右键已登记按钮，会按 `plugins/MurderMystery/items.yml` 里 `vending.goods` 的权重随机给一件货物（直接进背包，满了掉脚下），**每次抽货扣 `vending.cost-gold`（默认 2）个金锭，不够就不卖**，同一玩家有 `vending.cooldown-seconds` 冷却。**GT混沌汽水**（药水瓶，`items.yml` 的 `items.gt-soda`）：右键随机触发 9 种事件之一（迅捷、限时迅捷、迅捷5后死亡、迈达斯之手、阵营音效、全图嚎叫、可乐播报、变身鸡、胀气变大），每个事件都能在 `items.yml` 的 `effects.gt-soda` 里单独开关、调权重、调时长/等级/音效/金锭数；**抽到事件才消耗一瓶**。迈达斯之手让下一次近战（空手也行）直接杀死对方并把尸体换成金锭，好人误杀好人默认仍两人一起淘汰（可配置关闭）。**场地选区内的告示牌只有管理员能修改文字**（非管理员右键不会打开编辑器，`SignChangeEvent` 也会被取消）。
-- **传送器机关（2026-11-05）**：地图上放一个拉杆，OP 对准执行 `/mm teleporter add` 登记为传送器；站到落点执行 `/mm teleporter point` 登记（可多个），`/mm teleporter list` 查看，`/mm teleporter point remove <编号>` 删除。对局中右键已登记拉杆 → 随机传送到本场地内其他已登记落点（有冷却与最小距离）。机关参数在 `plugins/MurderMystery/mechanisms.yml`，登记数据在 `mechanisms-data.yml`。**每根拉杆都记录自己的机关 type**（目前是 `teleporter`），以后新增其他拉杆机关不会和传送器混在一起。
+- **传送器机关（2026-11-05）**：地图上放一个拉杆，OP 对准执行 `/mm teleporter add` 登记为传送器；站到落点执行 `/mm teleporter point` 登记（可多个），`/mm teleporter list` 查看，`/mm teleporter point remove <编号>` 删除。对局中右键已登记拉杆 → 随机传送到本场地内其他已登记落点（有冷却与最小距离），**每次扣 `teleporter.cost-gold`（默认 5）个金锭，不够就不传**。机关参数在 `plugins/MurderMystery/mechanisms.yml`，登记数据在 `mechanisms-data.yml`。**每根拉杆都记录自己的机关 type**（目前是 `teleporter`），以后新增其他拉杆机关不会和传送器混在一起。
 - **入口 / 主流程**：`MurderMystery/src/main/java/com/murdermystery/MurderMysteryPlugin.java#onEnable` → `MurderMysteryManager#load`（读 `arenas` 段 + 战绩，并把场地上报给 HubCore）。
   - 开局：`MurderMysteryManager#start`（同文件）→ 置 `State.RUNNING`、`enableWorldPvp`、`assignRoles`、把玩家分散传送到金块上、
     **只发商店道具**（`holdShopItem`：绿宝石进中间 4 号槽**并把手持槽停在那一格**，人人一个不暴露身份）→ `startRoleCountdown` **两段式倒数**（都在 `roleCountdown` 里，`isRoleCountdown` 拦掉一切伤害）：
@@ -110,7 +110,7 @@
  19. **场地告示牌保护**：用非管理员账号在场地选区里右键告示牌 → 不应打开编辑器，actionbar 提示「非管理员不能修改场地内的告示牌」；若通过其他方式触发 `SignChangeEvent` 同样会被取消。OP / `mm.admin` 账号可以正常改字（仍然不能破坏/放置方块）。
  20. **GT混沌汽水**：把 `vending.goods` 里 `gt-soda` 权重临时调到很大，从售货机抽到后右键 → 应消耗 1 瓶并随机触发 1 种事件；事件文案/音效/药水效果与 `effects.gt-soda` 配置一致；把某个事件 `enabled: false` 或 `weight: 0` 后 `/mm reload`，它不应再出现。汽水在**对局外右键不会消耗**。
  21. **特殊事件**：`speed-doom`（默认杀手不能触发）触发时全场聊天栏出现「<玩家>：你跑不过我你信吗」、本人紫色「你觉得你的血条有点发紫」，30 秒后本人被淘汰；`midas` 下一次近战（空手也行）直接杀人、原地掉 5 个金锭且**不留尸体**，好人误杀好人默认两人都淘汰；`chicken` 期间其他玩家只看到一只鸡跟着移动、本人不能右键任何道具，杀手打鸡可把本人淘汰；`inflate` 期间体型变大、移动变慢，5 秒后恢复。局末/`/mm leave`/退出后汽水与售货机货物从背包清掉。
- 22. **传送器**：地图里放拉杆，OP 对准 `/mm teleporter add` → 聊天栏报出坐标；站到至少两个不同位置各执行一次 `/mm teleporter point`，`/mm teleporter list` 应列出拉杆与落点（编号从 1 开始）。对局中右键拉杆 → 应播放末影人传送音效 + 粒子，并随机传到**另一个**落点（距离小于 `min-distance` 的落点会被跳过）；冷却内再点只显示 actionbar 冷却。拉杆应手动拉下并在 10 tick 后回弹。`/mm teleporter point remove 1` 按编号删除落点；`/mm teleporter remove` 取消拉杆后，再右键恢复为普通拉杆行为。机关数据应写入 `server/plugins/MurderMystery/mechanisms-data.yml` 的 `levers.teleporter` 与 `teleporter.points`。
+ 22. **传送器**：地图里放拉杆，OP 对准 `/mm teleporter add` → 聊天栏报出坐标；站到至少两个不同位置各执行一次 `/mm teleporter point`，`/mm teleporter list` 应列出拉杆与落点（编号从 1 开始）。对局中右键拉杆 → 应先扣 `teleporter.cost-gold`（默认 5）个金锭，再播放末影人传送音效 + 粒子，并随机传到**另一个**落点（距离玩家或拉杆小于 `min-distance` 的落点都会被跳过，保证不会传回脚下/原地）；**金锭不足 5 个时只提示「金锭不足」，不传送也不扣冷却**。冷却内再点只显示 actionbar 冷却。拉杆应手动拉下并在 10 tick 后回弹。`/mm teleporter point remove 1` 按编号删除落点；`/mm teleporter remove` 取消拉杆后，再右键恢复为普通拉杆行为。机关数据应写入 `server/plugins/MurderMystery/mechanisms-data.yml` 的 `levers.teleporter` 与 `teleporter.points`。
 
 - **未确认 / TODO**：
   - **2026-10-18 真理之石右键打开「选择探测目标」菜单**：新增 `TruthMenuHolder`（`InventoryHolder`，格子→UUID）+
@@ -273,8 +273,9 @@ OP：
 `server/plugins/MurderMystery/mechanisms.yml` 只放机关参数，由插件读取、不会被改写：
 
 - `teleporter.enabled`：是否启用传送器。
+- `teleporter.cost-gold`：每次使用扣除的金锭数量（默认 5，0 = 免费）；金锭不足时不传送、不扣冷却。
 - `teleporter.cooldown-seconds`：同一玩家两次传送的冷却。
-- `teleporter.min-distance`：落点离玩家当前位置至少多少格（避免随机到脚下）。
+- `teleporter.min-distance`：落点离玩家当前位置和拉杆至少多少格（默认 3，避免随机到脚下或原地；设为 0 才会允许）。
 - `teleporter.message` / `no-target-message` / `sound`：成功提示 / 无落点提示 / 传送音效。
 
 已登记的拉杆与传送点写入同目录 `mechanisms-data.yml`（命令自动维护，不需要手改）。数据里按机关类型分组，例如 `levers.teleporter: [...]`；以后新增拉杆机关会有自己的 type 分组，互不覆盖。

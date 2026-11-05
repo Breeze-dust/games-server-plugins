@@ -3223,6 +3223,7 @@ public class MurderMysteryManager {
         }
         int minDistance = mechanisms.teleporterMinDistance();
         double minSq = (double) minDistance * minDistance;
+        Location leverCenter = block.getLocation().clone().add(0.5, 0.5, 0.5);
         List<Location> candidates = new ArrayList<>();
         for (Location point : mechanisms.teleporterPoints()) {
             if (point.getWorld() == null || !point.getWorld().equals(block.getWorld())) {
@@ -3231,7 +3232,9 @@ public class MurderMysteryManager {
             if (!a.contains(point)) {
                 continue;
             }
-            if (point.distanceSquared(p.getLocation()) < minSq) {
+            // 离玩家太近（包括脚下）或离拉杆太近（从几格外点按钮）都跳过，保证是“去别处”
+            if (point.distanceSquared(p.getLocation()) < minSq
+                    || point.distanceSquared(leverCenter) < minSq) {
                 continue;
             }
             candidates.add(point);
@@ -3239,6 +3242,14 @@ public class MurderMysteryManager {
         if (candidates.isEmpty()) {
             msg(p, mechanisms.teleporterNoTargetMessage());
             return true;
+        }
+        int cost = mechanisms.teleporterCostGold();
+        if (cost > 0 && goldCount(p) < cost) {
+            msg(p, "&c金锭不足：传送器要 &e" + cost + " 金锭&c（你只有 &e" + goldCount(p) + "&c）。");
+            return true;
+        }
+        if (cost > 0) {
+            removeGold(p, cost);
         }
         Location dest = candidates.get(random.nextInt(candidates.size()));
         animateLever(block);
@@ -3253,7 +3264,8 @@ public class MurderMysteryManager {
         if (cooldownMs > 0) {
             teleporterCooldown.put(id, now + cooldownMs);
         }
-        sendIfPresent(p, mechanisms.teleporterMessage());
+        sendIfPresent(p, mechanisms.teleporterMessage()
+                + (cost > 0 ? "&7（花费 &f" + cost + "&7 金锭）" : ""));
         return true;
     }
 

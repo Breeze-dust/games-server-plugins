@@ -29,6 +29,7 @@ public final class MurderMysteryMechanisms {
     private final List<Location> teleporterPoints = new ArrayList<>();
 
     private boolean teleporterEnabled = true;
+    private int teleporterCostGold = 5;
     private double teleporterCooldownSeconds = 5.0;
     private int teleporterMinDistance = 3;
     private String teleporterMessage = "&d传送器嗡的一声，你被传到了别处……";
@@ -47,6 +48,7 @@ public final class MurderMysteryMechanisms {
         }
         YamlConfiguration yml = YamlConfiguration.loadConfiguration(configFile);
         teleporterEnabled = yml.getBoolean("teleporter.enabled", true);
+        teleporterCostGold = Math.max(0, yml.getInt("teleporter.cost-gold", 5));
         teleporterCooldownSeconds = Math.max(0.0, yml.getDouble("teleporter.cooldown-seconds", 5.0));
         teleporterMinDistance = Math.max(0, yml.getInt("teleporter.min-distance", 3));
         teleporterMessage = yml.getString("teleporter.message", teleporterMessage);
@@ -107,6 +109,11 @@ public final class MurderMysteryMechanisms {
 
     public boolean teleporterEnabled() {
         return teleporterEnabled;
+    }
+
+    /** 每次使用传送器扣除的金锭数量（0 = 免费）。 */
+    public int teleporterCostGold() {
+        return teleporterCostGold;
     }
 
     public double teleporterCooldownSeconds() {
