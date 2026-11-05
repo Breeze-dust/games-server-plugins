@@ -1,0 +1,99 @@
+# ============================================================
+# 轰炸区（BombardmentZone）配置文件
+# 修改后在非对局状态执行 /bombard reload，或重启服务器
+# 注意：YAML 的冒号后面必须有空格，缩进必须用空格（不能用 Tab）
+# ============================================================
+
+# ---------- 人数 ----------
+min-players: 2
+max-players: 16
+
+# ---------- 对局 ----------
+# 一局时长（秒）；时间到仍存活的玩家并列获胜
+game-seconds: 300
+# 开局后多少秒开始第一轮炮击
+start-delay-seconds: 3
+# 结算后等待多少秒回大厅
+end-delay-seconds: 4
+
+# ---------- 阶段 ----------
+phases:
+  # 开局多少秒后从「零星炮火」切到「饱和轰炸」（会在聊天栏和 title 播报）
+  late-start-seconds: 90
+  # 前期每隔多少 tick 从随机一个炮口发射一颗（20 tick = 1 秒）
+  early-interval-ticks: 40
+  # 后期每隔多少 tick 发射一轮
+  late-interval-ticks: 10
+  # 后期每轮同时从几个炮口发射
+  late-cannons-per-volley: 2
+  # 场上最多同时存在多少颗飞行中的炮弹（防止刷太多）
+  max-in-flight: 30
+
+# ---------- 炮弹 ----------
+shell:
+  # 炮弹外观方块（默认黑色羊毛）
+  material: BLACK_WOOL
+  # 方块显示大小（1.0 = 一整格）
+  size: 0.7
+  # 飞行速度（格/tick）
+  speed: 1.6
+  # 爆炸判定半径（格）：这个范围内的玩家直接淘汰
+  explosion-radius: 3.5
+
+# ---------- 落点 ----------
+landing:
+  # 哪些方块可以被选为落点（可写一种或多种）
+  materials:
+    - GRASS_BLOCK
+    - DIRT
+    - COARSE_DIRT
+    - PODZOL
+    - MOSS_BLOCK
+    - MYCELIUM
+    - STONE
+    - SAND
+    - SANDSTONE
+    - GRAVEL
+    - OAK_PLANKS
+    - SPRUCE_PLANKS
+  # 从地面高度往上下各扫描多少格，用来找小岛表面（不规则地形/高低差）
+  scan-above: 10
+  scan-below: 12
+
+# ---------- 场地 ----------
+arena:
+  world: world
+  # 小岛区域的两个对角（只取 X/Z）；pos1 的脚部 Y 会记录为地面高度
+  pos1: ''
+  pos2: ''
+  # 等待点（/bombard setlobby 写）
+  lobby: ''
+  # 固定出生点（/bombard setspawn / addspawn 写）
+  spawns: []
+  # 炮口坐标（/bombard addcannon 写，取玩家眼睛位置；可多个）
+  cannons: []
+  # 扫描中心高度（玩家站立时的脚部 Y）；-999 = 未设置，自动用 pos1 / 出生点
+  ground-y: -999
+
+# ---------- 右侧计分板 ----------
+sidebar:
+  enabled: true
+  title: '&c&l轰炸区 · 躲避炮火'
+
+# ---------- 等待室道具 ----------
+wait-items:
+  return:
+    material: RED_BED
+    name: '&a&l返回大厅 &7(右键)'
+    lore:
+      - '&7点击返回大厅'
+    slot: 8
+  start:
+    material: PAPER
+    name: '&a&l开始游戏 &7(右键)'
+    lore:
+      - '&7点击立刻开始本局'
+    slot: 4
+
+# true = 开局/发射时在控制台打印落点与炮弹诊断
+debug-shells: false

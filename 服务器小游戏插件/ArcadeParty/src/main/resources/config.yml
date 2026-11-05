@@ -197,6 +197,13 @@ games:
     max-players: 16
     join-command: 'arrowrain join'
     start-command: 'arrowrain start'
+  bombard:
+    display: 轰炸区
+    enabled: true
+    arena-aware: false
+    max-players: 16
+    join-command: 'bombard join'
+    start-command: 'bombard start'
   redlight:
     display: 一二三木头人
     enabled: true

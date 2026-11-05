@@ -1,0 +1,28 @@
+name: BombardmentZone
+version: '1.0.0'
+main: com.bombardmentzone.BombardmentZonePlugin
+api-version: '1.21'
+description: 轰炸区：躲开海盗船炮火、别掉进水里，最后一颗心活到最后
+
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+minigame-game: true
+minigame:
+  name: 轰炸区
+  icon: TNT
+  color: 'c'
+
+commands:
+  bombard:
+    description: 轰炸区小游戏
+    usage: /bombard help
+    aliases: [bz, bombardzone]
+
+permissions:
+  bombard.play:
+    description: 允许加入轰炸区
+    default: true
+  bombard.admin:
+    description: 允许配置和管理轰炸区
+    default: op
