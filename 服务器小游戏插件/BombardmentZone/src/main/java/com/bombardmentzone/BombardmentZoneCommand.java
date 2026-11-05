@@ -198,7 +198,7 @@ public final class BombardmentZoneCommand implements CommandExecutor, TabComplet
         }
         manager.arena().setGround(y);
         manager.arena().save();
-        Chat.send(sender, "&a地面高度已设为 &fY " + y + "&a（落点扫描的中心高度）。");
+        Chat.send(sender, "&a地面高度已设为 &fY " + y + "&a（仅用于场地中心/观战点；落点会自动扫描整列高度）。");
     }
 
     private void addCannon(CommandSender sender) {
@@ -250,7 +250,8 @@ public final class BombardmentZoneCommand implements CommandExecutor, TabComplet
         Chat.send(sender, "&a已扫描落点：&f" + manager.landingCount() + " &a个"
                 + "（落点方块见 config.yml 的 landing.materials）");
         if (manager.landingCount() == 0) {
-            Chat.send(sender, "&c没找到落点：检查 landing.materials，或调整 landing.scan-above / scan-below。");
+            Chat.send(sender, "&c没找到落点：检查 landing.materials 是否包含岛面方块"
+                    + "（水下或被水/其它方块盖住的地面不算落点）。");
         }
     }
 
@@ -343,7 +344,7 @@ public final class BombardmentZoneCommand implements CommandExecutor, TabComplet
             Chat.send(sender, "&f/bombard pos1 | pos2 &7- 站在小岛两个对角设置区域（记 XZ 与地面 Y）");
             Chat.send(sender, "&f/bombard setspawn / addspawn / clearspawns &7- 固定出生点");
             Chat.send(sender, "&f/bombard setlobby &7- 设置等待点");
-            Chat.send(sender, "&f/bombard setground [Y] &7- 设置扫描中心高度（默认当前位置）");
+            Chat.send(sender, "&f/bombard setground [Y] &7- 设置地面高度（仅用于中心/观战点，落点自动全高扫描）");
             Chat.send(sender, "&f/bombard addcannon &7- 把眼睛位置记录为一个炮口");
             Chat.send(sender, "&f/bombard cannons / clearcannons &7- 查看 / 清空炮口");
             Chat.send(sender, "&f/bombard scan &7- 扫描并统计可落点方块数");

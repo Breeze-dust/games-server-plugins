@@ -20,6 +20,7 @@ import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.BlockDisplay;
@@ -816,19 +817,22 @@ public final class BombardmentZoneManager {
             return;
         }
         Set<Material> materials = landingMaterials();
-        int ground = arena.groundY();
-        int scanAbove = Math.max(1, cfgInt("landing.scan-above", 10));
-        int scanBelow = Math.max(1, cfgInt("landing.scan-below", 12));
-        int yMax = Math.min(world.getMaxHeight() - 1, ground + scanAbove);
-        int yMin = Math.max(world.getMinHeight(), ground - scanBelow);
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight() - 1;
         for (int x = arena.minX(); x <= arena.maxX(); x++) {
             for (int z = arena.minZ(); z <= arena.maxZ(); z++) {
-                for (int y = yMax; y >= yMin; y--) {
+                int startY = Math.min(maxY, world.getHighestBlockYAt(x, z) + 1);
+                for (int y = startY; y >= minY; y--) {
                     Block block = world.getBlockAt(x, y, z);
-                    if (materials.contains(block.getType())) {
-                        landing.add(new Location(world, x + 0.5, y + 1.0, z + 0.5));
+                    if (!materials.contains(block.getType())) {
+                        continue;
+                    }
+                    // 只认露天的方块：被水或其它方块盖住的（水下地面、埋在地下的）不算落点
+                    if (!block.getRelative(BlockFace.UP).getType().isAir()) {
                         break;
                     }
+                    landing.add(new Location(world, x + 0.5, y + 1.0, z + 0.5));
+                    break;
                 }
             }
         }

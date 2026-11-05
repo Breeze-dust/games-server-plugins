@@ -2,7 +2,7 @@
 
 - **一句话职责**：海盗船上的炮口向不规则小岛随机发射炮弹（黑色羊毛方块指示），玩家只有**一颗心**、饱食度无限，被炮弹爆炸命中或掉进水里就淘汰转旁观；开局一段时间后进入「饱和轰炸」阶段（多炮口同时开火、发射更快），最后存活者第一名，结算记录前三名并给星星。已接入街机派对（key `bombard`）。
 - **核心规则**：
-  - 场地：管理员手建小岛（不需要生成场地的指令），`pos1` / `pos2` 划出小岛的矩形范围并记录地面 Y；服务器**只扫描这个范围内配置的落点方块**，所以形状不规则的小岛只会被落在真实岛面上。
+  - 场地：管理员手建小岛（不需要生成场地的指令），`pos1` / `pos2` 划出小岛的矩形范围；服务器**逐列从最高处往下自动找**配置的落点方块，整座岛的高低差都会覆盖，水下或被水/其它方块盖住的地面不会被选为落点。
   - 炮口：站到海盗船炮口位置执行 `/bombard addcannon`（记录**眼睛位置**，可多个）。炮弹从随机炮口沿**直线**飞向随机落点，撞到实体方块或到达落点即爆炸。
   - 爆炸：纯视觉（`EXPLOSION_EMITTER` 粒子 + 爆炸音效），**不破坏地形**；半径 `shell.explosion-radius`（默认 3.5 格）内的玩家直接淘汰。
   - 玩家：最大生命值临时设为 2（一颗心），饱食度/饱和度锁定满且取消饥饿；局内所有原版伤害取消，只有炮弹爆炸和落水会淘汰。淘汰后转旁观并传送到小岛中心上方。
@@ -13,10 +13,10 @@
 - **命令**（别名 `/bz`、`/bombardzone`）：
   - 玩家：`/bombard join`、`leave`、`list`、`help`
   - 管理（OP 或 `bombard.admin`）：
-    - `/bombard pos1` / `pos2`：站在小岛两个对角执行（只取 XZ；pos1 的脚部 Y 记为地面）
+    - `/bombard pos1` / `pos2`：站在小岛两个对角执行（只取 XZ；pos1 的脚部 Y 记为地面，只用于中心/观战点）
     - `/bombard setspawn` / `addspawn` / `clearspawns`：固定出生点
     - `/bombard setlobby`：等待点
-    - `/bombard setground [Y]`：扫描中心高度（默认当前位置）
+    - `/bombard setground [Y]`：地面高度（默认当前位置；只影响中心/观战点，落点自动全高扫描）
     - `/bombard addcannon`：把**眼睛位置**记录为一个炮口；`cannons` 查看、`clearcannons` 清空
     - `/bombard scan`：立即扫描并统计可落点数量（建岛后自检用）
     - `/bombard setlate <秒>`：开局多少秒后进入饱和轰炸（默认 90）
@@ -26,7 +26,7 @@
   - 对局：`game-seconds`（300）、`start-delay-seconds`（3）、`end-delay-seconds`（4）
   - 阶段：`phases.late-start-seconds`（90）、`early-interval-ticks`（40）、`late-interval-ticks`（10）、`late-cannons-per-volley`（2）、`max-in-flight`（30）
   - 炮弹：`shell.material`（BLACK_WOOL）、`shell.size`（0.7）、`shell.speed`（1.6 格/tick）、`shell.explosion-radius`（3.5）
-  - 落点：`landing.materials`（可写一种或多种方块）、`landing.scan-above`（10）、`landing.scan-below`（12）
+  - 落点：`landing.materials`（可写一种或多种方块）；每列自动从最高处往下找，露天（正上方是空气）才算落点，水下/被覆盖的地面不选
   - 场地：`arena.pos1 / pos2 / lobby / spawns / cannons / ground-y`
   - 等待室道具：`wait-items.return` / `wait-items.start`
   - 计分板：`sidebar.enabled` / `sidebar.title`
@@ -46,7 +46,8 @@
   5. `/bombard scan` 确认可落点数量 > 0；`/bombard list` 确认「可开局」。
   6. `/bombard save`，至少 2 人 `/bombard join` → `/bombard start`。
 - **注意**：
-  - 落点只会落在 `landing.materials` 列出的方块上；岛面用了别的方块要加进配置，否则炮弹可能找不到落点（开局会提示）。
+  - 落点只会落在 `landing.materials` 列出的方块上，且必须是露天的（正上方是空气）；水下沙子/砂砾和埋在其它方块下面的地面不会被选中。岛面用了别的方块要加进配置，否则炮弹可能找不到落点（开局会提示）。
+  - 如果海盗船位于 `pos1`/`pos2` 的 XZ 范围内、且船体用了 `landing.materials` 里的方块，船体也会被当成落点。默认列表不含木板类；船如果就是木头造的，建议把船放在区域外（或把木板从落点列表里去掉）。
   - 炮口记录的是玩家眼睛位置；如果炮口埋在方块里，炮弹会在飞出几格后自爆，建议把炮口放在船沿外侧。
   - 爆炸半径是球形距离，站在落点正上方/相邻格也可能被淘汰。
   - 局内取消所有原版伤害（包括摔落），所以只有爆炸和落水会淘汰；落水判定用 `isInWater()`，浅水也算。
