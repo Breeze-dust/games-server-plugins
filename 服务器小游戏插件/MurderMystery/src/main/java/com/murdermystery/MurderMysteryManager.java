@@ -171,8 +171,8 @@ public class MurderMysteryManager {
     private BukkitTask flyingSwordTask;
 
     // ---------- 地图机关与 GT混沌汽水 ----------
-    /** 已登记的售货机按钮（钻石块 + 按钮）。 */
-    private final List<Location> vendingMachines = new ArrayList<>();
+    /** 已登记的售货机按钮：场地名 -> 按钮坐标（机关按地图隔离，不会跨场生效）。 */
+    private final Map<String, List<Location>> vendingMachines = new LinkedHashMap<>();
     /** 玩家上次从售货机抽货的时间（冷却用）。 */
     private final Map<UUID, Long> vendingCooldown = new LinkedHashMap<>();
     /** 迈达斯之手就绪的玩家（UUID -> 场名），下一次近战攻击时消耗。 */
@@ -439,7 +439,7 @@ public class MurderMysteryManager {
         ensureRoleChanceDefaults();
         items.load(); // 道具总表 / 售货机货物 / GT混沌汽水事件
         loadVendingMachines();
-        mechanisms.load(); // 机关参数与已登记的拉杆/传送点
+        mechanisms.load(this::arenaAt); // 机关参数与已登记的拉杆/传送点（按场地隔离）
         ConfigurationSection js = plugin.getConfig().getConfigurationSection("join-signs");
         if (js != null) {
             for (String name : js.getKeys(false)) {
@@ -619,6 +619,19 @@ public class MurderMysteryManager {
 
     public String arenaOf(UUID id) {
         return playerArena.get(id);
+    }
+
+    /** 某个坐标落在哪个场地里（按 pos1/pos2 选区判断）；不在任何场地返回 null。 */
+    public String arenaAt(Location loc) {
+        if (loc == null || loc.getWorld() == null) {
+            return null;
+        }
+        for (MurderMysteryArena a : arenas.values()) {
+            if (a.contains(loc)) {
+                return a.getName();
+            }
+        }
+        return null;
     }
 
     public MurderMysteryArena.Role roleOf(UUID id) {
@@ -2934,13 +2947,18 @@ public class MurderMysteryManager {
             msg(p, "&c售货机必须是「钻石块 + 按钮」：这个按钮六个面都没有贴着钻石块。");
             return false;
         }
+        String arena = arenaAt(button.getLocation());
+        if (arena == null) {
+            msg(p, "&c这个售货机不在任何场地选区内：机关必须先放进场地范围（pos1/pos2）。");
+            return false;
+        }
         if (isVendingButton(button)) {
             msg(p, "&e这个按钮已经登记为售货机了。");
             return false;
         }
-        vendingMachines.add(button.getLocation());
+        vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>()).add(button.getLocation());
         saveAll();
-        msg(p, "&a已登记售货机按钮：&f" + shortLoc(button.getLocation())
+        msg(p, "&a已登记售货机按钮（场地「" + arena + "」）：&f" + shortLoc(button.getLocation())
                 + "&a。对局中右键它就会随机吐出货物。");
         return true;
     }
@@ -2957,25 +2975,27 @@ public class MurderMysteryManager {
             msg(p, "&c没有找到按钮。");
             return false;
         }
-        Location found = null;
-        for (Location loc : vendingMachines) {
-            if (sameBlock(loc, button.getLocation())) {
-                found = loc;
-                break;
+        for (List<Location> list : vendingMachines.values()) {
+            for (Location loc : new ArrayList<>(list)) {
+                if (sameBlock(loc, button.getLocation())) {
+                    list.remove(loc);
+                    saveAll();
+                    msg(p, "&a已取消登记售货机：&f" + shortLoc(loc) + "&a。");
+                    return true;
+                }
             }
         }
-        if (found == null) {
-            msg(p, "&c这个按钮没有登记为售货机。");
-            return false;
-        }
-        vendingMachines.remove(found);
-        saveAll();
-        msg(p, "&a已取消登记售货机：&f" + shortLoc(found) + "&a。");
-        return true;
+        msg(p, "&c这个按钮没有登记为售货机。");
+        return false;
     }
 
-    public List<Location> vendingMachines() {
-        return new ArrayList<>(vendingMachines);
+    /** 所有场地的售货机（按场地分组）。 */
+    public Map<String, List<Location>> vendingMachinesByArena() {
+        Map<String, List<Location>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
+            out.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return out;
     }
 
     /** 管理员（OP 或 mm.admin）才能修改场地内的告示牌。 */
@@ -2996,18 +3016,24 @@ public class MurderMysteryManager {
         return false;
     }
 
-    /** 这个方块是不是已登记的售货机按钮。 */
+    /** 这个方块是不是已登记的售货机按钮（不分场地，用于登记去重/取消）。 */
     public boolean isVendingButton(Block block) {
-        if (block == null) {
-            return false;
+        return vendingArenaAt(block == null ? null : block.getLocation()) != null;
+    }
+
+    /** 这个按钮登记在哪个场地；没登记返回 null。 */
+    private String vendingArenaAt(Location loc) {
+        if (loc == null) {
+            return null;
         }
-        Location loc = block.getLocation();
-        for (Location machine : vendingMachines) {
-            if (sameBlock(machine, loc)) {
-                return true;
+        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
+            for (Location machine : entry.getValue()) {
+                if (sameBlock(machine, loc)) {
+                    return entry.getKey();
+                }
             }
         }
-        return false;
+        return null;
     }
 
     private Block findVendingButton(Block target) {
@@ -3053,6 +3079,10 @@ public class MurderMysteryManager {
                 || !a.getPlayers().contains(p.getUniqueId())) {
             return false; // 不在对局里就当普通按钮用
         }
+        String machineArena = vendingArenaAt(button.getLocation());
+        if (machineArena == null || !machineArena.equals(a.getName())) {
+            return false; // 别的场地的售货机在本局无效，跨图机关不会串
+        }
         if (!a.contains(button.getLocation())) {
             msg(p, "&c这个售货机不在这局场地范围内。");
             return true;
@@ -3095,43 +3125,83 @@ public class MurderMysteryManager {
 
     private void loadVendingMachines() {
         vendingMachines.clear();
-        List<?> list = plugin.getConfig().getList("vending-machines");
-        if (list == null) {
+        ConfigurationSection root = plugin.getConfig().getConfigurationSection("vending-machines");
+        if (root != null) {
+            for (String arena : root.getKeys(false)) {
+                List<Location> list = new ArrayList<>();
+                for (Object o : root.getList(arena, List.of())) {
+                    if (o instanceof Location loc) {
+                        list.add(loc);
+                    }
+                }
+                if (!list.isEmpty()) {
+                    vendingMachines.put(arena, list);
+                }
+            }
             return;
         }
-        for (Object o : list) {
-            if (o instanceof Location loc) {
-                vendingMachines.add(loc);
+        // 旧格式：vending-machines 是一个坐标列表；没有场地分组的按坐标所在场地迁移一次
+        List<?> legacy = plugin.getConfig().getList("vending-machines");
+        if (legacy == null || legacy.isEmpty()) {
+            return;
+        }
+        boolean migrated = false;
+        for (Object o : legacy) {
+            if (!(o instanceof Location loc)) {
+                continue;
             }
+            String arena = arenaAt(loc);
+            if (arena == null) {
+                plugin.getLogger().warning("旧售货机数据不属于任何场地，已丢弃：" + loc);
+                continue;
+            }
+            vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>()).add(loc);
+            migrated = true;
+        }
+        if (migrated) {
+            saveVendingMachines();
+            plugin.saveConfig();
         }
     }
 
     private void saveVendingMachines() {
-        plugin.getConfig().set("vending-machines", new ArrayList<>(vendingMachines));
+        ConfigurationSection root = plugin.getConfig().createSection("vending-machines");
+        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                root.set(entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+        }
     }
 
     // ---------- 传送器（拉杆机关） ----------
 
-    public List<Location> teleporterLevers() {
-        return mechanisms.teleporterLevers();
+    /** 某个场地的传送器拉杆；arena 为 null 时返回全部场地的。 */
+    public List<Location> teleporterLevers(String arena) {
+        return mechanisms.teleporterLevers(arena);
     }
 
-    public List<Location> teleporterPoints() {
-        return mechanisms.teleporterPoints();
+    /** 某个场地的传送落点；arena 为 null 时返回全部场地的。 */
+    public List<Location> teleporterPoints(String arena) {
+        return mechanisms.teleporterPoints(arena);
     }
 
-    /** 对准拉杆登记为传送器。 */
+    /** 对准拉杆登记为传送器（必须放在某个场地的选区里）。 */
     public boolean addTeleporterLever(Player p) {
         Block target = p.getTargetBlockExact(8);
         if (target == null || target.getType() != Material.LEVER) {
             msg(p, "&c请对准一个拉杆。");
             return false;
         }
-        if (!mechanisms.addLever(MurderMysteryMechanisms.TELEPORTER, target.getLocation())) {
-            msg(p, "&e这个拉杆已经登记过别的机关了。");
+        String arena = arenaAt(target.getLocation());
+        if (arena == null) {
+            msg(p, "&c这个拉杆不在任何场地选区内：机关必须先放进场地范围（pos1/pos2）。");
             return false;
         }
-        msg(p, "&a已登记传送器拉杆：&f" + shortLoc(target.getLocation()) + "&a。");
+        if (!mechanisms.addLever(MurderMysteryMechanisms.TELEPORTER, arena, target.getLocation())) {
+            msg(p, "&e这个拉杆已经登记过机关了。");
+            return false;
+        }
+        msg(p, "&a已登记传送器拉杆（场地「" + arena + "」）：&f" + shortLoc(target.getLocation()) + "&a。");
         return true;
     }
 
@@ -3154,21 +3224,31 @@ public class MurderMysteryManager {
         return true;
     }
 
-    /** 把玩家当前站的位置登记为一个传送落点。 */
+    /** 把玩家当前站的位置登记为所在场地的传送落点。 */
     public void addTeleporterPoint(Player p) {
+        String arena = arenaAt(p.getLocation());
+        if (arena == null) {
+            msg(p, "&c你现在不在任何场地选区内：请站到场地的落点位置再执行。");
+            return;
+        }
         Location loc = p.getLocation().clone();
-        mechanisms.addPoint(loc);
-        msg(p, "&a已登记传送点 &f#" + mechanisms.teleporterPoints().size()
-                + "&a：&f" + shortLoc(loc) + "&a。");
+        mechanisms.addPoint(MurderMysteryMechanisms.TELEPORTER, arena, loc);
+        msg(p, "&a已为场地「" + arena + "」登记传送点 &f#"
+                + mechanisms.teleporterPoints(arena).size() + "&a：&f" + shortLoc(loc) + "&a。");
     }
 
-    /** 按 1 开始的编号删除传送点。 */
+    /** 按 1 开始的编号删除玩家所在场地的传送点。 */
     public boolean removeTeleporterPoint(Player p, int indexOneBased) {
-        if (!mechanisms.removePoint(indexOneBased)) {
-            msg(p, "&c没有这个编号的传送点（用 &e/mm teleporter list&c 查看）。");
+        String arena = arenaAt(p.getLocation());
+        if (arena == null) {
+            msg(p, "&c你现在不在任何场地选区内：请站到场地里再删除。");
             return false;
         }
-        msg(p, "&a已删除传送点 &f#" + indexOneBased + "&a。");
+        if (!mechanisms.removePoint(MurderMysteryMechanisms.TELEPORTER, arena, indexOneBased)) {
+            msg(p, "&c场地「" + arena + "」没有这个编号的传送点（用 &e/mm teleporter list&c 查看）。");
+            return false;
+        }
+        msg(p, "&a已删除场地「" + arena + "」的传送点 &f#" + indexOneBased + "&a。");
         return true;
     }
 
@@ -3204,11 +3284,18 @@ public class MurderMysteryManager {
                 || !mechanisms.isLeverOfType(MurderMysteryMechanisms.TELEPORTER, block.getLocation())) {
             return false;
         }
+        String leverArena = mechanisms.leverArenaAt(block.getLocation());
+        if (leverArena == null) {
+            return false;
+        }
         String arenaName = playerArena.get(p.getUniqueId());
         MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
         if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
                 || !a.getPlayers().contains(p.getUniqueId())) {
             return false; // 不在对局里就当普通拉杆用
+        }
+        if (!leverArena.equals(a.getName())) {
+            return false; // 别的场地的拉杆在本局无效，跨图机关不会串
         }
         if (!a.contains(block.getLocation())) {
             msg(p, "&c这个传送器不在这局场地范围内。");
@@ -3225,7 +3312,7 @@ public class MurderMysteryManager {
         double minSq = (double) minDistance * minDistance;
         Location leverCenter = block.getLocation().clone().add(0.5, 0.5, 0.5);
         List<Location> candidates = new ArrayList<>();
-        for (Location point : mechanisms.teleporterPoints()) {
+        for (Location point : mechanisms.teleporterPoints(a.getName())) {
             if (point.getWorld() == null || !point.getWorld().equals(block.getWorld())) {
                 continue;
             }
@@ -4446,7 +4533,7 @@ public class MurderMysteryManager {
             plugin.getLogger().info("有对局正在进行：本次只重载规则数值、items.yml 与 mechanisms.yml，场地列表等这局结束再重载。");
             items.load();
             loadVendingMachines();
-            mechanisms.load();
+            mechanisms.load(this::arenaAt);
         } else {
             load(); // 重读场地/告示牌/战绩/items.yml/mechanisms.yml
         }

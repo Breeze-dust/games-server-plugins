@@ -67,5 +67,6 @@ steak-amount: 5
 join-signs: {}
 
 # 售货机按钮（钻石块 + 按钮）：OP 对准按钮执行 /mm vending add 自动登记；
+# 数据按场地分组写入（vending-machines.<场名>），不同地图的机关不会串。
 # 货物列表与权重在 items.yml 的 vending.goods 里配置。
-vending-machines: []
+vending-machines: {}

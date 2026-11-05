@@ -11,22 +11,27 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * 读取 {@code plugins/MurderMystery/mechanisms.yml}（机关参数，手写、插件不改写）
  * 与 {@code mechanisms-data.yml}（已登记的拉杆 / 传送点，由 /mm teleporter 命令写入）。
+ *
+ * <p>机关数据按「机关类型 -> 场地名 -> 坐标」三级存储：登记时就绑定场地，
+ * 使用时只会读取同一场地的数据，不同地图之间不会串。
  */
 public final class MurderMysteryMechanisms {
 
     private static final String CONFIG_FILE = "mechanisms.yml";
     private static final String DATA_FILE = "mechanisms-data.yml";
-    /** 传送器类型 id（以后新增拉杆机关就在 leverTypes 里加自己的类型）。 */
+    /** 传送器类型 id（以后新增拉杆机关就加自己的类型）。 */
     public static final String TELEPORTER = "teleporter";
 
     private final MurderMysteryPlugin plugin;
-    /** 机关类型 -> 该类型的拉杆坐标；同一张图可以同时放多种拉杆机关。 */
-    private final Map<String, List<Location>> leverTypes = new LinkedHashMap<>();
-    private final List<Location> teleporterPoints = new ArrayList<>();
+    /** 机关类型 -> 场地名 -> 拉杆坐标。 */
+    private final Map<String, Map<String, List<Location>>> levers = new LinkedHashMap<>();
+    /** 机关类型 -> 场地名 -> 落点坐标。 */
+    private final Map<String, Map<String, List<Location>>> points = new LinkedHashMap<>();
 
     private boolean teleporterEnabled = true;
     private int teleporterCostGold = 5;
@@ -38,10 +43,17 @@ public final class MurderMysteryMechanisms {
 
     public MurderMysteryMechanisms(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
-        leverTypes.put(TELEPORTER, new ArrayList<>());
+        ensureType(TELEPORTER);
     }
 
     public void load() {
+        load(loc -> null);
+    }
+
+    /**
+     * @param arenaResolver 旧格式数据没有场地字段时，用这个把坐标解析回场地名；解析不到就丢弃
+     */
+    public void load(Function<Location, String> arenaResolver) {
         File configFile = new File(plugin.getDataFolder(), CONFIG_FILE);
         if (!configFile.exists()) {
             plugin.saveResource(CONFIG_FILE, false);
@@ -54,28 +66,69 @@ public final class MurderMysteryMechanisms {
         teleporterMessage = yml.getString("teleporter.message", teleporterMessage);
         teleporterNoTargetMessage = yml.getString("teleporter.no-target-message", teleporterNoTargetMessage);
         teleporterSound = yml.getString("teleporter.sound", teleporterSound);
-        loadData();
+        loadData(arenaResolver);
     }
 
-    private void loadData() {
-        for (List<Location> list : leverTypes.values()) {
-            list.clear();
-        }
-        teleporterPoints.clear();
+    private void loadData(Function<Location, String> arenaResolver) {
+        levers.clear();
+        points.clear();
+        ensureType(TELEPORTER);
         File dataFile = new File(plugin.getDataFolder(), DATA_FILE);
         if (!dataFile.exists()) {
             return;
         }
         YamlConfiguration yml = YamlConfiguration.loadConfiguration(dataFile);
-        ConfigurationSection leverRoot = yml.getConfigurationSection("levers");
-        if (leverRoot != null) {
-            for (String type : leverRoot.getKeys(false)) {
-                List<Location> list = leverTypes.computeIfAbsent(type.toLowerCase(Locale.ROOT),
-                        k -> new ArrayList<>());
-                list.addAll(readLocations(yml, "levers." + type));
+        readArenaMap(yml, "levers", levers);
+        readArenaMap(yml, "points", points);
+
+        // 旧版本数据没有场地分组：按坐标是否落在某个场地里迁移一次
+        boolean migrated = false;
+        migrated |= migrateLegacyList(yml, "levers." + TELEPORTER, levers, TELEPORTER, arenaResolver);
+        migrated |= migrateLegacyList(yml, TELEPORTER + ".levers", levers, TELEPORTER, arenaResolver);
+        migrated |= migrateLegacyList(yml, "points." + TELEPORTER, points, TELEPORTER, arenaResolver);
+        migrated |= migrateLegacyList(yml, TELEPORTER + ".points", points, TELEPORTER, arenaResolver);
+        if (migrated) {
+            plugin.getLogger().info("机关数据已按场地迁移（旧数据没有场地分组）。");
+            saveData();
+        }
+    }
+
+    private void readArenaMap(YamlConfiguration yml, String rootPath,
+                              Map<String, Map<String, List<Location>>> target) {
+        ConfigurationSection root = yml.getConfigurationSection(rootPath);
+        if (root == null) {
+            return;
+        }
+        for (String type : root.getKeys(false)) {
+            ConfigurationSection arenaSection = root.getConfigurationSection(type);
+            if (arenaSection == null) {
+                continue; // 旧格式的列表，交给 migrateLegacyList
+            }
+            for (String arena : arenaSection.getKeys(false)) {
+                List<Location> list = bucket(target, type, arena);
+                list.addAll(readLocations(yml, rootPath + "." + type + "." + arena));
             }
         }
-        teleporterPoints.addAll(readLocations(yml, "teleporter.points"));
+    }
+
+    private boolean migrateLegacyList(YamlConfiguration yml, String path,
+                                      Map<String, Map<String, List<Location>>> target,
+                                      String type, Function<Location, String> arenaResolver) {
+        List<Location> legacy = readLocations(yml, path);
+        if (legacy.isEmpty()) {
+            return false;
+        }
+        boolean migrated = false;
+        for (Location loc : legacy) {
+            String arena = arenaResolver == null ? null : arenaResolver.apply(loc);
+            if (arena == null || arena.isBlank()) {
+                plugin.getLogger().warning("机关旧数据 " + path + " 有坐标不属于任何场地，已丢弃：" + loc);
+                continue;
+            }
+            bucket(target, type, arena).add(loc);
+            migrated = true;
+        }
+        return migrated;
     }
 
     private List<Location> readLocations(YamlConfiguration yml, String path) {
@@ -95,16 +148,35 @@ public final class MurderMysteryMechanisms {
     /** 登记/注销拉杆或传送点后立刻落盘（只写数据文件，不碰手写的 mechanisms.yml）。 */
     public void saveData() {
         YamlConfiguration yml = new YamlConfiguration();
-        ConfigurationSection leverRoot = yml.createSection("levers");
-        for (Map.Entry<String, List<Location>> entry : leverTypes.entrySet()) {
-            leverRoot.set(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        yml.set("teleporter.points", new ArrayList<>(teleporterPoints));
+        writeArenaMap(yml.createSection("levers"), levers);
+        writeArenaMap(yml.createSection("points"), points);
         try {
             yml.save(new File(plugin.getDataFolder(), DATA_FILE));
         } catch (IOException ex) {
             plugin.getLogger().warning("保存机关数据失败：" + ex.getMessage());
         }
+    }
+
+    private void writeArenaMap(ConfigurationSection root, Map<String, Map<String, List<Location>>> source) {
+        for (Map.Entry<String, Map<String, List<Location>>> typeEntry : source.entrySet()) {
+            ConfigurationSection typeSection = root.createSection(typeEntry.getKey());
+            for (Map.Entry<String, List<Location>> arenaEntry : typeEntry.getValue().entrySet()) {
+                if (!arenaEntry.getValue().isEmpty()) {
+                    typeSection.set(arenaEntry.getKey(), new ArrayList<>(arenaEntry.getValue()));
+                }
+            }
+        }
+    }
+
+    private void ensureType(String type) {
+        levers.computeIfAbsent(type, k -> new LinkedHashMap<>());
+        points.computeIfAbsent(type, k -> new LinkedHashMap<>());
+    }
+
+    private List<Location> bucket(Map<String, Map<String, List<Location>>> target, String type, String arena) {
+        String key = type.toLowerCase(Locale.ROOT);
+        return target.computeIfAbsent(key, k -> new LinkedHashMap<>())
+                .computeIfAbsent(arena, k -> new ArrayList<>());
     }
 
     public boolean teleporterEnabled() {
@@ -136,21 +208,54 @@ public final class MurderMysteryMechanisms {
         return teleporterSound;
     }
 
-    /** 只要传送器类型的拉杆（/mm teleporter list 用）。 */
-    public List<Location> teleporterLevers() {
-        return new ArrayList<>(leverTypes.getOrDefault(TELEPORTER, List.of()));
+    /** 某个场地的传送器拉杆；arena 为 null 时返回所有场地的。 */
+    public List<Location> teleporterLevers(String arena) {
+        return flatten(levers.get(TELEPORTER), arena);
     }
 
-    public List<Location> teleporterPoints() {
-        return new ArrayList<>(teleporterPoints);
+    /** 某个场地的传送落点；arena 为 null 时返回所有场地的。 */
+    public List<Location> teleporterPoints(String arena) {
+        return flatten(points.get(TELEPORTER), arena);
+    }
+
+    /** 数据里出现过的场地名（按登记顺序）。 */
+    public List<String> teleporterArenaNames() {
+        List<String> names = new ArrayList<>();
+        for (Map<String, List<Location>> byArena : List.of(
+                levers.getOrDefault(TELEPORTER, Map.of()),
+                points.getOrDefault(TELEPORTER, Map.of()))) {
+            for (String arena : byArena.keySet()) {
+                if (!names.contains(arena)) {
+                    names.add(arena);
+                }
+            }
+        }
+        return names;
+    }
+
+    private List<Location> flatten(Map<String, List<Location>> byArena, String arena) {
+        List<Location> out = new ArrayList<>();
+        if (byArena == null) {
+            return out;
+        }
+        if (arena != null) {
+            out.addAll(byArena.getOrDefault(arena, List.of()));
+            return out;
+        }
+        for (List<Location> list : byArena.values()) {
+            out.addAll(list);
+        }
+        return out;
     }
 
     /** 这个拉杆属于哪种机关（teleporter / 以后新增的类型）；没登记返回 null。 */
     public String leverTypeAt(Location loc) {
-        for (Map.Entry<String, List<Location>> entry : leverTypes.entrySet()) {
-            for (Location lever : entry.getValue()) {
-                if (sameBlock(lever, loc)) {
-                    return entry.getKey();
+        for (Map.Entry<String, Map<String, List<Location>>> typeEntry : levers.entrySet()) {
+            for (List<Location> list : typeEntry.getValue().values()) {
+                for (Location lever : list) {
+                    if (sameBlock(lever, loc)) {
+                        return typeEntry.getKey();
+                    }
                 }
             }
         }
@@ -161,46 +266,71 @@ public final class MurderMysteryMechanisms {
         return type != null && type.equalsIgnoreCase(leverTypeAt(loc));
     }
 
-    /** 登记一根拉杆，并记录它属于哪种机关（不同类型可以共存在同一张图里）。 */
-    public boolean addLever(String type, Location loc) {
-        if (type == null || type.isBlank()) {
+    /** 这个拉杆登记在哪个场地；没登记返回 null。 */
+    public String leverArenaAt(Location loc) {
+        for (Map<String, List<Location>> byArena : levers.values()) {
+            for (Map.Entry<String, List<Location>> entry : byArena.entrySet()) {
+                for (Location lever : entry.getValue()) {
+                    if (sameBlock(lever, loc)) {
+                        return entry.getKey();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 登记一根拉杆：绑定到指定场地和机关类型。 */
+    public boolean addLever(String type, String arena, Location loc) {
+        if (type == null || type.isBlank() || arena == null || arena.isBlank()) {
             return false;
         }
-        String key = type.toLowerCase(Locale.ROOT);
         if (leverTypeAt(loc) != null) {
             return false; // 一根拉杆只能绑定一种机关
         }
-        leverTypes.computeIfAbsent(key, k -> new ArrayList<>()).add(loc);
+        ensureType(type.toLowerCase(Locale.ROOT));
+        bucket(levers, type, arena).add(loc);
         saveData();
         return true;
     }
 
-    /** 注销拉杆（不管它属于哪种机关）。 */
+    /** 注销拉杆（不管它属于哪种机关、哪个场地）。 */
     public boolean removeLever(Location loc) {
-        for (List<Location> list : leverTypes.values()) {
-            for (int i = 0; i < list.size(); i++) {
-                if (sameBlock(list.get(i), loc)) {
-                    list.remove(i);
-                    saveData();
-                    return true;
+        for (Map<String, List<Location>> byArena : levers.values()) {
+            for (List<Location> list : byArena.values()) {
+                for (int i = 0; i < list.size(); i++) {
+                    if (sameBlock(list.get(i), loc)) {
+                        list.remove(i);
+                        saveData();
+                        return true;
+                    }
                 }
             }
         }
         return false;
     }
 
-    public void addPoint(Location loc) {
-        teleporterPoints.add(loc);
+    public void addPoint(String type, String arena, Location loc) {
+        if (type == null || type.isBlank() || arena == null || arena.isBlank()) {
+            return;
+        }
+        ensureType(type.toLowerCase(Locale.ROOT));
+        bucket(points, type, arena).add(loc);
         saveData();
     }
 
-    /** 按 1 开始的序号删除传送点；越界返回 false。 */
-    public boolean removePoint(int indexOneBased) {
-        int i = indexOneBased - 1;
-        if (i < 0 || i >= teleporterPoints.size()) {
+    /** 按 1 开始的序号删除某场地的传送点；越界返回 false。 */
+    public boolean removePoint(String type, String arena, int indexOneBased) {
+        Map<String, List<Location>> byArena = points.get(type.toLowerCase(Locale.ROOT));
+        if (byArena == null || arena == null) {
             return false;
         }
-        teleporterPoints.remove(i);
+        List<Location> list = byArena.get(arena);
+        int i = indexOneBased - 1;
+        if (list == null || i < 0 || i >= list.size()) {
+            return false;
+        }
+        list.remove(i);
         saveData();
         return true;
     }

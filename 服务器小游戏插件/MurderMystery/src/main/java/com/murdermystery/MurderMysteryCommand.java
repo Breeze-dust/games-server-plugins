@@ -244,16 +244,19 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
                     case "add" -> m.addVendingMachine(p);
                     case "remove", "del" -> m.removeVendingMachine(p);
                     case "list" -> {
-                        List<Location> machines = m.vendingMachines();
-                        if (machines.isEmpty()) {
+                        Map<String, List<Location>> byArena = m.vendingMachinesByArena();
+                        int total = byArena.values().stream().mapToInt(List::size).sum();
+                        if (total == 0) {
                             Chat.send(sender, "&7还没有登记任何售货机。对准钻石块上的按钮执行 &e/mm vending add&7。");
                             return true;
                         }
-                        Chat.send(sender, "&6已登记的售货机按钮（" + machines.size() + " 个）：");
-                        for (int i = 0; i < machines.size(); i++) {
-                            Location l = machines.get(i);
-                            Chat.send(sender, "&e#" + i + " &f" + l.getWorld().getName()
-                                    + " " + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                        Chat.send(sender, "&6已登记的售货机按钮（共 " + total + " 个，按场地）：");
+                        for (Map.Entry<String, List<Location>> entry : byArena.entrySet()) {
+                            Chat.send(sender, "&e场地「" + entry.getKey() + "」&f（" + entry.getValue().size() + " 个）：");
+                            for (Location l : entry.getValue()) {
+                                Chat.send(sender, "&7  " + l.getWorld().getName() + " "
+                                        + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                            }
                         }
                     }
                     default -> Chat.send(sender, "&c用法：/mm vending add|remove|list");
@@ -286,19 +289,27 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
                         }
                     }
                     case "list" -> {
-                        List<Location> levers = m.teleporterLevers();
-                        List<Location> points = m.teleporterPoints();
-                        Chat.send(sender, "&6传送器拉杆（" + levers.size() + " 个）：");
+                        String currentArena = m.arenaAt(p.getLocation());
+                        if (currentArena == null) {
+                            currentArena = m.arenaOf(p.getUniqueId());
+                        }
+                        List<Location> levers = m.teleporterLevers(currentArena);
+                        List<Location> points = m.teleporterPoints(currentArena);
+                        String arenaLabel = currentArena == null ? "全部场地" : "场地「" + currentArena + "」";
+                        Chat.send(sender, "&6" + arenaLabel + "的传送器拉杆（" + levers.size() + " 个）：");
                         for (int i = 0; i < levers.size(); i++) {
                             Location l = levers.get(i);
                             Chat.send(sender, "&e#" + (i + 1) + " &f" + l.getWorld().getName() + " "
                                     + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
                         }
-                        Chat.send(sender, "&6传送点（" + points.size() + " 个）：");
+                        Chat.send(sender, "&6" + label + "的传送点（" + points.size() + " 个）：");
                         for (int i = 0; i < points.size(); i++) {
                             Location l = points.get(i);
                             Chat.send(sender, "&e#" + (i + 1) + " &f" + l.getWorld().getName() + " "
                                     + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                        }
+                        if (currentArena == null) {
+                            Chat.send(sender, "&7提示：站在某个场地里执行可以只看该场地的机关。");
                         }
                         if (levers.isEmpty() || points.isEmpty()) {
                             Chat.send(sender, "&7提示：&e/mm teleporter add&7 对准拉杆登记；"
