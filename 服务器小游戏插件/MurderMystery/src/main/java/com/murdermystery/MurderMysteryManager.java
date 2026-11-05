@@ -177,8 +177,6 @@ public class MurderMysteryManager {
     private BukkitTask flyingSwordTask;
 
     // ---------- 地图机关与 GT混沌汽水 ----------
-    /** 已登记的售货机按钮：场地名 -> 按钮坐标（机关按地图隔离，不会跨场生效）。 */
-    private final Map<String, List<Location>> vendingMachines = new LinkedHashMap<>();
     /** 玩家上次从售货机抽货的时间（冷却用）。 */
     private final Map<UUID, Long> vendingCooldown = new LinkedHashMap<>();
     /** 迈达斯之手就绪的玩家（UUID -> 场名），下一次近战攻击时消耗。 */
@@ -485,8 +483,8 @@ public class MurderMysteryManager {
         loadRoleHistory(); // 角色累计计数（跨重启继续）
         ensureRoleChanceDefaults();
         items.load(); // 道具总表 / 售货机货物 / GT混沌汽水事件
-        loadVendingMachines();
-        mechanisms.load(this::arenaAt); // 机关参数与已登记的拉杆/传送点（按场地隔离）
+        mechanisms.load(this::arenaAt); // 机关参数与已登记的拉杆/传送点/售货机（按场地隔离）
+        migrateLegacyVendingMachines(); // 旧版存在 config.yml 的售货机坐标迁进 mechanisms-data.yml
         rooms.load(); // 每个场地的金锭刷新设置
         ConfigurationSection js = plugin.getConfig().getConfigurationSection("join-signs");
         if (js != null) {
@@ -537,7 +535,6 @@ public class MurderMysteryManager {
         for (Map.Entry<String, List<Location>> e : joinSigns.entrySet()) {
             js.set(e.getKey(), e.getValue());
         }
-        saveVendingMachines();
         plugin.saveConfig();
         saveData();
     }
@@ -3201,8 +3198,7 @@ public class MurderMysteryManager {
             msg(p, "&e这个按钮已经登记为售货机了。");
             return false;
         }
-        vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>()).add(button.getLocation());
-        saveAll();
+        mechanisms.addVendingMachine(arena, button.getLocation());
         msg(p, "&a已登记售货机按钮（场地「" + arena + "」）：&f" + shortLoc(button.getLocation())
                 + "&a。对局中右键它就会随机吐出货物。");
         return true;
@@ -3220,15 +3216,9 @@ public class MurderMysteryManager {
             msg(p, "&c没有找到按钮。");
             return false;
         }
-        for (List<Location> list : vendingMachines.values()) {
-            for (Location loc : new ArrayList<>(list)) {
-                if (sameBlock(loc, button.getLocation())) {
-                    list.remove(loc);
-                    saveAll();
-                    msg(p, "&a已取消登记售货机：&f" + shortLoc(loc) + "&a。");
-                    return true;
-                }
-            }
+        if (mechanisms.removeVendingMachine(button.getLocation())) {
+            msg(p, "&a已取消登记售货机：&f" + shortLoc(button.getLocation()) + "&a。");
+            return true;
         }
         msg(p, "&c这个按钮没有登记为售货机。");
         return false;
@@ -3236,11 +3226,7 @@ public class MurderMysteryManager {
 
     /** 所有场地的售货机（按场地分组）。 */
     public Map<String, List<Location>> vendingMachinesByArena() {
-        Map<String, List<Location>> out = new LinkedHashMap<>();
-        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
-            out.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        return out;
+        return mechanisms.vendingMachinesByArena();
     }
 
     /** 管理员（OP 或 mm.admin）才能修改场地内的告示牌。 */
@@ -3263,22 +3249,12 @@ public class MurderMysteryManager {
 
     /** 这个方块是不是已登记的售货机按钮（不分场地，用于登记去重/取消）。 */
     public boolean isVendingButton(Block block) {
-        return vendingArenaAt(block == null ? null : block.getLocation()) != null;
+        return block != null && mechanisms.isVendingMachine(block.getLocation());
     }
 
     /** 这个按钮登记在哪个场地；没登记返回 null。 */
     private String vendingArenaAt(Location loc) {
-        if (loc == null) {
-            return null;
-        }
-        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
-            for (Location machine : entry.getValue()) {
-                if (sameBlock(machine, loc)) {
-                    return entry.getKey();
-                }
-            }
-        }
-        return null;
+        return mechanisms.vendingArenaAt(loc);
     }
 
     private Block findVendingButton(Block target) {
@@ -3375,53 +3351,39 @@ public class MurderMysteryManager {
         return true;
     }
 
-    private void loadVendingMachines() {
-        vendingMachines.clear();
+    /**
+     * 旧版把售货机坐标存在 config.yml 的 vending-machines 段，上传新 config 时会被覆盖。
+     * 现在统一迁进 mechanisms-data.yml（运行时数据文件，打包脚本默认不带上传）。
+     */
+    private void migrateLegacyVendingMachines() {
+        List<Location> legacy = new ArrayList<>();
         ConfigurationSection root = plugin.getConfig().getConfigurationSection("vending-machines");
         if (root != null) {
             for (String arena : root.getKeys(false)) {
-                List<Location> list = new ArrayList<>();
                 for (Object o : root.getList(arena, List.of())) {
                     if (o instanceof Location loc) {
-                        list.add(loc);
+                        legacy.add(loc);
                     }
                 }
-                if (!list.isEmpty()) {
-                    vendingMachines.put(arena, list);
+            }
+        } else {
+            List<?> list = plugin.getConfig().getList("vending-machines");
+            if (list != null) {
+                for (Object o : list) {
+                    if (o instanceof Location loc) {
+                        legacy.add(loc);
+                    }
                 }
             }
+        }
+        if (legacy.isEmpty()) {
             return;
         }
-        // 旧格式：vending-machines 是一个坐标列表；没有场地分组的按坐标所在场地迁移一次
-        List<?> legacy = plugin.getConfig().getList("vending-machines");
-        if (legacy == null || legacy.isEmpty()) {
-            return;
-        }
-        boolean migrated = false;
-        for (Object o : legacy) {
-            if (!(o instanceof Location loc)) {
-                continue;
-            }
-            String arena = arenaAt(loc);
-            if (arena == null) {
-                plugin.getLogger().warning("旧售货机数据不属于任何场地，已丢弃：" + loc);
-                continue;
-            }
-            vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>()).add(loc);
-            migrated = true;
-        }
-        if (migrated) {
-            saveVendingMachines();
+        int moved = mechanisms.importLegacyVendingMachines(legacy, this::arenaAt);
+        if (moved > 0) {
+            plugin.getConfig().set("vending-machines", null);
             plugin.saveConfig();
-        }
-    }
-
-    private void saveVendingMachines() {
-        ConfigurationSection root = plugin.getConfig().createSection("vending-machines");
-        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
-            if (!entry.getValue().isEmpty()) {
-                root.set(entry.getKey(), new ArrayList<>(entry.getValue()));
-            }
+            plugin.getLogger().info("已把 " + moved + " 个旧售货机坐标从 config.yml 迁移到 mechanisms-data.yml。");
         }
     }
 
@@ -5117,7 +5079,7 @@ public class MurderMysteryManager {
         if (running) {
             plugin.getLogger().info("有对局正在进行：本次只重载规则数值、items.yml 与 mechanisms.yml，场地列表等这局结束再重载。");
             items.load();
-            loadVendingMachines();
+            migrateLegacyVendingMachines();
             mechanisms.load(this::arenaAt);
             rooms.load();
         } else {

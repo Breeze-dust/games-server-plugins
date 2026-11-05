@@ -4,6 +4,7 @@
 # Usage (normally via server-pack-full.bat - just double-click it):
 #   powershell -ExecutionPolicy Bypass -File server-pack-full.ps1
 #   powershell -ExecutionPolicy Bypass -File server-pack-full.ps1 -WithPlayers
+#   powershell -ExecutionPolicy Bypass -File server-pack-full.ps1 -WithMechanismData
 #   powershell -ExecutionPolicy Bypass -File server-pack-full.ps1 -AllowRunning
 #   powershell -ExecutionPolicy Bypass -File server-pack-full.ps1 -OutFile D:\x.zip
 #
@@ -43,6 +44,7 @@ param(
     [string[]]$SkipDir   = @('jdk', 'logs'),
     [string[]]$SkipGlob  = @('world_backup_*'),
     [switch]$WithPlayers,
+    [switch]$WithMechanismData,
     [switch]$AllowRunning
 )
 
@@ -117,6 +119,13 @@ $legacyDataRel = @(
     'plugins/TntRun/data.yml'
 )
 
+# 3c. registered mechanisms (levers / teleport points / vending machines) are runtime data:
+#     keep the file out of the package unless the user explicitly asks for it.
+$mechDataRel = 'plugins/MurderMystery/mechanisms-data.yml'
+if ((Test-Path (Join-Path $ServerDir $mechDataRel)) -and -not $WithMechanismData) {
+    Write-Host "[mechanisms] excluded from the zip (the panel keeps its registered levers/points)." -ForegroundColor Green
+}
+
 # 4. top-level items: everything except the local-only folders / old snapshots
 $skip  = @()
 $items = @()
@@ -142,6 +151,7 @@ foreach ($item in $items) {
         foreach ($f in (Get-ChildItem $p -Recurse -File -Force)) {
             $rel = $f.FullName.Substring($ServerDir.Length + 1) -replace '\\', '/'
             if (-not $WithPlayers -and $rel -eq $playersRel) { continue }
+            if (-not $WithMechanismData -and $rel -eq $mechDataRel) { continue }
             if ($legacyDataRel -contains $rel) { continue }
             $list.Add($rel)
         }

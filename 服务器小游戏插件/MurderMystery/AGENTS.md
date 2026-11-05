@@ -20,7 +20,13 @@
 - 新道具默认要**有配置、有获得渠道、有权重**，不要留下"代码能生成但配置里抽不到"的状态。
 - 改完默认值后，把同样的内容同步到线上 `server/plugins/MurderMystery/` 下的同名文件。
 
-## 3. 收尾检查
+## 3. 机关登记数据不要随包上传
+
+- 拉杆、传送点、售货机按钮统一存在 `server/plugins/MurderMystery/mechanisms-data.yml`，属于运行时数据。
+- `pack-upload.ps1` / `server-pack-full.ps1` 默认已经排除这个文件；不要手动把它或开发机的 `config.yml` 覆盖到线上。
+- 编译产物统一放到仓库根目录的 `新服务器小游戏插件/`：jar 放根目录，随包配置放 `新服务器小游戏插件/MurderMystery/`。
+
+## 4. 收尾检查
 
 ```powershell
 build.ps1 -Only MurderMystery -Deploy

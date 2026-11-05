@@ -3,6 +3,15 @@
 本文件管整个 monorepo。各子工程自己的规则见其目录下的 `README.md` / `AGENTS.md`
 （BuildBattle 的入口是 [服务器小游戏插件/AGENTS.md](服务器小游戏插件/AGENTS.md)）。
 
+## 更新产物放哪里（重要）
+
+**所有更新统一放到 `新服务器小游戏插件/` 文件夹**，上传服务器时以这个目录为准：
+
+- 编译后的插件 jar（如 `MurderMystery.jar`）直接覆盖到 `新服务器小游戏插件/` 下的同名文件。
+- 需要随包上传的插件配置，放到 `新服务器小游戏插件/<插件名>/`（例如 `新服务器小游戏插件/MurderMystery/`）。
+- **不要**把 `config.yml`、`mechanisms-data.yml`、`players.yml`、`role-history.yml` 这类含场地、机关登记或玩家运行数据的文件放进交付包——它们由服务器自己保存，上传会覆盖线上数据。
+- 源码仍然放在 `服务器小游戏插件/`，用 `build.ps1` 编译；`新服务器小游戏插件/` 只放交付产物。
+
 ## 子仓库（git submodule）改动规矩
 
 `paper-hold-the-fort/` 是独立仓库，以 submodule 引入；以后新增的 submodule 同样适用。

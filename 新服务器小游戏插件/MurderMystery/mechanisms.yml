@@ -1,0 +1,125 @@
+# ========== 密室杀手机关配置 ==========
+# 本文件集中配置所有地图机关：售货机、传送器、老虎机。
+# 改完执行 /mm reload 即可生效，无需重启。
+#
+# 机关类型：vending（售货机）、teleporter（传送器）、slot-machine（老虎机）。
+# 每根拉杆都会在 mechanisms-data.yml 里记录自己的 type 和所属场地，
+# 以后新增其他用拉杆触发的机关时会作为新的 type 接入，同一张图里多种拉杆机关互不冲突。
+# 机关按场地隔离：登记时绑定到拉杆/落点所在的场地，使用时只读取同一场地的数据，
+# 不同地图之间不会串。拉杆和落点都必须放在某个场地的 pos1/pos2 选区内。
+# 目前所有机关都由命令登记：/mm vending add|remove|list、/mm teleporter add|remove|list|point、
+# /mm slot add|remove|list
+#
+# 传送器用法：
+#   1. 在地图里放一个拉杆；
+#   2. OP 对准拉杆执行 /mm teleporter add 登记；
+#   3. 站到想作为落点的位置执行 /mm teleporter point（可登记多个）；
+#   4. 对局中右键已登记的拉杆，就会随机传送到其他已登记落点。
+#   登记结果保存在同目录的 mechanisms-data.yml，不需要手改。
+
+# ========== 售货机 ==========
+# 售货机由「钻石块 + 按钮」组成，OP 对准按钮执行 /mm vending add 登记。
+# 对局中右键已登记的按钮，从 goods 列表按权重随机给玩家一件货物。
+vending:
+  enabled: true
+  # 每次抽货扣除的金锭数量；0 = 免费
+  cost-gold: 2
+  # 同一名玩家两次抽货之间的冷却（秒）
+  cooldown-seconds: 3
+  # 货物列表：item 填 items.yml 里的道具 id，weight 是出现权重。
+  # 权重可以随便调，填 0 表示不会出现；想暂时下架某个货物就把它删掉或注释掉。
+  goods:
+    gt-soda:
+      item: gt-soda
+      weight: 25
+    steak:
+      item: steak
+      weight: 20
+    arrow:
+      item: arrow
+      weight: 20
+    truth-stone:
+      item: truth-stone
+      weight: 10
+    death-note:
+      item: death-note
+      weight: 10
+    shop-sword:
+      item: shop-sword
+      weight: 8
+    shop-crossbow:
+      item: shop-crossbow
+      weight: 7
+    rpg:
+      item: rpg
+      weight: 6
+
+# ========== 传送器 ==========
+teleporter:
+  # 是否启用传送器
+  enabled: true
+  # 每次使用扣除的金锭数量；0 = 免费
+  cost-gold: 5
+  # 同一名玩家两次传送之间的冷却（秒）
+  cooldown-seconds: 5
+  # 落点至少要离玩家当前位置和拉杆多少格（避免随机到脚下或原地；设为 0 才会允许）
+  min-distance: 3
+  # 传送成功时给玩家本人的提示
+  message: "&d传送器嗡的一声，你被传到了别处……"
+  # 没有可用落点时的提示
+  no-target-message: "&c传送器还没有其他可用的传送点。"
+  # 传送音效（Bukkit Sound 名称）
+  sound: ENTITY_ENDERMAN_TELEPORT
+
+# ========== 老虎机 ==========
+# 老虎机由拉杆触发，OP 对准拉杆执行 /mm slot add 登记。
+# 对局中右键已登记拉杆，先扣 cost-gold 金锭，再按权重随机触发一个效果。
+slot-machine:
+  enabled: true
+  # 每次启动扣除的金锭数量（默认 2）；0 = 免费
+  cost-gold: 2
+  # 同一名玩家两次启动之间的冷却（秒）
+  cooldown-seconds: 1
+  # 效果列表：enabled / weight 可调；broadcast=true 时向全房间播报，否则只提示本人。
+  # {player} {amount} {gold} {seconds} 会被替换成实际数值。
+  effects:
+    # 1. 大奖：自己的金锭翻倍，至少为 min-reward（默认 6）个；全房间播报
+    double-gold:
+      enabled: true
+      weight: 10
+      broadcast: true
+      min-reward: 6
+      message: "&6&l大奖！&f{player} 的金锭翻倍，现在有 &e{gold} &f金锭！"
+
+    # 2. 获得 5 金锭
+    gain-5:
+      enabled: true
+      weight: 25
+      broadcast: false
+      amount: 5
+      message: "&a你获得了 &e{amount}&a 金锭。"
+
+    # 3. 获得 3 金锭
+    gain-3:
+      enabled: true
+      weight: 25
+      broadcast: false
+      amount: 3
+      message: "&a你获得了 &e{amount}&a 金锭。"
+
+    # 4. 失去 2 金锭（不足 2 个就全扣）
+    lose-2:
+      enabled: true
+      weight: 20
+      broadcast: false
+      amount: 2
+      message: "&c你失去了 &e{amount}&c 金锭……"
+
+    # 5. 获得「烫手山芋」：30 秒后爆炸淘汰持有者；拿着它攻击别人可以转手
+    hot-potato:
+      enabled: true
+      weight: 15
+      duration-seconds: 30
+      message: "&c你拿到了烫手山芋！&7拿着它攻击别人可以转手，否则 &e{seconds}&7 秒后爆炸。"
+      broadcast-message: "&c&l有人获得了烫手山芋！"
+

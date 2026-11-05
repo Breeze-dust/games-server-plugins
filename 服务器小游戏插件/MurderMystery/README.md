@@ -296,7 +296,9 @@ OP：
 - `slot-machine.effects.<效果>`：`enabled`、`weight`、`broadcast`（是否全房间播报）、`message`，以及各效果自己的 `min-reward` / `amount` / `duration-seconds` / `broadcast-message`。
   目前效果：`double-gold`（翻倍，保底 6）、`gain-5`、`gain-3`、`lose-2`、`hot-potato`。
 
-已登记的拉杆与传送点写入同目录 `mechanisms-data.yml`（命令自动维护，不需要手改）。数据按「机关类型 -> 场地名」分组，例如 `levers.teleporter.<场名>` / `levers.slot-machine.<场名>` / `points.teleporter.<场名>`；登记时会绑定到坐标所在的场地，使用时只读取当前场地的数据，**不同地图的机关不会串**。旧版没有场地分组的数据会在加载时按坐标自动迁移，迁移不到任何场地的条目会记日志并丢弃。
+已登记的拉杆、传送点、售货机按钮统一写入同目录 `mechanisms-data.yml`（命令自动维护，不需要手改）。数据按「机关类型 -> 场地名」分组，例如 `levers.teleporter.<场名>` / `levers.slot-machine.<场名>` / `points.teleporter.<场名>` / `vending-machines.<场名>`；登记时会绑定到坐标所在的场地，使用时只读取当前场地的数据，**不同地图的机关不会串**。旧版没有场地分组的数据会在加载时按坐标自动迁移，迁移不到任何场地的条目会记日志并丢弃；旧版存在 `config.yml` 的 `vending-machines` 也会自动迁进这个文件。
+
+**上传注意**：`mechanisms-data.yml` 是运行时数据（保存线上登记的坐标），`pack-upload.ps1` / `server-pack-full.ps1` 默认**不会**把它打进上传包；只有显式加 `-WithMechanismData` 才会覆盖线上登记。`config.yml` 里的场地坐标同理不要用开发机版本直接覆盖线上。
 
 ### 房间配置（rooms.yml）
 

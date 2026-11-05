@@ -40,6 +40,8 @@ public final class MurderMysteryMechanisms {
     private final Map<String, Map<String, List<Location>>> levers = new LinkedHashMap<>();
     /** 机关类型 -> 场地名 -> 落点坐标。 */
     private final Map<String, Map<String, List<Location>>> points = new LinkedHashMap<>();
+    /** 售货机按钮：场地名 -> 按钮坐标（和拉杆/落点一起放在 mechanisms-data.yml）。 */
+    private final Map<String, List<Location>> vendingMachines = new LinkedHashMap<>();
 
     private boolean teleporterEnabled = true;
     private int teleporterCostGold = 5;
@@ -150,6 +152,7 @@ public final class MurderMysteryMechanisms {
     private void loadData(Function<Location, String> arenaResolver) {
         levers.clear();
         points.clear();
+        vendingMachines.clear();
         ensureType(TELEPORTER);
         File dataFile = new File(plugin.getDataFolder(), DATA_FILE);
         if (!dataFile.exists()) {
@@ -158,6 +161,13 @@ public final class MurderMysteryMechanisms {
         YamlConfiguration yml = YamlConfiguration.loadConfiguration(dataFile);
         readArenaMap(yml, "levers", levers);
         readArenaMap(yml, "points", points);
+        ConfigurationSection vendingRoot = yml.getConfigurationSection("vending-machines");
+        if (vendingRoot != null) {
+            for (String arena : vendingRoot.getKeys(false)) {
+                List<Location> list = vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>());
+                list.addAll(readLocations(yml, "vending-machines." + arena));
+            }
+        }
 
         // 旧版本数据没有场地分组：按坐标是否落在某个场地里迁移一次
         boolean migrated = false;
@@ -228,6 +238,12 @@ public final class MurderMysteryMechanisms {
         YamlConfiguration yml = new YamlConfiguration();
         writeArenaMap(yml.createSection("levers"), levers);
         writeArenaMap(yml.createSection("points"), points);
+        ConfigurationSection vendingRoot = yml.createSection("vending-machines");
+        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                vendingRoot.set(entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+        }
         try {
             yml.save(new File(plugin.getDataFolder(), DATA_FILE));
         } catch (IOException ex) {
@@ -405,6 +421,77 @@ public final class MurderMysteryMechanisms {
             out.addAll(list);
         }
         return out;
+    }
+
+    // ---------- 售货机按钮 ----------
+
+    /** 所有场地的售货机按钮（按场地分组）。 */
+    public Map<String, List<Location>> vendingMachinesByArena() {
+        Map<String, List<Location>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
+            out.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return out;
+    }
+
+    public boolean isVendingMachine(Location loc) {
+        return vendingArenaAt(loc) != null;
+    }
+
+    public String vendingArenaAt(Location loc) {
+        if (loc == null) {
+            return null;
+        }
+        for (Map.Entry<String, List<Location>> entry : vendingMachines.entrySet()) {
+            for (Location machine : entry.getValue()) {
+                if (sameBlock(machine, loc)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return null;
+    }
+
+    public boolean addVendingMachine(String arena, Location loc) {
+        if (arena == null || arena.isBlank() || isVendingMachine(loc)) {
+            return false;
+        }
+        vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>()).add(loc);
+        saveData();
+        return true;
+    }
+
+    public boolean removeVendingMachine(Location loc) {
+        for (List<Location> list : vendingMachines.values()) {
+            for (Location machine : new ArrayList<>(list)) {
+                if (sameBlock(machine, loc)) {
+                    list.remove(machine);
+                    saveData();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 把旧版存在 config.yml 里的售货机坐标迁移进 mechanisms-data.yml。 */
+    public int importLegacyVendingMachines(List<Location> locations, Function<Location, String> arenaResolver) {
+        int moved = 0;
+        for (Location loc : locations) {
+            String arena = arenaResolver == null ? null : arenaResolver.apply(loc);
+            if (arena == null || arena.isBlank()) {
+                plugin.getLogger().warning("旧配置里的售货机不属于任何场地，已跳过：" + loc);
+                continue;
+            }
+            if (!isVendingMachine(loc)) {
+                vendingMachines.computeIfAbsent(arena, k -> new ArrayList<>()).add(loc);
+                moved++;
+            }
+        }
+        if (moved > 0) {
+            saveData();
+        }
+        return moved;
     }
 
     /** 这个拉杆属于哪种机关（teleporter / 以后新增的类型）；没登记返回 null。 */

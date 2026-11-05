@@ -3,6 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File pack-upload.ps1              -> plugins + configs + server.jar + Paper runtime caches
 #   powershell -ExecutionPolicy Bypass -File pack-upload.ps1 -WithWorlds  -> also include world/
 #   powershell -ExecutionPolicy Bypass -File pack-upload.ps1 -WithPlayers -> also overwrite the panel's player records
+#   powershell -ExecutionPolicy Bypass -File pack-upload.ps1 -WithMechanismData -> also overwrite the panel's registered levers/points
 #   powershell -ExecutionPolicy Bypass -File pack-upload.ps1 -SkipRuntime -> leave out cache\ versions\ libraries\ (small zip, panel re-downloads)
 #
 # What it does:
@@ -22,6 +23,7 @@ param(
     [string]$OutFile   = 'D:\BuildBattle\upload-package.zip',
     [switch]$WithWorlds,
     [switch]$WithPlayers,
+    [switch]$WithMechanismData,
     [switch]$SkipRuntime
 )
 
@@ -86,6 +88,17 @@ if (Test-Path $playersAbs) {
 
 if (Test-Path $OutFile) { Remove-Item $OutFile -Force }
 
+# 2c. mechanism registrations (levers / teleport points / vending machines) are runtime data.
+#     Keep them out of the upload by default so extracting a dev package never wipes the panel's.
+$mechDataRel = 'plugins/MurderMystery/mechanisms-data.yml'
+if (Test-Path (Join-Path $ServerDir $mechDataRel)) {
+    if ($WithMechanismData) {
+        Write-Host "[mechanisms] -WithMechanismData: the archive WILL overwrite the panel's registrations." -ForegroundColor Yellow
+    } else {
+        Write-Host "[mechanisms] excluded from the archive (the panel keeps its registered levers/points)." -ForegroundColor Green
+    }
+}
+
 # 3. zip with tar.exe (Windows built-in): -a = infer format from extension, UTF-8 names preserved
 $tar = Join-Path $env:SystemRoot 'system32\tar.exe'
 if (-not (Test-Path $tar)) {
@@ -96,6 +109,7 @@ if (-not (Test-Path $tar)) {
 Write-Host "Packing $($present.Count) item(s) from $ServerDir ..."
 $tarArgs = @('-a', '-c', '-f', $OutFile, '-C', $ServerDir)
 if (-not $WithPlayers) { $tarArgs += @('--exclude', $playersRel) }
+if (-not $WithMechanismData) { $tarArgs += @('--exclude', $mechDataRel) }
 $tarArgs += $present
 & $tar @tarArgs
 if ($LASTEXITCODE -ne 0) { Write-Host "[ERR] tar failed with code $LASTEXITCODE" -ForegroundColor Red; exit 1 }
