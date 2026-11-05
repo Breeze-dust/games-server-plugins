@@ -1,5 +1,5 @@
 name: BombardmentZone
-version: '1.0.1'
+version: '1.0.2'
 main: com.bombardmentzone.BombardmentZonePlugin
 api-version: '1.21'
 description: 轰炸区：躲开海盗船炮火、别掉进水里，最后一颗心活到最后

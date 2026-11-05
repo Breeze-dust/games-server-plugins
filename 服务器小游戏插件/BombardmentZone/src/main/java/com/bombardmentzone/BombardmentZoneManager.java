@@ -573,6 +573,10 @@ public final class BombardmentZoneManager {
             entity.setBillboard(Display.Billboard.FIXED);
             entity.setPersistent(false);
             entity.setInvulnerable(true);
+            // 让客户端在两三个 tick 内插值到新位置；否则每 tick 的绝对传送会直接吸附，
+            // 低速度时表现为一顿一顿、偶尔跳一段。
+            entity.setTeleportDuration(Math.max(1, Math.min(20,
+                    cfgInt("shell.teleport-duration-ticks", 2))));
         });
         Vector step = target.toVector().subtract(spawnAt.toVector()).multiply(1.0 / flightTicks);
         shells.add(new Shell(display.getUniqueId(), target, step, flightTicks));
@@ -616,12 +620,19 @@ public final class BombardmentZoneManager {
         if (world == null) {
             return;
         }
+        double radius = explosionRadius();
         world.spawnParticle(Particle.EXPLOSION_EMITTER, location, 1, 0, 0, 0, 0);
-        world.spawnParticle(Particle.EXPLOSION, location, 1, 0, 0, 0, 0);
-        world.spawnParticle(Particle.LARGE_SMOKE, location, 12, 0.7, 0.4, 0.7, 0.01);
+        // 粒子数量和散布范围跟着爆炸半径走：半径越大，火球/烟团越大
+        int bursts = (int) Math.max(12, Math.min(90, Math.round(radius * 10)));
+        world.spawnParticle(Particle.EXPLOSION, location, bursts,
+                radius * 0.35, radius * 0.25, radius * 0.35, 0.0);
+        int smoke = (int) Math.max(10, Math.min(70, Math.round(radius * 6)));
+        world.spawnParticle(Particle.LARGE_SMOKE, location, smoke,
+                radius * 0.45, radius * 0.25, radius * 0.45, 0.01);
+        int edge = (int) Math.max(12, Math.min(72, Math.round(radius * 12)));
+        world.spawnParticle(Particle.SMOKE, location, edge, radius, 0.15, radius, 0.0);
         world.playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f);
 
-        double radius = explosionRadius();
         double radiusSq = radius * radius;
         List<Player> hit = new ArrayList<>();
         for (UUID id : playing) {
