@@ -16,8 +16,9 @@
   - 玩家：`/arcade join`、`leave`、`list`、`stars [玩家]`
   - OP：`menu`（设置菜单）、`start`、`stop`、`setlobby`、`setaudience`、`setpodium <first|second|third>`、**`addfirework`**（把脚下这格设为烟花发射点，可多次添加）、`clearfireworks`、`fireworks`（查看已配置的点）、`save`、`reload`
 - **设置菜单**（`/arcade menu`，管理员；也可以挂在 Hub 菜单里）：
-  - 每局小游戏个数、派对最多玩家、过渡准备时间：左键 +1 / 右键 -1（Shift = ±5）
-  - 每个小游戏一格：点击启用/禁用；显示房间上限与 join/start 命令
+  - 第 1 行：每局小游戏个数、派对最多玩家、过渡准备时间：左键 +1 / 右键 -1（Shift = ±5）；最右是关闭
+  - 中间 4 行：小游戏网格，**每页 36 个**；每个小游戏一格，点击启用/禁用，显示房间上限与 join/start 命令
+  - 最下一行：`← 上一页` / 页码（第 x/y 页、共 N 个小游戏）/ `下一页 →`；到头的箭头变灰、点了不生效
   - 改动立刻写回 `config.yml`
 - **配置**：`server/plugins/ArcadeParty/config.yml`
   - `min-players` / `max-players` / `games-per-party` / `transition-seconds` / `round-timeout-seconds`
