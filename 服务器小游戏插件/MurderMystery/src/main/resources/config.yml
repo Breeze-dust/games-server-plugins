@@ -65,3 +65,7 @@ steak-amount: 5
 
 # 加入告示牌（OP 可用 /mm joinsign <场名> 放置）
 join-signs: {}
+
+# 售货机按钮（钻石块 + 按钮）：OP 对准按钮执行 /mm vending add 自动登记；
+# 货物列表与权重在 items.yml 的 vending.goods 里配置。
+vending-machines: []

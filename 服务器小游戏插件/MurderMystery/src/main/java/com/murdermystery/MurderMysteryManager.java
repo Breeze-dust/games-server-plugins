@@ -24,21 +24,29 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.Sign;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.World;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Chicken;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Pose;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.block.Action;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
@@ -103,6 +111,12 @@ public class MurderMysteryManager {
     private static final String TRACK_COMPASS_KEY = "mm-track-compass";
     /** 职业装备标记（杀手铁剑/追踪指南针、猎人弓）：局内一律不可丢弃。 */
     private static final String ROLE_ITEM_KEY = "mm-role-item";
+    /** GT混沌汽水标记（右键触发随机事件）。 */
+    private static final String GT_SODA_KEY = "mm-gt-soda";
+    /** 售货机给出的货物标记（局末/离开时统一清掉，避免带出对局世界）。 */
+    private static final String VENDING_ITEM_KEY = "mm-vending-item";
+    /** 售货机变出来的鸡身上记录它对应的玩家 UUID。 */
+    private static final String CHICKEN_OWNER_KEY = "mm-chicken-owner";
     /** 杀手的追踪指南针固定放在快捷栏最后一格。 */
     public static final int COMPASS_SLOT = 8;
 
@@ -129,6 +143,9 @@ public class MurderMysteryManager {
 
     private final MurderMysteryPlugin plugin;
     private final LiveSidebar liveSidebar;
+    /** items.yml：道具总表、售货机货物、GT混沌汽水事件配置。 */
+    private final MurderMysteryItems items;
+    private final Random random = new Random();
     private final Map<String, MurderMysteryArena> arenas = new LinkedHashMap<>();
     private final Map<UUID, String> playerArena = new LinkedHashMap<>();
     /** 铁剑补发日志节流（玩家 -> 上次补发日志时间）。 */
@@ -149,6 +166,20 @@ public class MurderMysteryManager {
     private final Map<UUID, ItemDisplay> flyingSwords = new LinkedHashMap<>();
     /** 同步飞剑外形的 1 tick 任务（只要有飞剑在飞就保持运行）。 */
     private BukkitTask flyingSwordTask;
+
+    // ---------- 地图机关与 GT混沌汽水 ----------
+    /** 已登记的售货机按钮（钻石块 + 按钮）。 */
+    private final List<Location> vendingMachines = new ArrayList<>();
+    /** 玩家上次从售货机抽货的时间（冷却用）。 */
+    private final Map<UUID, Long> vendingCooldown = new LinkedHashMap<>();
+    /** 迈达斯之手就绪的玩家（UUID -> 场名），下一次近战攻击时消耗。 */
+    private final Map<UUID, String> midasHands = new LinkedHashMap<>();
+    /** 迅捷-致命事件的收尾任务（到时间后死亡）。 */
+    private final Map<UUID, BukkitTask> doomTasks = new LinkedHashMap<>();
+    /** 变成鸡的玩家：UUID -> 跟随玩家的鸡实体 + 同步任务。 */
+    private final Map<UUID, ChickenRig> chickens = new LinkedHashMap<>();
+    /** 被“胀气”放大过的玩家：UUID -> 原始体型，时间到/淘汰/局末恢复。 */
+    private final Map<UUID, Double> originalScale = new LinkedHashMap<>();
 
     // ---------- 角色分配的公平性历史（详见 assignRoles） ----------
     /** 角色历史文件名（单独一份，不塞进会被 saveAll 回写的 config.yml）。 */
@@ -226,10 +257,28 @@ public class MurderMysteryManager {
     private final NamespacedKey compassKey;
     /** 职业装备标记（不可丢弃）。 */
     private final NamespacedKey roleItemKey;
+    /** GT混沌汽水标记。 */
+    private final NamespacedKey gtSodaKey;
+    /** 售货机货物标记。 */
+    private final NamespacedKey vendingItemKey;
+    /** 鸡实体上记录对应的玩家 UUID。 */
+    private final NamespacedKey chickenOwnerKey;
+
+    /** 一只“鸡形态”玩家：对其他玩家隐藏玩家本体，用这只鸡代替外观。 */
+    private static final class ChickenRig {
+        private final Chicken entity;
+        private final BukkitTask task;
+
+        private ChickenRig(Chicken entity, BukkitTask task) {
+            this.entity = entity;
+            this.task = task;
+        }
+    }
 
     public MurderMysteryManager(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
         this.liveSidebar = new LiveSidebar(plugin);
+        this.items = new MurderMysteryItems(plugin);
         this.setup = new SetupMode(plugin, SETUP_TOOL_KEY);
         this.throwKey = new NamespacedKey(plugin, THROW_KEY);
         this.shopKey = new NamespacedKey(plugin, SHOP_KEY);
@@ -242,6 +291,9 @@ public class MurderMysteryManager {
         this.deathNoteKey = new NamespacedKey(plugin, DEATH_NOTE_KEY);
         this.compassKey = new NamespacedKey(plugin, TRACK_COMPASS_KEY);
         this.roleItemKey = new NamespacedKey(plugin, ROLE_ITEM_KEY);
+        this.gtSodaKey = new NamespacedKey(plugin, GT_SODA_KEY);
+        this.vendingItemKey = new NamespacedKey(plugin, VENDING_ITEM_KEY);
+        this.chickenOwnerKey = new NamespacedKey(plugin, CHICKEN_OWNER_KEY);
         for (Role role : Role.values()) {
             roleMisses.put(role, new LinkedHashMap<>());
         }
@@ -379,6 +431,8 @@ public class MurderMysteryManager {
         data = PlayerStats.load("murdermystery", new File(plugin.getDataFolder(), "data.yml"));
         loadRoleHistory(); // 角色累计计数（跨重启继续）
         ensureRoleChanceDefaults();
+        items.load(); // 道具总表 / 售货机货物 / GT混沌汽水事件
+        loadVendingMachines();
         ConfigurationSection js = plugin.getConfig().getConfigurationSection("join-signs");
         if (js != null) {
             for (String name : js.getKeys(false)) {
@@ -428,6 +482,7 @@ public class MurderMysteryManager {
         for (Map.Entry<String, List<Location>> e : joinSigns.entrySet()) {
             js.set(e.getKey(), e.getValue());
         }
+        saveVendingMachines();
         plugin.saveConfig();
         saveData();
     }
@@ -643,6 +698,7 @@ public class MurderMysteryManager {
      */
     public void leave(Player p, boolean silent) {
         UUID id = p.getUniqueId();
+        cleanupSodaState(p);
         showNameTag(p);
         p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
         String name = playerArena.remove(id);
@@ -652,6 +708,7 @@ public class MurderMysteryManager {
             }
             return;
         }
+        removeEventItems(p);
         MurderMysteryArena a = arenas.get(name);
         if (a != null) {
             // 必须在移除之前记录身份：isMurderer 就是查 murderers 集合
@@ -702,6 +759,7 @@ public class MurderMysteryManager {
     /** 退出服务器清理。 */
     public void handleQuit(Player p) {
         UUID id = p.getUniqueId();
+        cleanupSodaState(p);
         showNameTag(p);
         p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
         String name = playerArena.remove(id);
@@ -709,6 +767,7 @@ public class MurderMysteryManager {
         if (name == null) {
             return;
         }
+        removeEventItems(p);
         MurderMysteryArena a = arenas.get(name);
         if (a == null) {
             return;
@@ -744,6 +803,13 @@ public class MurderMysteryManager {
     public void handleJoin(Player p) {
         if (p == null || !p.isOnline()) {
             return;
+        }
+        // 中途进服的玩家也要看不见“鸡形态”玩家的本体，只看见鸡
+        for (UUID chickenId : chickens.keySet()) {
+            Player owner = Bukkit.getPlayer(chickenId);
+            if (owner != null && !owner.getUniqueId().equals(p.getUniqueId())) {
+                p.hideEntity(plugin, owner);
+            }
         }
         if (playerArena.get(p.getUniqueId()) != null) {
             return;
@@ -1821,8 +1887,20 @@ public class MurderMysteryManager {
      * 后台会打一行 {@code 淘汰：<名字> 场地=…}，淘汰本身不消耗任何道具。
      */
     private void eliminate(MurderMysteryArena a, Player p) {
+        eliminate(a, p, true);
+    }
+
+    /**
+     * 淘汰玩家。
+     *
+     * @param spawnCorpse false = 不留尸体（迈达斯之手会把尸体直接换成金锭）
+     */
+    private void eliminate(MurderMysteryArena a, Player p, boolean spawnCorpse) {
+        cleanupSodaState(p);
         dropHunterBow(a, p);
-        spawnCorpse(p);
+        if (spawnCorpse) {
+            spawnCorpse(p);
+        }
         hideNameTag(p);
         UUID id = p.getUniqueId();
         a.getPlayers().remove(id);
@@ -1985,6 +2063,8 @@ public class MurderMysteryManager {
             Player pp = Bukkit.getPlayer(id);
             if (pp != null && pp.isOnline()) {
                 pp.setGameMode(GameMode.SURVIVAL);
+                cleanupSodaState(pp);
+                removeEventItems(pp);
                 removeHunterBow(pp);
                 pp.getActivePotionEffects().forEach(e -> pp.removePotionEffect(e.getType()));
                 HubAPI.teleportToLobby(pp);
@@ -1997,6 +2077,8 @@ public class MurderMysteryManager {
             Player pp = Bukkit.getPlayer(id);
             if (pp != null && pp.isOnline()) {
                 pp.setGameMode(GameMode.SURVIVAL);
+                cleanupSodaState(pp);
+                removeEventItems(pp);
                 removeHunterBow(pp);
                 pp.getActivePotionEffects().forEach(e -> pp.removePotionEffect(e.getType()));
                 HubAPI.teleportToLobby(pp);
@@ -2733,6 +2815,687 @@ public class MurderMysteryManager {
         }
     }
 
+    // ---------- 道具配置（items.yml） ----------
+
+    /** 按 items.yml 里的 id 生成物品；id 不存在、未启用或类型未知时返回 null。 */
+    public ItemStack configuredItem(String id) {
+        MurderMysteryItems.ItemDef def = items.item(id);
+        if (def == null || !def.enabled()) {
+            return null;
+        }
+        return switch (def.type()) {
+            case "gt-soda" -> gtSodaItem(def);
+            case "shop-sword" -> stoneSword();
+            case "shop-crossbow" -> shopCrossbow();
+            case "arrow" -> new ItemStack(Material.ARROW, def.amount());
+            case "truth-stone" -> truthStone();
+            case "death-note" -> deathNote();
+            case "steak" -> new ItemStack(Material.COOKED_BEEF, def.amount());
+            default -> plainConfiguredItem(def);
+        };
+    }
+
+    private ItemStack plainConfiguredItem(MurderMysteryItems.ItemDef def) {
+        ItemStack it = new ItemStack(def.material(), def.amount());
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            if (def.name() != null && !def.name().isBlank()) {
+                meta.displayName(Chat.noItalic(LEGACY.deserialize(def.name())));
+            }
+            if (def.lore() != null && !def.lore().isEmpty()) {
+                List<Component> lore = new ArrayList<>();
+                for (String line : def.lore()) {
+                    lore.add(LEGACY.deserialize(line));
+                }
+                meta.lore(lore);
+            }
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    private ItemStack gtSodaItem(MurderMysteryItems.ItemDef def) {
+        ItemStack it = new ItemStack(def.material() == Material.AIR ? Material.POTION : def.material(), def.amount());
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(LEGACY.deserialize(
+                    def.name() == null || def.name().isBlank() ? "&dGT混沌汽水" : def.name())));
+            List<String> rawLore = def.lore() == null || def.lore().isEmpty()
+                    ? List.of("&7右键饮用：随机触发一种事件", "&8喝下去之前，谁也说不准会发生什么")
+                    : def.lore();
+            List<Component> lore = new ArrayList<>();
+            for (String line : rawLore) {
+                lore.add(LEGACY.deserialize(line));
+            }
+            meta.lore(lore);
+            meta.getPersistentDataContainer().set(gtSodaKey, PersistentDataType.STRING, "1");
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    public boolean isGtSoda(ItemStack it) {
+        return it != null && it.hasItemMeta()
+                && it.getItemMeta().getPersistentDataContainer().has(gtSodaKey, PersistentDataType.STRING);
+    }
+
+    /** 售货机给出的货物：带额外标记，局末/离开时统一清掉。 */
+    private ItemStack vendingItem(String id) {
+        ItemStack it = configuredItem(id);
+        if (it == null) {
+            return null;
+        }
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(vendingItemKey, PersistentDataType.STRING, "1");
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    private boolean isVendingItem(ItemStack it) {
+        return it != null && it.hasItemMeta()
+                && it.getItemMeta().getPersistentDataContainer().has(vendingItemKey, PersistentDataType.STRING);
+    }
+
+    private String itemDisplayName(ItemStack it) {
+        if (it != null && it.hasItemMeta() && it.getItemMeta().hasDisplayName()) {
+            return LEGACY.serialize(it.getItemMeta().displayName());
+        }
+        return it == null ? "未知物品" : it.getType().name();
+    }
+
+    // ---------- 售货机（钻石块 + 按钮） ----------
+
+    private static final BlockFace[] BUTTON_SIDES = {
+            BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST, BlockFace.UP, BlockFace.DOWN
+    };
+
+    /** 对准按钮（或按钮所在的钻石块）登记售货机。 */
+    public boolean addVendingMachine(Player p) {
+        Block target = p.getTargetBlockExact(8);
+        if (target == null) {
+            msg(p, "&c请对准售货机的按钮（钻石块上安装的按钮）。");
+            return false;
+        }
+        Block button = findVendingButton(target);
+        if (button == null) {
+            msg(p, "&c没有找到按钮：请对准按钮本身，或对准装着按钮的钻石块。");
+            return false;
+        }
+        if (!hasDiamondNeighbor(button)) {
+            msg(p, "&c售货机必须是「钻石块 + 按钮」：这个按钮六个面都没有贴着钻石块。");
+            return false;
+        }
+        if (isVendingButton(button)) {
+            msg(p, "&e这个按钮已经登记为售货机了。");
+            return false;
+        }
+        vendingMachines.add(button.getLocation());
+        saveAll();
+        msg(p, "&a已登记售货机按钮：&f" + shortLoc(button.getLocation())
+                + "&a。对局中右键它就会随机吐出货物。");
+        return true;
+    }
+
+    /** 取消登记（对准按钮或它所在的钻石块都行）。 */
+    public boolean removeVendingMachine(Player p) {
+        Block target = p.getTargetBlockExact(8);
+        if (target == null) {
+            msg(p, "&c请对准要取消的售货机按钮。");
+            return false;
+        }
+        Block button = findVendingButton(target);
+        if (button == null) {
+            msg(p, "&c没有找到按钮。");
+            return false;
+        }
+        Location found = null;
+        for (Location loc : vendingMachines) {
+            if (sameBlock(loc, button.getLocation())) {
+                found = loc;
+                break;
+            }
+        }
+        if (found == null) {
+            msg(p, "&c这个按钮没有登记为售货机。");
+            return false;
+        }
+        vendingMachines.remove(found);
+        saveAll();
+        msg(p, "&a已取消登记售货机：&f" + shortLoc(found) + "&a。");
+        return true;
+    }
+
+    public List<Location> vendingMachines() {
+        return new ArrayList<>(vendingMachines);
+    }
+
+    /** 这个方块是不是已登记的售货机按钮。 */
+    public boolean isVendingButton(Block block) {
+        if (block == null) {
+            return false;
+        }
+        Location loc = block.getLocation();
+        for (Location machine : vendingMachines) {
+            if (sameBlock(machine, loc)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Block findVendingButton(Block target) {
+        if (isButton(target)) {
+            return target;
+        }
+        if (target.getType() == Material.DIAMOND_BLOCK) {
+            for (BlockFace face : BUTTON_SIDES) {
+                Block neighbor = target.getRelative(face);
+                if (isButton(neighbor)) {
+                    return neighbor;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isButton(Block block) {
+        return block != null && org.bukkit.Tag.BUTTONS.isTagged(block.getType());
+    }
+
+    private boolean hasDiamondNeighbor(Block button) {
+        for (BlockFace face : BUTTON_SIDES) {
+            if (button.getRelative(face).getType() == Material.DIAMOND_BLOCK) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 右键售货机按钮：只有对局中的存活玩家能抽货。
+     *
+     * @return true = 这个按钮是本插件登记的售货机（事件应取消）；false = 不是售货机，放行原版按钮
+     */
+    public boolean handleVendingClick(Player p, Block button) {
+        if (!isVendingButton(button)) {
+            return false;
+        }
+        String arenaName = playerArena.get(p.getUniqueId());
+        MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
+        if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
+                || !a.getPlayers().contains(p.getUniqueId())) {
+            return false; // 不在对局里就当普通按钮用
+        }
+        if (!a.contains(button.getLocation())) {
+            msg(p, "&c这个售货机不在这局场地范围内。");
+            return true;
+        }
+        UUID id = p.getUniqueId();
+        long now = System.currentTimeMillis();
+        long ready = vendingCooldown.getOrDefault(id, 0L);
+        if (now < ready) {
+            Chat.actionBar(p, "&e售货机冷却中（&f" + Math.max(1, (ready - now + 999) / 1000) + "s&e）");
+            return true;
+        }
+        MurderMysteryItems.Good good = items.pickGood(random);
+        if (good == null) {
+            msg(p, "&c售货机里暂时没有可用的货物（检查 items.yml 的 vending.goods）。");
+            return true;
+        }
+        ItemStack out = vendingItem(good.itemId());
+        if (out == null) {
+            msg(p, "&c这件货物配置无效（" + good.itemId() + "），检查 items.yml。");
+            return true;
+        }
+        giveOrDrop(p, out);
+        long cooldownMs = (long) Math.ceil(items.vendingCooldownSeconds() * 1000.0);
+        if (cooldownMs > 0) {
+            vendingCooldown.put(id, now + cooldownMs);
+        }
+        p.getWorld().playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+        msg(p, "&e售货机吐出了 " + itemDisplayName(out) + "&e！");
+        return true;
+    }
+
+    private void loadVendingMachines() {
+        vendingMachines.clear();
+        List<?> list = plugin.getConfig().getList("vending-machines");
+        if (list == null) {
+            return;
+        }
+        for (Object o : list) {
+            if (o instanceof Location loc) {
+                vendingMachines.add(loc);
+            }
+        }
+    }
+
+    private void saveVendingMachines() {
+        plugin.getConfig().set("vending-machines", new ArrayList<>(vendingMachines));
+    }
+
+    // ---------- GT混沌汽水 ----------
+
+    /** 右键喝汽水：先抽事件，抽到了才消耗一瓶。 */
+    public void drinkGtSoda(Player p, EquipmentSlot hand) {
+        String arenaName = playerArena.get(p.getUniqueId());
+        MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
+        if (a == null || a.getState() != MurderMysteryArena.State.RUNNING
+                || !a.getPlayers().contains(p.getUniqueId())) {
+            msg(p, "&7汽水只在密室杀手对局中有效。");
+            return;
+        }
+        if (isChicken(p)) {
+            msg(p, "&c你现在是一只鸡，不能使用道具！");
+            return;
+        }
+        MurderMysteryItems.EffectDef effect = items.pickEffect(a.isMurderer(p.getUniqueId()), random);
+        if (effect == null) {
+            msg(p, "&7汽水没有反应……（items.yml 里没有可触发的事件）");
+            return;
+        }
+        if (!consumeOne(p, hand)) {
+            return;
+        }
+        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_GENERIC_DRINK, 1f, 1f);
+        applyGtSodaEffect(a, p, effect);
+    }
+
+    private boolean consumeOne(Player p, EquipmentSlot hand) {
+        boolean off = hand == EquipmentSlot.OFF_HAND;
+        ItemStack item = off ? p.getInventory().getItemInOffHand() : p.getInventory().getItemInMainHand();
+        if (!isGtSoda(item)) {
+            return false;
+        }
+        if (item.getAmount() > 1) {
+            item.setAmount(item.getAmount() - 1);
+        } else if (off) {
+            p.getInventory().setItemInOffHand(null);
+        } else {
+            p.getInventory().setItemInMainHand(null);
+        }
+        return true;
+    }
+
+    private void applyGtSodaEffect(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        switch (effect.key()) {
+            case "speed-burst", "speed-long" -> {
+                addPotion(p, PotionEffectType.SPEED,
+                        effect.getInt("duration-seconds", 3), effect.getInt("amplifier", 0));
+                sendIfPresent(p, effect.getString("message", ""));
+            }
+            case "speed-doom" -> applySpeedDoom(a, p, effect);
+            case "midas" -> applyMidas(p, effect);
+            case "faction-sound" -> playFactionSound(a, p, effect);
+            case "global-howl" -> playGlobalHowl(a, p, effect);
+            case "cola" -> sendIfPresent(p, effect.getString("message", "&e可乐真好喝木嘿嘿嘿"));
+            case "chicken" -> startChicken(a, p, effect);
+            case "inflate" -> applyInflate(p, effect);
+            default -> msg(p, "&7汽水没有反应……（未知事件：" + effect.key() + "）");
+        }
+    }
+
+    private void sendIfPresent(Player p, String text) {
+        if (text != null && !text.isBlank()) {
+            msg(p, text);
+        }
+    }
+
+    private void addPotion(Player p, PotionEffectType type, int seconds, int amplifier) {
+        p.addPotionEffect(new PotionEffect(type, Math.max(1, seconds) * 20, Math.max(0, amplifier),
+                false, false, false));
+    }
+
+    /** 3. 迅捷 5，效果结束时死亡；广播给全场，本人收到紫色提示。 */
+    private void applySpeedDoom(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        int seconds = effect.getInt("duration-seconds", 30);
+        addPotion(p, PotionEffectType.SPEED, seconds, effect.getInt("amplifier", 4));
+        broadcast(a, effect.getString("broadcast", "&e{player}：&f你跑不过我你信吗")
+                .replace("{player}", p.getName()));
+        sendIfPresent(p, effect.getString("message", "&5你觉得你的血条有点发紫"));
+        UUID id = p.getUniqueId();
+        cancelDoom(id);
+        doomTasks.put(id, Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            doomTasks.remove(id);
+            Player q = Bukkit.getPlayer(id);
+            if (q == null || !q.isOnline() || a.getState() != MurderMysteryArena.State.RUNNING
+                    || !a.getPlayers().contains(id)) {
+                return;
+            }
+            boolean wasMurderer = a.isMurderer(id);
+            eliminate(a, q);
+            if (wasMurderer) {
+                endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + q.getName() + "&f）死于汽水效果。");
+            } else {
+                checkMurdererWin(a);
+            }
+        }, seconds * 20L + 2L));
+    }
+
+    private void cancelDoom(UUID id) {
+        BukkitTask task = doomTasks.remove(id);
+        if (task != null) {
+            task.cancel();
+        }
+    }
+
+    /** 4. 迈达斯之手：记录到下一次近战攻击；子弹/箭不算。 */
+    private void applyMidas(Player p, MurderMysteryItems.EffectDef effect) {
+        String arenaName = playerArena.get(p.getUniqueId());
+        if (arenaName == null) {
+            return;
+        }
+        midasHands.put(p.getUniqueId(), arenaName);
+        sendIfPresent(p, effect.getString("message",
+                "&6你获得了迈达斯之手：下一次攻击（空手也行）会杀死对方，并把尸体变成金锭。"));
+        sendIfPresent(p, effect.getString("message-2", "&6你变得贪婪"));
+        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 0.8f);
+    }
+
+    public boolean hasMidas(UUID id) {
+        return midasHands.containsKey(id);
+    }
+
+    /**
+     * 迈达斯之手的下一次近战攻击结算：目标直接淘汰、尸体换成金锭。
+     * 好人误杀好人默认仍保留“两人一起淘汰”（items.yml 可关）。
+     */
+    public void handleMidasAttack(MurderMysteryArena a, Player attacker, Player victim) {
+        UUID aid = attacker.getUniqueId();
+        UUID vid = victim.getUniqueId();
+        if (aid.equals(vid)) {
+            return;
+        }
+        boolean attackerMurderer = a.isMurderer(aid);
+        boolean victimMurderer = a.isMurderer(vid);
+        // 多杀手局里杀手之间互相砍不消耗迈达斯（和普通规则一致）
+        if (attackerMurderer && victimMurderer) {
+            return;
+        }
+        if (midasHands.remove(aid) == null) {
+            return;
+        }
+        MurderMysteryItems.EffectDef effect = items.effect("midas");
+        int goldAmount = Math.max(1, effect == null ? 5 : effect.getInt("gold-amount", 5));
+        boolean mutual = effect == null || effect.getBoolean("friendly-fire-mutual-death", true);
+        // eliminate() 会把受害者传回场地中心，金锭要掉在死亡位置，所以先记下来
+        Location deathLoc = victim.getLocation().clone();
+
+        recordKill(aid);
+        if (attackerMurderer) {
+            int kills = a.getKills().merge(aid, 1, Integer::sum);
+            upgradeSword(attacker, kills);
+            eliminate(a, victim, false); // 尸体直接变成金锭，不留尸体
+            dropGoldAt(deathLoc, goldAmount);
+            checkMurdererWin(a);
+            return;
+        }
+        if (victimMurderer) {
+            eliminate(a, victim, false);
+            dropGoldAt(deathLoc, goldAmount);
+            endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + victim.getName() + "&f）被 &e"
+                    + attacker.getName() + "&f 的迈达斯之手消灭了。");
+            return;
+        }
+        eliminate(a, victim, false);
+        dropGoldAt(deathLoc, goldAmount);
+        if (mutual) {
+            eliminate(a, attacker);
+        }
+        checkMurdererWin(a);
+    }
+
+    private void dropGoldAt(Location loc, int amount) {
+        if (loc == null || loc.getWorld() == null) {
+            return;
+        }
+        Item drop = loc.getWorld().dropItem(loc.clone().add(0.0, 0.5, 0.0),
+                new ItemStack(Material.GOLD_INGOT, Math.max(1, amount)));
+        drop.setVelocity(new Vector(0, 0, 0));
+    }
+
+    /** 5. 按阵营在玩家周围播放音效。 */
+    private void playFactionSound(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        boolean murderer = a.isMurderer(p.getUniqueId());
+        Sound fallback = murderer ? Sound.ENTITY_WITHER_DEATH : Sound.ENTITY_VILLAGER_AMBIENT;
+        Sound sound = parseSound(effect.getString(murderer ? "murderer-sound" : "innocent-sound", fallback.name()), fallback);
+        double radius = Math.max(1.0, effect.getDouble("radius", 16.0));
+        p.getWorld().playSound(p.getLocation(), sound, (float) Math.max(1.0, radius / 16.0), 1f);
+    }
+
+    /** 6. 给场地内所有人播放“成为杀手”的音效，只有本人收到播报。 */
+    private void playGlobalHowl(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        Sound sound = parseSound(effect.getString("sound", "ENTITY_WITHER_DEATH"), Sound.ENTITY_WITHER_DEATH);
+        for (UUID id : a.getPlayers()) {
+            Player q = Bukkit.getPlayer(id);
+            if (q != null && q.isOnline()) {
+                q.playSound(q.getLocation(), sound, 1f, 0.8f);
+            }
+        }
+        for (UUID id : a.getEliminated()) {
+            Player q = Bukkit.getPlayer(id);
+            if (q != null && q.isOnline()) {
+                q.playSound(q.getLocation(), sound, 1f, 0.8f);
+            }
+        }
+        sendIfPresent(p, effect.getString("message", "&6你突然想发出野性的呼喊"));
+    }
+
+    private Sound parseSound(String raw, Sound fallback) {
+        try {
+            return Sound.valueOf(String.valueOf(raw).toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return fallback;
+        }
+    }
+
+    /** 8. 变成鸡：隐藏玩家本体、生成一只跟随的鸡，加速并禁用道具。 */
+    private void startChicken(MurderMysteryArena a, Player p, MurderMysteryItems.EffectDef effect) {
+        endChicken(p); // 重复抽到先恢复再重来，避免残留两只鸡
+        int seconds = Math.max(1, effect.getInt("duration-seconds", 10));
+        int speedAmplifier = Math.max(0, effect.getInt("speed-amplifier", 1));
+        Location loc = p.getLocation();
+        World world = loc.getWorld();
+        if (world == null) {
+            return;
+        }
+        Chicken chicken = world.spawn(loc, Chicken.class, ch -> {
+            ch.setAI(false);
+            ch.setInvulnerable(true);
+            ch.setSilent(true);
+            ch.setCollidable(false);
+            ch.setPersistent(false);
+            ch.setRemoveWhenFarAway(false);
+            ch.setAdult();
+            ch.getPersistentDataContainer().set(chickenOwnerKey, PersistentDataType.STRING,
+                    p.getUniqueId().toString());
+        });
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (!other.getUniqueId().equals(p.getUniqueId())) {
+                other.hideEntity(plugin, p); // 别人只看到鸡，看不到玩家本体
+            }
+        }
+        p.hideEntity(plugin, chicken); // 本人视角保持正常，不看见跟在自己身上的鸡
+        addPotion(p, PotionEffectType.SPEED, seconds, speedAmplifier);
+
+        UUID id = p.getUniqueId();
+        BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (!p.isOnline() || !chicken.isValid()) {
+                endChicken(p);
+                return;
+            }
+            String arenaName = playerArena.get(id);
+            MurderMysteryArena arena = arenaName == null ? null : arenas.get(arenaName);
+            if (arena == null || arena.getState() != MurderMysteryArena.State.RUNNING
+                    || !arena.getPlayers().contains(id)) {
+                endChicken(p);
+                return;
+            }
+            chicken.teleport(p.getLocation());
+            chicken.setRotation(p.getLocation().getYaw(), p.getLocation().getPitch());
+        }, 1L, 2L);
+        chickens.put(id, new ChickenRig(chicken, task));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            ChickenRig rig = chickens.get(id);
+            if (rig != null && rig.entity.equals(chicken)) {
+                endChicken(p);
+            }
+        }, seconds * 20L);
+        sendIfPresent(p, effect.getString("message", "&e你变成了一只鸡！跑得快，但不能使用道具。"));
+    }
+
+    public boolean isChicken(Player p) {
+        return p != null && chickens.containsKey(p.getUniqueId());
+    }
+
+    /** 这只鸡对应的玩家 UUID；不是本插件生成的鸡返回 null。 */
+    public String chickenOwner(Chicken chicken) {
+        return chicken == null ? null
+                : chicken.getPersistentDataContainer().get(chickenOwnerKey, PersistentDataType.STRING);
+    }
+
+    private void endChicken(Player p) {
+        if (p == null) {
+            return;
+        }
+        ChickenRig rig = chickens.remove(p.getUniqueId());
+        if (rig == null) {
+            return;
+        }
+        rig.task.cancel();
+        if (rig.entity.isValid()) {
+            rig.entity.remove();
+        }
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (!other.getUniqueId().equals(p.getUniqueId())) {
+                other.showEntity(plugin, p);
+            }
+        }
+    }
+
+    /** 杀手打到了“鸡”：按打中玩家本人处理（可以被杀手击杀）。 */
+    public void handleChickenHit(Chicken chicken, Entity damager) {
+        String raw = chickenOwner(chicken);
+        if (raw == null) {
+            return;
+        }
+        UUID id;
+        try {
+            id = UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return;
+        }
+        Player p = Bukkit.getPlayer(id);
+        if (p == null || !p.isOnline()) {
+            return;
+        }
+        String arenaName = playerArena.get(id);
+        MurderMysteryArena a = arenaName == null ? null : arenas.get(arenaName);
+        if (a == null || a.getState() != MurderMysteryArena.State.RUNNING || !a.getPlayers().contains(id)) {
+            endChicken(p);
+            return;
+        }
+        Player attacker = damager instanceof Player pl ? pl : null;
+        if (attacker == null && damager instanceof Projectile proj && proj.getShooter() instanceof Player shooter) {
+            attacker = shooter;
+        }
+        if (attacker == null || !a.getPlayers().contains(attacker.getUniqueId())) {
+            return;
+        }
+        if (!a.isMurderer(attacker.getUniqueId()) || a.isMurderer(id)) {
+            return; // 只有杀手能把鸡打死；好人打鸡无效
+        }
+        handleMurdererKill(a, attacker, p);
+    }
+
+    /** 9. 变大 + 缓慢。 */
+    private void applyInflate(Player p, MurderMysteryItems.EffectDef effect) {
+        int seconds = Math.max(1, effect.getInt("duration-seconds", 5));
+        addPotion(p, PotionEffectType.SLOWNESS, seconds, effect.getInt("slowness-amplifier", 1));
+        applyScale(p, effect.getDouble("scale", 1.6));
+        sendIfPresent(p, effect.getString("message", "&e胀气了，有点走不动道"));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> restoreScale(p), seconds * 20L + 2L);
+    }
+
+    private void applyScale(Player p, double scale) {
+        AttributeInstance attr = p.getAttribute(Attribute.SCALE);
+        if (attr == null) {
+            return;
+        }
+        originalScale.putIfAbsent(p.getUniqueId(), attr.getBaseValue());
+        attr.setBaseValue(Math.max(0.5, scale));
+    }
+
+    private void restoreScale(Player p) {
+        if (p == null) {
+            return;
+        }
+        Double base = originalScale.remove(p.getUniqueId());
+        if (base == null) {
+            return;
+        }
+        AttributeInstance attr = p.getAttribute(Attribute.SCALE);
+        if (attr != null) {
+            attr.setBaseValue(base);
+        }
+    }
+
+    /** 清理一名玩家身上所有汽水状态（淘汰/离开/局末/关服）。 */
+    private void cleanupSodaState(Player p) {
+        if (p == null) {
+            return;
+        }
+        endChicken(p);
+        restoreScale(p);
+        cancelDoom(p.getUniqueId());
+        midasHands.remove(p.getUniqueId());
+    }
+
+    /** 局末/离开时把汽水和售货机货物从背包清掉，避免带出对局世界。 */
+    private void removeEventItems(Player p) {
+        ItemStack[] contents = p.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack it = contents[i];
+            if (it != null && (isGtSoda(it) || isVendingItem(it))) {
+                p.getInventory().setItem(i, null);
+            }
+        }
+    }
+
+    /** 关服兜底：恢复所有鸡形态/体型/致命倒计时。 */
+    public void clearGtSodaStates() {
+        for (UUID id : new ArrayList<>(chickens.keySet())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null) {
+                endChicken(p);
+            } else {
+                ChickenRig rig = chickens.remove(id);
+                if (rig != null) {
+                    rig.task.cancel();
+                    if (rig.entity.isValid()) {
+                        rig.entity.remove();
+                    }
+                }
+            }
+        }
+        for (BukkitTask task : doomTasks.values()) {
+            task.cancel();
+        }
+        doomTasks.clear();
+        for (UUID id : new ArrayList<>(originalScale.keySet())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null) {
+                restoreScale(p);
+            }
+        }
+        originalScale.clear();
+        midasHands.clear();
+        vendingCooldown.clear();
+    }
+
+
     // ---------- 杀手的追踪指南针 ----------
 
     /** 杀手的追踪指南针：右键显示最近的存活玩家有多远，并把指针指向 TA。 */
@@ -3228,6 +3991,7 @@ public class MurderMysteryManager {
         compassTasks.clear();
         goldScans.clear();
         clearFlyingSwords();
+        clearGtSodaStates();
     }
 
     // ---------- 场内金锭定时刷新 ----------
@@ -3459,7 +4223,7 @@ public class MurderMysteryManager {
             plugin.getLogger().warning("config.yml 有语法错误，本次重载已取消（原配置继续生效）：" + e.getMessage());
             return -1;
         }
-        // 场地列表也来自 config.yml，所以顺手重读一遍；有对局在跑时先不动场地，免得把进行中的对局换掉
+        // items.yml 与售货机登记随时可以重载，进行中的对局也会立刻用上新配置
         boolean running = false;
         for (MurderMysteryArena a : arenas.values()) {
             if (a.getState() == MurderMysteryArena.State.RUNNING) {
@@ -3468,9 +4232,11 @@ public class MurderMysteryManager {
             }
         }
         if (running) {
-            plugin.getLogger().info("有对局正在进行：本次只重载规则数值，场地列表等这局结束再重载。");
+            plugin.getLogger().info("有对局正在进行：本次只重载规则数值与 items.yml，场地列表等这局结束再重载。");
+            items.load();
+            loadVendingMachines();
         } else {
-            load(); // 重读场地/告示牌/战绩
+            load(); // 重读场地/告示牌/战绩/items.yml
         }
         invalidateGoldScan();
         int count = 0;

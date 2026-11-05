@@ -233,6 +233,33 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
                 }
                 return true;
             }
+            case "vending" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (!(sender instanceof Player p)) {
+                    Chat.send(sender, "&c该命令需要玩家执行（要对着按钮使用）。");
+                    return true;
+                }
+                String action = args.length >= 2 ? args[1].toLowerCase() : "list";
+                switch (action) {
+                    case "add" -> m.addVendingMachine(p);
+                    case "remove", "del" -> m.removeVendingMachine(p);
+                    case "list" -> {
+                        List<Location> machines = m.vendingMachines();
+                        if (machines.isEmpty()) {
+                            Chat.send(sender, "&7还没有登记任何售货机。对准钻石块上的按钮执行 &e/mm vending add&7。");
+                            return true;
+                        }
+                        Chat.send(sender, "&6已登记的售货机按钮（" + machines.size() + " 个）：");
+                        for (int i = 0; i < machines.size(); i++) {
+                            Location l = machines.get(i);
+                            Chat.send(sender, "&e#" + i + " &f" + l.getWorld().getName()
+                                    + " " + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ());
+                        }
+                    }
+                    default -> Chat.send(sender, "&c用法：/mm vending add|remove|list");
+                }
+                return true;
+            }
             case "reload" -> {
                 if (!admin) { noPerm(sender); return true; }
                 int count = m.reloadConfigAndRescanGold();
@@ -284,6 +311,7 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/mm edit <名>&f 命令编辑  &e/mm pos1 / pos2 / center&f 圈范围与中心点  &e/mm lobby&f 等待点");
             Chat.send(sender, "&e/mm joinsign <名>&f 放加入告示牌  &e/mm save&f 保存  &e/mm start&f 开始");
             Chat.send(sender, "&e/mm goldblocks <名>&f 列出该场所有金块坐标  &e/mm reload&f 重载配置并重新扫描金块");
+            Chat.send(sender, "&e/mm vending add|remove|list&f 对准「钻石块+按钮」登记/取消售货机（货物权重在 items.yml）");
             Chat.send(sender, "&e/mm stats reset&f 清空全部战绩");
         }
     }
@@ -301,10 +329,13 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
             if (admin) {
                 subs.addAll(List.of("create", "remove", "edit", "rename", "setup", "setup-exit",
                         "pos1", "pos2", "center", "lobby", "save", "start", "joinsign",
-                        "goldblocks", "reload"));
+                        "goldblocks", "vending", "reload"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
         } else if (args.length == 2) {
+            if (args[0].equalsIgnoreCase("vending")) {
+                out.addAll(List.of("add", "remove", "list"));
+            }
             if (List.of("join", "edit", "rename", "setup", "remove", "joinsign", "goldblocks")
                     .contains(args[0].toLowerCase())) {
                 out.addAll(plugin.getManager().getArenas().keySet().stream()

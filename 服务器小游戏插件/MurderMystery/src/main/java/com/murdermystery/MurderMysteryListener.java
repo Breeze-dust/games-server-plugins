@@ -4,6 +4,7 @@ import com.hub.util.Chat;
 import org.bukkit.Material;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.AbstractArrow;
+import org.bukkit.entity.Chicken;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -158,6 +159,12 @@ public class MurderMysteryListener implements Listener {
                 event.setCancelled(true);
                 return;
             }
+            // 迈达斯之手：下一次近战攻击（空手也算）直接杀死对方，并把尸体换成金锭
+            if (m.hasMidas(attacker.getUniqueId())) {
+                event.setCancelled(true);
+                m.handleMidasAttack(arena, attacker, victim);
+                return;
+            }
             // 真理之石：左键探测身份（杀手→红石，无辜者→钻石），不造成伤害
             if (m.isTruthStone(attacker.getInventory().getItemInMainHand())) {
                 event.setCancelled(true);
@@ -247,6 +254,12 @@ public class MurderMysteryListener implements Listener {
         MurderMysteryManager m = plugin.getManager();
         ItemStack item = event.getItem();
 
+        // 鸡形态：不能使用任何道具（右键商店/汽水/按钮、吃喝、丢东西都不行）
+        if (m.isChicken(p)) {
+            event.setCancelled(true);
+            return;
+        }
+
         // 配置模式工具：木棍是"左键=范围角1、右键=范围角2"，所以这里必须先于右键过滤处理
         if (m.isInSetup(p.getUniqueId())) {
             Action action = event.getAction();
@@ -260,6 +273,20 @@ public class MurderMysteryListener implements Listener {
 
         // 下面是右键玩法（兑换/道具/告示牌），只处理右键
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+
+        // GT混沌汽水：拦住原版饮用，由插件自己抽事件
+        if (item != null && m.isGtSoda(item)) {
+            event.setCancelled(true);
+            m.drinkGtSoda(p, event.getHand() == null ? org.bukkit.inventory.EquipmentSlot.HAND : event.getHand());
+            return;
+        }
+
+        // 售货机按钮（钻石块 + 按钮）：对局中右键随机抽一件货物
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
+                && m.handleVendingClick(p, event.getClickedBlock())) {
+            event.setCancelled(true);
             return;
         }
 
@@ -319,6 +346,23 @@ public class MurderMysteryListener implements Listener {
                 m.onSignClick(p, event.getClickedBlock().getLocation());
             }
         }
+    }
+
+    /**
+     * 鸡形态：玩家本体对其他玩家是隐藏的，杀手要打的是那只鸡。
+     * 打中鸡就按打中玩家本人处理（玩家本人被隐藏，客户端点不到本体）。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onChickenDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Chicken chicken)) {
+            return;
+        }
+        MurderMysteryManager m = plugin.getManager();
+        if (m.chickenOwner(chicken) == null) {
+            return;
+        }
+        event.setCancelled(true);
+        m.handleChickenHit(chicken, event.getDamager());
     }
 
     /**

@@ -1,0 +1,172 @@
+# ========== 密室杀手道具配置 ==========
+# 本文件记录密室杀手里的所有道具，以及售货机货物、GT混沌汽水的事件配置。
+# 改完执行 /mm reload 即可生效（无需重启）。
+#
+# type 支持的值：
+#   gt-soda        GT混沌汽水（右键触发随机事件，事件见文件末尾 effects.gt-soda）
+#   shop-sword     一击必杀石剑
+#   shop-crossbow  一击必杀弩
+#   arrow          箭
+#   truth-stone    真理之石
+#   death-note     死亡名单
+#   steak          牛排（断头饭）
+#   plain          普通物品（只按 material / name / lore 生成，没有特殊行为）
+
+items:
+  gt-soda:
+    enabled: true
+    type: gt-soda
+    # 药水瓶（POTION）——喝之前会被插件拦下来，不会真的触发原版药水效果
+    material: POTION
+    amount: 1
+    name: "&dGT混沌汽水"
+    lore:
+      - "&7右键饮用：随机触发一种事件"
+      - "&8喝下去之前，谁也说不准会发生什么"
+
+  shop-sword:
+    enabled: true
+    type: shop-sword
+
+  shop-crossbow:
+    enabled: true
+    type: shop-crossbow
+
+  arrow:
+    enabled: true
+    type: arrow
+    amount: 1
+
+  truth-stone:
+    enabled: true
+    type: truth-stone
+
+  death-note:
+    enabled: true
+    type: death-note
+
+  steak:
+    enabled: true
+    type: steak
+    amount: 5
+
+# ========== 售货机 ==========
+# 售货机由「钻石块 + 按钮」组成，OP 对准按钮执行 /mm vending add 登记；
+# 对局中右键已登记的按钮，从下面的 goods 列表按权重随机给玩家一件货物。
+vending:
+  # 同一名玩家两次抽货之间的冷却（秒）
+  cooldown-seconds: 3
+  # 货物列表（单独一份）：item 填上面 items 里的 id，weight 是出现权重。
+  # 权重可以随便调，填 0 表示不会出现；想暂时下架某个货物就把它删掉或注释掉。
+  goods:
+    gt-soda:
+      item: gt-soda
+      weight: 25
+    steak:
+      item: steak
+      weight: 20
+    arrow:
+      item: arrow
+      weight: 20
+    truth-stone:
+      item: truth-stone
+      weight: 10
+    death-note:
+      item: death-note
+      weight: 10
+    shop-sword:
+      item: shop-sword
+      weight: 8
+    shop-crossbow:
+      item: shop-crossbow
+      weight: 7
+
+# ========== GT混沌汽水的事件 ==========
+# enabled: 是否启用；weight: 触发权重（越大越容易抽到，0 = 不会抽到）
+# allow-murderer: 杀手能不能触发这个事件（默认 true）
+# 所有文案都支持 & 颜色代码；{player} 会被替换成触发者名字。
+effects:
+  gt-soda:
+    # 1. 迅捷 2 · 3 秒
+    speed-burst:
+      enabled: true
+      weight: 12
+      allow-murderer: true
+      duration-seconds: 3
+      amplifier: 1
+      message: "&a你觉得你脚下生风"
+
+    # 2. 迅捷 1 · 10 秒
+    speed-long:
+      enabled: true
+      weight: 12
+      allow-murderer: true
+      duration-seconds: 10
+      amplifier: 0
+      message: "&a你觉得你"
+
+    # 3. 迅捷 5 · 30 秒，效果结束时死亡；杀手默认不能触发
+    speed-doom:
+      enabled: true
+      weight: 8
+      allow-murderer: false
+      duration-seconds: 30
+      amplifier: 4
+      broadcast: "&e{player}：&f你跑不过我你信吗"
+      message: "&5你觉得你的血条有点发紫"
+
+    # 4. 迈达斯之手：下一次攻击（空手也行）杀死对方，尸体变成金锭
+    midas:
+      enabled: true
+      weight: 10
+      allow-murderer: true
+      gold-amount: 5
+      # 好人误杀好人时，是否保留“两人一起淘汰”的规则
+      friendly-fire-mutual-death: true
+      message: "&6你获得了迈达斯之手：下一次攻击（空手也行）会杀死对方，并把尸体变成金锭。"
+      message-2: "&6你变得贪婪"
+
+    # 5. 对周围玩家播放音效：杀手 → 成为杀手的音效，好人 → 村民叫声
+    faction-sound:
+      enabled: true
+      weight: 12
+      allow-murderer: true
+      # 大约多少格内的玩家能听到
+      radius: 16
+      murderer-sound: ENTITY_WITHER_DEATH
+      innocent-sound: ENTITY_VILLAGER_AMBIENT
+
+    # 6. 对全图玩家播放“成为杀手”的音效，并只有本人收到一句播报
+    global-howl:
+      enabled: true
+      weight: 8
+      allow-murderer: true
+      sound: ENTITY_WITHER_DEATH
+      message: "&6你突然想发出野性的呼喊"
+
+    # 7. 只有本人看到的一句播报
+    cola:
+      enabled: true
+      weight: 12
+      allow-murderer: true
+      message: "&e可乐真好喝木嘿嘿嘿"
+
+    # 8. 变成鸡：移速变快、不能使用道具，持续 10 秒，可以被杀手击杀
+    chicken:
+      enabled: true
+      weight: 10
+      allow-murderer: true
+      duration-seconds: 10
+      # 迅捷等级（0 = 迅捷 1，1 = 迅捷 2）
+      speed-amplifier: 1
+      message: "&e你变成了一只鸡！跑得快，但不能使用道具。"
+
+    # 9. 变大 + 缓慢 5 秒
+    inflate:
+      enabled: true
+      weight: 10
+      allow-murderer: true
+      duration-seconds: 5
+      slowness-amplifier: 1
+      scale: 1.6
+      message: "&e胀气了，有点走不动道"
