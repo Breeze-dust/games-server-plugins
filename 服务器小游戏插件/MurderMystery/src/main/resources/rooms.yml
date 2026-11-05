@@ -9,12 +9,28 @@
 #   gold-per-death       这个场地里每名玩家死亡掉几个金锭
 #
 # 场地名必须和 config.yml 的 arenas.<场名> 完全一致（区分大小写）。
-# 示例（取消注释后生效）：
-# rooms:
-#   "圣诞工厂":
-#     gold-spawn-enabled: true
-#     gold-spawn-interval: 10
-#     gold-spawn-amount: 1
-#     gold-per-death: 1
+# 下面已按线上 config.yml 的现有场地生成，数值沿用全局默认值：
+#   gold-per-death: 1 / gold-spawn-interval: 10 / gold-spawn-amount: 4
+# 想单独调整某个场地，直接改它下面的数字即可。
 
-rooms: {}
+rooms:
+  圣诞工厂:
+    gold-spawn-enabled: true
+    gold-spawn-interval: 10
+    gold-spawn-amount: 4
+    gold-per-death: 1
+  ship:
+    gold-spawn-enabled: true
+    gold-spawn-interval: 10
+    gold-spawn-amount: 4
+    gold-per-death: 1
+  档案室顶层:
+    gold-spawn-enabled: true
+    gold-spawn-interval: 10
+    gold-spawn-amount: 4
+    gold-per-death: 1
+  别墅:
+    gold-spawn-enabled: true
+    gold-spawn-interval: 10
+    gold-spawn-amount: 4
+    gold-per-death: 1
