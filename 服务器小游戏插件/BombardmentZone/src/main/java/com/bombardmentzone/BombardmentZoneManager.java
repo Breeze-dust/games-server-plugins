@@ -59,6 +59,8 @@ public final class BombardmentZoneManager {
     public static final String GAME = "轰炸区";
     public static final String ARENA = "主场地";
     public static final String ARCADE_KEY = "bombard";
+    /** 街机派对在 HubAPI 里登记的游戏名（ArcadePartyManager.GAME），用来认出「这局是派对拉进来的」。 */
+    private static final String ARCADE_PARTY_GAME = "街机派对";
     private static final String STATS_NAMESPACE = "bombard";
     private static final String NO_COLLIDE_TEAM = "bombard_nocollide";
     private static final double ONE_HEART = 2.0;
@@ -99,6 +101,8 @@ public final class BombardmentZoneManager {
     private final List<Location> landing = new ArrayList<>();
     private final List<Shell> shells = new ArrayList<>();
     private final Map<UUID, Double> originalMaxHealth = new LinkedHashMap<>();
+    /** 由街机派对拉进场的玩家：结算时回城/清背包交给派对，自己不要动。 */
+    private final Set<UUID> arcadePartyPlayers = new LinkedHashSet<>();
 
     private State state = State.WAITING;
     private StartCountdown startCountdown;
@@ -345,6 +349,10 @@ public final class BombardmentZoneManager {
             return;
         }
         waiting.add(id);
+        // 进场前 HubAPI 里的游戏名还是「街机派对」= 这局由派对拉进来，结算时不能自己回城
+        if (ARCADE_PARTY_GAME.equals(HubAPI.gameOf(id))) {
+            arcadePartyPlayers.add(id);
+        }
         clearPlayer(player);
         restoreMaxHealth(player);
         player.setGameMode(GameMode.ADVENTURE);
@@ -372,6 +380,7 @@ public final class BombardmentZoneManager {
         if (wasEliminated) {
             eliminationOrder.remove(id);
         }
+        arcadePartyPlayers.remove(id);
         clearPlayer(player);
         restoreMaxHealth(player);
         HubAPI.clearGame(id);
@@ -399,6 +408,7 @@ public final class BombardmentZoneManager {
         if (!wasWaiting && !wasPlaying && !wasEliminated) {
             return;
         }
+        arcadePartyPlayers.remove(id);
         restoreMaxHealth(player);
         if (state == State.RUNNING && wasPlaying) {
             eliminationOrder.add(id);
@@ -784,6 +794,16 @@ public final class BombardmentZoneManager {
         removeShells();
         for (UUID id : allPlayers()) {
             Player player = Bukkit.getPlayer(id);
+            // 街机派对拉进来的：回城、清背包、清 tab 都由派对负责。这里自己调
+            // teleportToLobby 会向所有插件广播「回大厅」，把刚排进下一局的人踢出去。
+            if (arcadePartyPlayers.contains(id)) {
+                if (player != null && player.isOnline()) {
+                    restoreMaxHealth(player);
+                    player.setCollidable(true);
+                    clearNoCollision(player);
+                }
+                continue;
+            }
             if (player != null && player.isOnline()) {
                 clearPlayer(player);
                 restoreMaxHealth(player);
@@ -794,6 +814,7 @@ public final class BombardmentZoneManager {
             }
             HubAPI.clearGame(id);
         }
+        arcadePartyPlayers.clear();
         waiting.clear();
         playing.clear();
         eliminated.clear();

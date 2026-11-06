@@ -53,6 +53,7 @@
   - 爆炸半径是球形距离，站在落点正上方/相邻格也可能被淘汰。
   - 局内取消所有原版伤害（包括摔落），所以只有爆炸和落水会淘汰；落水判定用 `isInWater()`，浅水也算。
   - 已接入 ArcadeParty：`games.bombard`（`bombard join` / `bombard start`），街机派对过渡时会正常拉人进场。**默认 `enabled: false`**（场地还没建时抽到会开不了局），建好场地并 `/bombard save` 后在 `/arcade menu` 里点开；也可以直接改 `config.yml` 的 `games.bombard.enabled: true`。
+  - 结算回城分两种：**派对拉进来的局**（进场那一刻 `HubAPI.gameOf` 还是「街机派对」）只收回一颗心/碰撞等局内改动，**不自己调 `HubAPI.teleportToLobby`**——回城、清背包、清 tab 全交给派对，否则 HubCore 的「回大厅」广播会把已经排进下一局的玩家踢出派对；**手动 `/bombard join` 的局**照旧结算后送回主城。
   - 玩家记录命名空间 `bombard`，写入 `server/plugins/MiniGameLib/players.yml`。
 - **验证**：
   1. `/bombard list` 显示场地已就绪、炮口 N 个；`/bombard scan` 可落点 > 0。
