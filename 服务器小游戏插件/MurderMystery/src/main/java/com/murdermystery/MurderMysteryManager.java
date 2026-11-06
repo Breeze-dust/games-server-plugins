@@ -3824,8 +3824,13 @@ public class MurderMysteryManager {
         long left = Math.max(0, (deadline - System.currentTimeMillis() + 999) / 1000);
         msg(attacker, "&a你把烫手山芋塞给了 &e" + victim.getName() + "&a！");
         msg(victim, "&c" + attacker.getName() + " 把烫手山芋塞给了你！&7还有 &e" + left + "&7 秒爆炸！");
-        attacker.playSound(attacker.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 0.9f);
-        victim.playSound(victim.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 0.7f);
+        // 被传递者的受击反馈：红色受击动画 + 伤害粒子 + 受击音效
+        victim.playHurtAnimation(0);
+        World victimWorld = victim.getWorld();
+        victimWorld.spawnParticle(Particle.DAMAGE_INDICATOR,
+                victim.getLocation().add(0.0, 1.0, 0.0), 10, 0.35, 0.5, 0.35, 0.1);
+        victimWorld.playSound(victim.getLocation(), Sound.ENTITY_PLAYER_HURT, 1f, 0.8f);
+        attacker.playSound(attacker.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 1f, 1.0f);
         return true;
     }
 
