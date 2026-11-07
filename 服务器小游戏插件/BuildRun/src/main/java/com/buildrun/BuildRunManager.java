@@ -328,6 +328,13 @@ public class BuildRunManager {
         msg(p, "&a已保存场 &e" + a.getName() + "&a：" + a.describe());
         if (a.getSpawn() == null) {
             msg(p, "&c还没设出生点（&e/br spawn&c），不能开局。");
+            return;
+        }
+        int[] b = a.templateBounds();
+        Location s = a.getSpawn();
+        if (b != null && (s.getBlockX() < b[0] || s.getBlockX() > b[3]
+                || s.getBlockZ() < b[2] || s.getBlockZ() > b[5])) {
+            msg(p, "&e出生点不在模板范围内（X/Z）：复制出来的每块场地，人都会落在场地外。站进模板里重新 &e/br spawn&c。");
         }
     }
 
@@ -413,7 +420,11 @@ public class BuildRunManager {
             msg(p, "&c这个场还没建好（范围、出生点、方向）。");
             return false;
         }
-        // 人数上限已彻底取消：这里**不读** max-players（老配置里写 8 也不生效），来几个人就复制几块场地
+        int max = maxPlayers();
+        if (max > 0 && a.getPlayers().size() >= max) {
+            msg(p, "&c这场人满了（上限 &e" + max + "&c 人）。");
+            return false;
+        }
         playerArena.put(id, arenaName);
         a.getPlayers().add(id);
 
@@ -569,6 +580,26 @@ public class BuildRunManager {
         if (volume > maxVolume) {
             msg(op, "&c场地太大（&e" + volume + "&c 格 > 上限 &e" + maxVolume + "&c），每块都要复制，先圈小一点。");
             return false;
+        }
+        // 出生点必须落在模板的 X/Z 范围内：每块场地都是把模板整体平移过去的，出生点在范围外就会偏到场地外
+        Location spawn = a.getSpawn();
+        if (spawn.getBlockX() < tb[0] || spawn.getBlockX() > tb[3]
+                || spawn.getBlockZ() < tb[2] || spawn.getBlockZ() > tb[5]) {
+            msg(op, "&c出生点不在模板范围内（X/Z），复制出来每块场地的人都会落在场地外。站进模板里用 &e/br spawn&c 重设。");
+            return false;
+        }
+        // 人数不设上限后场地会一直往同一个方向排，排到世界边界外人会被边界挡住
+        World checkWorld = a.getWorld();
+        for (int i = 1; i <= a.getPlayers().size(); i++) {
+            int[] b = a.plotBounds(i);
+            if (b == null) {
+                continue;
+            }
+            if (!checkWorld.getWorldBorder().isInside(new Location(checkWorld, b[0], 0, b[2]))
+                    || !checkWorld.getWorldBorder().isInside(new Location(checkWorld, b[3], 0, b[5]))) {
+                msg(op, "&c第 &e" + i + "&c 块场地超出世界边界（按当前人数和间隔排太远了）：减少人数、调小间隔，或把模板往反方向挪。");
+                return false;
+            }
         }
 
         if (startCountdown().begin(arenaName, new ArrayList<>(a.getPlayers()), () -> start(op, arenaName))) {
@@ -2775,8 +2806,9 @@ public class BuildRunManager {
 
             @Override
             public int maxPlayers() {
-                // 不限人数：永远不算"满员"，只走默认 30s 倒计时（OP 在队列里时仍然停着等手动开始）
-                return Integer.MAX_VALUE;
+                // max-players：正整数 = 上限；0 或没写 = 不限（只走默认 30s 倒计时；OP 在队列里时仍停着等手动开始）
+                int max = BuildRunManager.this.maxPlayers();
+                return max > 0 ? max : Integer.MAX_VALUE;
             }
 
             @Override
@@ -2821,6 +2853,11 @@ public class BuildRunManager {
 
     private int cfg(String key, int def) {
         return plugin.getConfig().getInt(key, def);
+    }
+
+    /** 单场人数上限：`max-players` 正整数生效，0 / 负数 / 没写 = 不限（每人一块复制场地）。 */
+    private int maxPlayers() {
+        return Math.max(0, cfg("max-players", 0));
     }
 
     /**
