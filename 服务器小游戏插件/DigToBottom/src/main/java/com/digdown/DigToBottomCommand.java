@@ -122,7 +122,7 @@ public class DigToBottomCommand implements CommandExecutor, TabCompleter {
             }
             case "lanes" -> {
                 if (!admin) { noPerm(sender); return true; }
-                if (args.length < 2) { Chat.send(sender, "&c用法：/dig lanes <1-32>"); return true; }
+                if (args.length < 2) { Chat.send(sender, "&c用法：/dig lanes <数量>（1 以上，不设上限）"); return true; }
                 if (!(sender instanceof Player p)) return true;
                 DigToBottomArena a = editing(p);
                 if (a == null) return true;
@@ -130,10 +130,10 @@ public class DigToBottomCommand implements CommandExecutor, TabCompleter {
                 try {
                     n = Integer.parseInt(args[1]);
                 } catch (NumberFormatException ex) {
-                    Chat.send(sender, "&c请输入 1~32 的数字。");
+                    Chat.send(sender, "&c请输入一个大于 0 的整数。");
                     return true;
                 }
-                if (n < 1 || n > 32) { Chat.send(sender, "&c坑位数需在 1~32 之间。"); return true; }
+                if (n < 1) { Chat.send(sender, "&c坑位数必须大于 0。"); return true; }
                 a.setLanes(n);
                 m.saveAll();
                 Chat.send(sender, "&a坑位数设为 &e" + n + "&a。改完记得 &e/dig build&a 重新生成。");
@@ -293,7 +293,7 @@ public class DigToBottomCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&6-- OP 建场 --");
             Chat.send(sender, "&e/dig create <场名>&f 创建  &e/dig edit <场名>&f 编辑  &e/dig remove / rename");
             Chat.send(sender, "&e/dig center&f 圆心（站在柱子最底层方块处）  &e/dig lobby&f 等待点  &e/dig spectator&f 观战落点");
-            Chat.send(sender, "&e/dig lanes <1-32>&f 坑位数  &e/dig radius <3-64>&f 环形半径");
+            Chat.send(sender, "&e/dig lanes <数量>&f 坑位数（不设上限，受半径/间距限制）  &e/dig radius <3-64>&f 环形半径");
             Chat.send(sender, "&e/dig build&f 生成玻璃外壳 + 基岩  &e/dig save&f 保存配置  &e/dig start&f 开始");
             Chat.send(sender, "&e/dig debug&f 开关诊断日志（排查方块挖不动：出生点保护）  &e/dig stats reset&f 清空前三名记录");
             Chat.send(sender, "&7柱高 / 方块池 / 每局时长在 config.yml 的 pillar、game-seconds、shorten-seconds。");
