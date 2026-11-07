@@ -110,6 +110,7 @@ public final class TNTBattleListener implements Listener {
         event.blockList().removeIf(block -> !manager.insideArena(block));
         for (org.bukkit.block.Block block : event.blockList()) {
             manager.rememberBlock(block);
+            manager.rememberAdjacentAttachments(block);
         }
         sweepWool(event.getLocation());
     }
@@ -124,6 +125,7 @@ public final class TNTBattleListener implements Listener {
         event.blockList().removeIf(block -> !manager.insideArena(block));
         for (org.bukkit.block.Block block : event.blockList()) {
             manager.rememberBlock(block);
+            manager.rememberAdjacentAttachments(block);
         }
         sweepWool(event.getBlock().getLocation());
     }
@@ -207,6 +209,7 @@ public final class TNTBattleListener implements Listener {
             return;
         }
         manager.rememberBlock(block);
+        manager.rememberAdjacentAttachments(block);
         // 羊毛正常掉落，玻璃类破坏不掉落
         event.setDropItems(wool);
         // 建筑猜猜乐对所有非 OP 玩家的方块破坏做了全局拦截，这里对场地内的羊毛/玻璃放行

@@ -1213,6 +1213,35 @@ public final class TNTBattleManager {
         changedBlocks.putIfAbsent(key, block.getBlockData().clone());
     }
 
+    /**
+     * 支撑方块被炸掉/挖掉时，贴在旁边的梯子、火把、告示牌等会自己掉落。
+     * 它们不在爆炸的破坏列表里，必须提前记下原始方块，否则结算时还原不回来。
+     */
+    public void rememberAdjacentAttachments(Block block) {
+        if (block == null) {
+            return;
+        }
+        World world = block.getWorld();
+        int x = block.getX();
+        int y = block.getY();
+        int z = block.getZ();
+        rememberAttachment(world.getBlockAt(x + 1, y, z));
+        rememberAttachment(world.getBlockAt(x - 1, y, z));
+        rememberAttachment(world.getBlockAt(x, y + 1, z));
+        rememberAttachment(world.getBlockAt(x, y - 1, z));
+        rememberAttachment(world.getBlockAt(x, y, z + 1));
+        rememberAttachment(world.getBlockAt(x, y, z - 1));
+    }
+
+    /** 只记需要支撑的非固体方块；液体和固体方块不会因为邻居消失而掉落。 */
+    private void rememberAttachment(Block block) {
+        if (block == null || block.getType().isAir() || block.getType().isSolid() || block.isLiquid()) {
+            return;
+        }
+        String key = block.getWorld().getName() + "," + block.getX() + "," + block.getY() + "," + block.getZ();
+        changedBlocks.putIfAbsent(key, block.getBlockData().clone());
+    }
+
     public boolean insideArena(Block block) {
         return block != null && arena.contains(block.getLocation());
     }
