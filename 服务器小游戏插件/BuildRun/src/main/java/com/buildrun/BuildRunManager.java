@@ -199,6 +199,16 @@ public class BuildRunManager {
     // 生命周期
     // ==================================================================
 
+    /** 有没有玩家在场（等待室也算）—— /br reload 的判定。 */
+    public boolean hasPlayers() {
+        return !playerArena.isEmpty();
+    }
+
+    /** reload：重读 config.yml 的数值项；场地 / 告示牌等结构仍以启动时载入的为准。 */
+    public void reload() {
+        plugin.reloadConfig();
+    }
+
     public void load() {
         startCountdown();
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("arenas");

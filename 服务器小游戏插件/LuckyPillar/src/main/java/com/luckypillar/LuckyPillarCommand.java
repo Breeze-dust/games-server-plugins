@@ -208,6 +208,16 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
                 }
                 return true;
             }
+            case "reload" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (m.hasPlayers()) {
+                    Chat.send(sender, "&c有玩家在场，不能重载配置。");
+                    return true;
+                }
+                m.reload();
+                Chat.send(sender, "&a配置已重新载入（数值项生效；场地改动仍需重启）。");
+                return true;
+            }
             case "help" -> help(sender);
             default -> Chat.send(sender, "&c未知子命令，用 &e/lp help&c 看用法。");
         }

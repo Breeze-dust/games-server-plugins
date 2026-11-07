@@ -89,6 +89,17 @@ public class DigToBottomManager {
 
     // ---------- 加载 / 保存 ----------
 
+    /** 有没有玩家在场（等待室也算）—— /dig reload 的判定。 */
+    public boolean hasPlayers() {
+        return !playerArena.isEmpty();
+    }
+
+    /** reload：重读 config.yml 的数值项；场地 / 告示牌等结构仍以启动时载入的为准。 */
+    public void reload() {
+        plugin.reloadConfig();
+        debugBreak = plugin.getConfig().getBoolean("debug-break-logs", true);
+    }
+
     public void load() {
         startCountdown();
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("arenas");

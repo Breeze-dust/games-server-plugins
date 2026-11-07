@@ -40,6 +40,16 @@ public class BuildRunCommand implements CommandExecutor, TabCompleter {
         }
         String sub = args[0].toLowerCase();
         switch (sub) {
+            case "reload" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (m.hasPlayers()) {
+                    Chat.send(sender, "&c有玩家在场，不能重载配置。");
+                    return true;
+                }
+                m.reload();
+                Chat.send(sender, "&a配置已重新载入（数值项生效；场地改动仍需重启）。");
+                return true;
+            }
             case "help" -> help(sender);
             case "join" -> {
                 if (args.length < 2) {
@@ -367,7 +377,7 @@ public class BuildRunCommand implements CommandExecutor, TabCompleter {
             boolean admin = sender instanceof Player p ? isAdmin(p) : true;
             if (admin) {
                 subs.addAll(List.of("create", "remove", "edit", "setup", "setup-exit", "pos1", "pos2",
-                        "spawn", "lobby", "dir", "gap", "save", "start", "stop"));
+                        "spawn", "lobby", "dir", "gap", "save", "reload", "start", "stop"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
             return out;

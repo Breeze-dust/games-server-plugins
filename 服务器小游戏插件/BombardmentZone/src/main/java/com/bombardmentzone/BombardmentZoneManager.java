@@ -792,11 +792,16 @@ public final class BombardmentZoneManager {
 
     private void finishEnd() {
         removeShells();
+        if (!arcadePartyPlayers.isEmpty()) {
+            plugin.getLogger().info("[轰炸区] 结算： " + arcadePartyPlayers.size()
+                    + " 名玩家仍由街机派对接管，不自行回城。");
+        }
         for (UUID id : allPlayers()) {
             Player player = Bukkit.getPlayer(id);
             // 街机派对拉进来的：回城、清背包、清 tab 都由派对负责。这里自己调
             // teleportToLobby 会向所有插件广播「回大厅」，把刚排进下一局的人踢出去。
-            if (arcadePartyPlayers.contains(id)) {
+            // 双重判定：join 时的记录 + 当前 HubAPI 归属（防止派对中途补登/清空导致漏判）
+            if (arcadePartyPlayers.contains(id) || ARCADE_PARTY_GAME.equals(HubAPI.gameOf(id))) {
                 if (player != null && player.isOnline()) {
                     restoreMaxHealth(player);
                     player.setCollidable(true);

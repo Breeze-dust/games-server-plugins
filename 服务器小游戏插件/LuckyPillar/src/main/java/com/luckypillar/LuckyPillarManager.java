@@ -116,6 +116,19 @@ public class LuckyPillarManager {
 
     // ---------- 生命周期 ----------
 
+    /** 有没有玩家在场（等待室也算）—— /lp reload 的判定。 */
+    public boolean hasPlayers() {
+        return !playerArena.isEmpty();
+    }
+
+    /** reload：重读 config.yml 的数值项；场地 / 告示牌等结构仍以启动时载入的为准。 */
+    public void reload() {
+        plugin.reloadConfig();
+        LuckyPillarLoot.configure(plugin.getConfig().getDouble("loot-gear-chance", 0.3),
+                plugin.getConfig().getDouble("loot-enchant-chance", 0.35),
+                plugin.getConfig().getInt("loot-enchant-max-level", 1));
+    }
+
     public void load() {
         startCountdown();
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("arenas");

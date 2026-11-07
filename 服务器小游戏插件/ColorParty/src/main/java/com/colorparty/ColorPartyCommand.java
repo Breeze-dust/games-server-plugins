@@ -214,6 +214,16 @@ public class ColorPartyCommand implements CommandExecutor, TabCompleter {
                         + " 战绩：&e获得第一名 &f" + m.getFirsts(target.getUniqueId()) + " &6次");
                 return true;
             }
+            case "reload" -> {
+                if (!admin) { noPerm(sender); return true; }
+                if (m.hasPlayers()) {
+                    Chat.send(sender, "&c有玩家在场，不能重载配置。");
+                    return true;
+                }
+                m.reload();
+                Chat.send(sender, "&a配置已重新载入（数值项生效；场地改动仍需重启）。");
+                return true;
+            }
             case "help" -> help(sender);
             default -> Chat.send(sender, "&c未知子命令。");
         }
@@ -262,7 +272,7 @@ public class ColorPartyCommand implements CommandExecutor, TabCompleter {
             boolean admin = sender instanceof Player p ? isAdmin(p) : true;
             if (admin) {
                 subs.addAll(List.of("create", "remove", "edit", "rename", "setup", "setup-exit",
-                        "pos1", "pos2", "panel1", "panel2", "spawn", "lobby", "cutoff", "save", "start"));
+                        "pos1", "pos2", "panel1", "panel2", "spawn", "lobby", "cutoff", "save", "reload", "start"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
         } else if (args.length == 2) {

@@ -786,6 +786,9 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
                 normalizePlayer(p);
+                // 上一局结算会 HubAPI.clearGame(id) 把归属清空，这里补回"街机派对"：
+                // 下一个游戏靠它判断这局是不是派对拉进来的（例：轰炸区别自己回城）
+                HubAPI.setPlaying(id, GAME);
                 p.teleport(lobby != null ? lobby : p.getLocation());
                 Chat.send(p, "&7本局人数超出上限，你在旁观，补偿 &e" + starSpectatorBonus() + " &7颗星。");
             }
@@ -800,6 +803,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
                     // 先归零再 join：上个游戏（如万箭齐发）把人切成旁观/隐身，
                     // 不先清掉就会带进下一局，除了当过赢家的人都看不见。
                     normalizePlayer(p);
+                    HubAPI.setPlaying(id, GAME);
                     p.performCommand(join);
                 }
             }
@@ -877,6 +881,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null) {
                     normalizePlayer(p);
+                    HubAPI.setPlaying(id, GAME);
                     p.performCommand(join);
                 }
             }

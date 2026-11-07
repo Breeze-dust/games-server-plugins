@@ -301,6 +301,16 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
                 Chat.send(sender, "&7分场胜场：&f" + (per.isEmpty() ? "无" : String.join("  ", per)));
                 return true;
             }
+            case "reload" -> {
+                if (!requireAdmin(sender, admin)) return true;
+                if (m.hasPlayers()) {
+                    Chat.send(sender, "&c有玩家在场，不能重载配置。");
+                    return true;
+                }
+                m.reload();
+                Chat.send(sender, "&a配置已重新载入（数值项生效；场地改动仍需重启）。");
+                return true;
+            }
             case "help", "?" -> help(sender);
             default -> Chat.send(sender, "&c未知子命令。输入 /duel help 查看帮助。");
         }
@@ -379,7 +389,7 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "stats"));
             if (admin) {
-                subs.addAll(List.of("create", "edit", "rename", "setup", "setup-exit", "pos1", "pos2", "spawn1", "spawn2", "lobby", "kit", "save", "remove", "info", "sign", "joinsign", "topsign"));
+                subs.addAll(List.of("create", "edit", "rename", "setup", "setup-exit", "pos1", "pos2", "spawn1", "spawn2", "lobby", "kit", "save", "reload", "remove", "info", "sign", "joinsign", "topsign"));
             }
             String cur = args[0].toLowerCase();
             for (String s : subs) {

@@ -775,7 +775,17 @@ public final class FireJumperManager {
             for (UUID id : winners) {
                 recordFirst(id);
             }
-            ArcadeBridge.report("firejumper", new ArrayList<>(winners), List.of(), List.of());
+            // 淘汰顺序（LinkedHashSet）：最后被淘汰的算第二、倒数第二算第三，和 TntRun / 色盲派对一致
+            List<UUID> seconds = new ArrayList<>();
+            List<UUID> thirds = new ArrayList<>();
+            List<UUID> order = new ArrayList<>(eliminated);
+            if (order.size() >= 1) {
+                seconds.add(order.get(order.size() - 1));
+            }
+            if (order.size() >= 2) {
+                thirds.add(order.get(order.size() - 2));
+            }
+            ArcadeBridge.report("firejumper", new ArrayList<>(winners), seconds, thirds);
         }
         updateSidebar();
         Bukkit.getScheduler().runTaskLater(plugin, this::finishEnd, endDelayTicks());
