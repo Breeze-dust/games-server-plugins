@@ -21,7 +21,13 @@ out-of-zone-grace-seconds: 3   # 出圈多少秒后才开始掉血
 
 # 事件
 loot-interval: 2           # 每多少秒每人 1 件随机物品
-loot-gear-chance: 0.3      # 每次抽物品从「武器/工具/装备」池出的概率（0~1；其余走普通池）
+# 物品类别权重：相对值，按比例分配（例：25/20/10/25/20 = 四种 25%/20%/10%/25%/20%）
+# 先按权重抽类别，再在该类别里抽具体物品；全填 0 时退回默认 25/20/10/25/20
+loot-weight-weapon: 25     # 武器：剑 / 弓 / 弩 / 三叉戟 / 重锤
+loot-weight-tool: 20       # 工具：镐 / 斧 / 锹 / 锄 / 剪刀 / 鱼竿 / 打火石
+loot-weight-armor: 10      # 装备：头盔 / 胸甲 / 护腿 / 靴 / 盾
+loot-weight-block: 25      # 方块：所有可放置的方块
+loot-weight-other: 20      # 其他：食物 / 药水 / 材料 / 桶 等
 loot-enchant-chance: 0.35  # 武器/工具/装备再带 1 个随机低等级附魔的概率（0~1）
 loot-enchant-max-level: 1  # 附魔等级上限（1 = 只有 I 级；2 = 最多 II 级，上限 3）
 disaster-interval: 22      # 天灾池（箭雨 / 苦力怕雨）间隔秒数

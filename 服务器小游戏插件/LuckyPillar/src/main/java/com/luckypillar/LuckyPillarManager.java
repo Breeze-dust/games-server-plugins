@@ -116,15 +116,20 @@ public class LuckyPillarManager {
 
     // ---------- 生命周期 ----------
 
-    /** 有没有玩家在场（等待室也算）—— /lp reload 的判定。 */
-    public boolean hasPlayers() {
-        return !playerArena.isEmpty();
-    }
-
     /** reload：重读 config.yml 的数值项；场地 / 告示牌等结构仍以启动时载入的为准。 */
     public void reload() {
         plugin.reloadConfig();
-        LuckyPillarLoot.configure(plugin.getConfig().getDouble("loot-gear-chance", 0.3),
+        configureLoot();
+    }
+
+    /** 从 config.yml 读入物品类别权重 + 附魔参数（load / reload 共用）。 */
+    private void configureLoot() {
+        LuckyPillarLoot.configure(
+                plugin.getConfig().getDouble("loot-weight-weapon", 25),
+                plugin.getConfig().getDouble("loot-weight-tool", 20),
+                plugin.getConfig().getDouble("loot-weight-armor", 10),
+                plugin.getConfig().getDouble("loot-weight-block", 25),
+                plugin.getConfig().getDouble("loot-weight-other", 20),
                 plugin.getConfig().getDouble("loot-enchant-chance", 0.35),
                 plugin.getConfig().getInt("loot-enchant-max-level", 1));
     }
@@ -143,14 +148,12 @@ public class LuckyPillarManager {
         }
         // 玩家记录（唯一文件 players.yml，命名空间 luckypillar）
         data = PlayerStats.load("luckypillar", new File(plugin.getDataFolder(), "data.yml"));
-        LuckyPillarLoot.configure(plugin.getConfig().getDouble("loot-gear-chance", 0.3),
-                plugin.getConfig().getDouble("loot-enchant-chance", 0.35),
-                plugin.getConfig().getInt("loot-enchant-max-level", 1));
+        configureLoot();
         plugin.getLogger().info("幸运之柱已加载：场地 " + arenas.size() + " 个，物品池 " + LuckyPillarLoot.poolSize()
                 + " 件（其中低价值 " + LuckyPillarLoot.lowValueCount() + " 件，权重 1/4；"
-                + "武器/工具/装备 " + LuckyPillarLoot.gearCount() + " 件，命中率 "
-                + Math.round(LuckyPillarLoot.gearChance() * 100) + "%，附魔率 "
-                + Math.round(LuckyPillarLoot.enchantChance() * 100) + "%，附魔上限 "
+                + "武器/工具/装备 " + LuckyPillarLoot.gearCount() + " 件；类别权重 "
+                + LuckyPillarLoot.weightSummary()
+                + "；附魔率 " + Math.round(LuckyPillarLoot.enchantChance() * 100) + "%，附魔上限 "
                 + LuckyPillarLoot.enchantMaxLevel() + " 级）。");
 
         // 启动后把已有场地上报给 HubCore 中央菜单（延迟等 HubCore 就绪）
@@ -609,9 +612,8 @@ public class LuckyPillarManager {
         broadcast(a, "&e" + n + "&f 人，&e" + pillars + "&f 根哭泣黑曜石柱，间距 &e"
                 + (int) spacing + "&f 格——跳不过去。");
         broadcast(a, "&f空手开局：每 &e" + plugin.getConfig().getInt("loot-interval", 2)
-                + "&f 秒每人一件随机物品，&b"
-                + Math.round(plugin.getConfig().getDouble("loot-gear-chance", 0.3) * 100)
-                + "%&f 命中武器/工具/装备（可能带低阶附魔）。");
+                + "&f 秒每人一件随机物品，类别概率 &b" + LuckyPillarLoot.weightSummary()
+                + "&f（武器/工具/装备可能带低阶附魔）。");
         if (delaySeconds > 0) {
             broadcast(a, "&c世界边境将在 &e" + delaySeconds + "&c 秒后开始收缩，&f圈外方块会被吃掉，掉下去即淘汰。");
         } else {

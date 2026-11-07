@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
@@ -160,6 +161,30 @@ public class LuckyPillarListener implements Listener {
             return;
         }
         event.setCancelled(true);
+    }
+
+    /**
+     * 场内允许破坏方块（包括别人放的搭桥方块）。
+     * <p>
+     * <b>为什么必须显式 {@code setCancelled(false)}</b>：建筑猜猜乐（GTB）的
+     * {@code GameListener#onBreak} 是「未加入 GTB 对局 = 取消破坏」的全局保护，
+     * 幸运之柱的玩家当然不在 GTB 对局里，破坏会被那一层吃掉，表现就是「放下的方块挖不动」。
+     * {@code TNTBattleListener#onBreak} 也是用同样的办法在自己的场地里放行的。
+     * <p>
+     * 只放行「本场对局 + 存活玩家 + 场内空间盒」，别的小游戏 / 主城 / 旁观者一律不碰。
+     * 不能加 {@code ignoreCancelled = true}：事件已经被上一层取消，加了就收不到。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBreak(BlockBreakEvent event) {
+        Player p = event.getPlayer();
+        LuckyPillarArena a = plugin.getManager().runningArenaIn(p.getWorld());
+        if (a == null || !a.getPlayers().contains(p.getUniqueId())) {
+            return;
+        }
+        if (!a.inBox(event.getBlock().getLocation())) {
+            return;
+        }
+        event.setCancelled(false);
     }
 
     /** 玩家放的方块进本局方块集合（缩圈只吃这个集合）。 */

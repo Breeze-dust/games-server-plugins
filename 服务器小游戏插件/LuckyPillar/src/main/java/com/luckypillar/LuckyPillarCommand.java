@@ -210,12 +210,12 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
             }
             case "reload" -> {
                 if (!admin) { noPerm(sender); return true; }
-                if (m.hasPlayers()) {
-                    Chat.send(sender, "&c有玩家在场，不能重载配置。");
-                    return true;
-                }
                 m.reload();
-                Chat.send(sender, "&a配置已重新载入（数值项生效；场地改动仍需重启）。");
+                Chat.send(sender, "&a配置已重新载入：物品类别权重 &e"
+                        + LuckyPillarLoot.weightSummary() + "&a，附魔率 &e"
+                        + Math.round(LuckyPillarLoot.enchantChance() * 100) + "%&a，附魔上限 &e"
+                        + LuckyPillarLoot.enchantMaxLevel() + "&a 级。");
+                Chat.send(sender, "&7数值项即时生效（下一件掉落就按新权重）；场地改动仍需重启。");
                 return true;
             }
             case "help" -> help(sender);
@@ -234,6 +234,7 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/lp setup <名>&f 配置模式：金锄头=中心点 · 纸=等待点 · 时钟=预览 · 绿宝石=保存 · 屏障=退出");
             Chat.send(sender, "&e/lp center&f / &e/lp lobby&f 用当前位置设点  &e/lp save&f 保存  &e/lp preview&f 预览柱阵");
             Chat.send(sender, "&e/lp start&f 开局（≥min-players 人）  &e/lp stop&f 强制结束  &e/lp stats reset&f 清空冠军记录");
+            Chat.send(sender, "&e/lp reload&f 重载配置（loot-weight-* 等数值项即时生效，场内有人也可用）");
         }
         Chat.send(sender, "&7游戏里每一步都有动作栏提示；场地只要两个点，柱阵按人数自动生成。");
     }
@@ -250,7 +251,7 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
             List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "stats", "help"));
             if (admin) {
                 subs.addAll(List.of("create", "remove", "rename", "setup", "setup-exit",
-                        "center", "lobby", "save", "preview", "start", "stop"));
+                        "center", "lobby", "save", "preview", "start", "stop", "reload"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
         } else if (args.length == 2) {
