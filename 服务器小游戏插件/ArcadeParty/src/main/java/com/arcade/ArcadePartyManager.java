@@ -785,6 +785,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             addStars(id, starSpectatorBonus());
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
+                normalizePlayer(p);
                 p.teleport(lobby != null ? lobby : p.getLocation());
                 Chat.send(p, "&7本局人数超出上限，你在旁观，补偿 &e" + starSpectatorBonus() + " &7颗星。");
             }
@@ -796,6 +797,9 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             for (UUID id : transitionParticipants) {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null) {
+                    // 先归零再 join：上个游戏（如万箭齐发）把人切成旁观/隐身，
+                    // 不先清掉就会带进下一局，除了当过赢家的人都看不见。
+                    normalizePlayer(p);
                     p.performCommand(join);
                 }
             }
@@ -872,6 +876,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             for (UUID id : roundParticipants) {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null) {
+                    normalizePlayer(p);
                     p.performCommand(join);
                 }
             }
@@ -1524,6 +1529,21 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         ItemMeta meta = item.getItemMeta();
         return meta != null && meta.getPersistentDataContainer()
                 .getOrDefault(menuKey, PersistentDataType.BYTE, (byte) 0) == 1;
+    }
+
+    /**
+     * 换局前把玩家状态归零：小游戏会把淘汰者切成旁观模式、或给隐身/飞行，
+     * 这些状态不属于"派对"，必须在下一次 join 之前清掉，否则会漏进下一局。
+     */
+    private void normalizePlayer(Player p) {
+        if (p.getGameMode() == GameMode.SPECTATOR || p.getGameMode() == GameMode.CREATIVE) {
+            p.setGameMode(GameMode.SURVIVAL);
+        }
+        p.setInvisible(false);
+        p.setGlowing(false);
+        p.setAllowFlight(false);
+        p.setFlying(false);
+        p.setCollidable(true);
     }
 
     private void resetPlayer(Player player) {
