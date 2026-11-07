@@ -19,7 +19,7 @@
   - 人数：`min-players`(2)、`max-players`(12)。
   - 柱阵：`pillar-depth`(30，柱子总高)、`pillar-spacing`(16)、`ring-radius`(0=按 `人数×间距/2π` clamp 5~32)、`center-platform-radius`(1=中心柱底 3×3 草方块平台；0=不铺)。⚠️ 改 `pillar-depth` 要同时抬/降 `arenas.<场名>.center.y`（柱顶 Y），否则柱底会扎进地面、淘汰线跑到地面以下。
   - 缩圈：`shrink-start-gap`(20=开局圈比柱环大 20 格)、`shrink-delay-seconds`(60=开局多少秒后才开始缩)、`shrink-total-seconds`(0=45+10×人数)、`shrink-target-radius`(2=圈内只剩约 5×5 空地)、`out-of-zone-damage`(1)、`out-of-zone-grace-seconds`(3)。
-  - 事件：`loot-interval`(2)、`loot-weight-weapon`(25)、`loot-weight-tool`(20)、`loot-weight-armor`(10)、`loot-weight-block`(25)、`loot-weight-other`(20)（五类按相对权重分配，全 0 时用默认值）、`loot-enchant-chance`(0.35=装备再带 1 个低阶附魔的概率)、`loot-enchant-max-level`(1=附魔等级上限，1 即只有 I 级)、`disaster-interval`(22)、`pvp`(true)。
+  - 事件：`loot-interval`(2)、`loot-weight-weapon`(25)、`loot-weight-tool`(20)、`loot-weight-armor`(10)、`loot-weight-block`(25)、`loot-weight-other`(20)（五类按相对权重分配，全 0 时用默认值）、`loot-enchant-chance`(0.35=装备再带 1 个低阶附魔的概率)、`loot-enchant-max-level`(1=附魔等级上限，1 即只有 I 级)、`disaster-interval`(22)、`arena-difficulty`(NORMAL=开局强制对局世界难度，PEACEFUL 自动改 NORMAL，局末还原)、`pvp`(true)。
   - 终局：`final-tnt-interval`(2.5)、`final-max-seconds`(120)、`final-tnt-fuse`(20)。
   - 场地：`arenas.<场名>.world / center{x,y,z,yaw,pitch} / lobby{…}`（只有两个点）。
 - **玩家记录**：命名空间 `luckypillar`，键 `firsts.<uuid>`（冠军次数）；唯一文件 `server/plugins/MiniGameLib/players.yml`（`games.luckypillar` 段），**不写** `plugins/LuckyPillar/data.yml`（只作为首次迁移的旧文件）。见 `docs/玩家记录.md`。
@@ -39,7 +39,9 @@
   - **淘汰线**：`arena.getVoidY()` = `center.y - pillar-depth + 1 - 3`（即柱底再下 3 格）。摔落伤害不关、饥饿不锁。
   - **等待室两个道具**：槽位 `8` = 红床「退出游戏 &7(右键)」，槽位 `4` = 纸「开始游戏 &7(右键)」（只发给 `p.isOp() || p.hasPermission("lp.admin")` 的人；开局 `resetPlayer` 清背包，纸自然消失）。纸用 PDC 标记 `luckypillar:start-paper` 识别（`LuckyPillarManager#isStartPaper`），**局中抽到的纸 / 玩家自己的纸不会误触发**；右键依次过 `activeArenaOf` → `WAITING` → `canAdmin` 三道门，人数不足由 `start()` 提示。`PlayerInteractEvent` 只认主手（副手会再触发一次，开局后会多打一条「该场正在游戏中」）。
   - **箭雨伤害** `ARROW_RAIN_DAMAGE = 4.0`、**箭矢存活** `ARROW_LIFE_TICKS = 200`、**清场预算** `CLEAR_BUDGET_PER_TICK = 9000`、**结算展示** `SETTLE_SECONDS = 8` 都在 `LuckyPillarManager` 顶部常量。
-  - **苦力怕雨**：从 `center.y+30` 落下、`setIgnited(true)` + `setFuseTicks(CREEPER_FUSE_TICKS=40)`；⚠️ 必须先 `setMaxFuseTicks(40)`——1.21+ 默认上限 30，直接 `setFuseTicks(40)` 会抛 `IllegalArgumentException: ticks > maxFuseTicks`（15:46 实测踩过，整轮苦力怕雨没生成）。**它自己的摔落伤害被取消**（`LuckyPillarListener#onFallDamage` + `isTrackedEntity`），否则 30 格落地就摔死、炸不出来。
+  - **苦力怕雨**：75% 落在随机存活玩家头顶约 8 格（±1.5 格水平偏移），25% 落在圈内随机点；`setIgnited(true)` + `setFuseTicks(CREEPER_FUSE_TICKS=40)`；⚠️ 必须先 `setMaxFuseTicks(40)`——1.21+ 默认上限 30，直接 `setFuseTicks(40)` 会抛 `IllegalArgumentException: ticks > maxFuseTicks`（15:46 实测踩过，整轮苦力怕雨没生成）。**它自己的摔落伤害被取消**（`LuckyPillarListener#onFallDamage` + `isTrackedEntity`），否则 30 格落地就摔死、炸不出来。
+  - **箭雨 / 苦力怕雨要砸得到人**（2026-11-08）：原实现把落点全撒在整圈随机位置，圈半径 20+ 时命中玩家的概率接近 0（玩家只占极小面积）。现在 `disasterSpawn` 让 75% 的落点跟随随机存活玩家（箭雨在头顶 16 格、苦力怕在头顶 8 格，水平 ±1.5 格），25% 仍随机撒在圈内保留视觉效果。
+  - **和平难度会让苦力怕直接消失**（2026-11-08）：服务器 `server.properties` 默认 `difficulty=peaceful` 时，插件生成的苦力怕下一 tick 就被服务端清掉，表现为「只看到开场白、没有怪」。`startMatch` 会按 `arena-difficulty`（默认 NORMAL，PEACEFUL 自动改 NORMAL）设置对局世界难度，`endMatch`/`stop`/关服时还原开赛前难度（`applyCombatDifficulty` / `restoreDifficulty`）。
   - **爆炸拦截铁律**：`EntityExplodeEvent` 只在 `entity instanceof Creeper` 且 `runningArenaIn(world) != null` 时清 `blockList()`；TNT 雨不拦（要炸方块），也只在本世界生效（AGENTS.md §5-5）。
   - **清场**：结算展示（`SETTLE_SECONDS`=8s）**期间完全不清**（场地原样，冠军能在原地看到结果）；8s 到点 `finish` 先 `sendHome` 把所有人（含已淘汰的旁观者）传回主城，**然后**才 `startClear`。清场按**整盒**（水平 `R0+4`、竖直 `柱底-3 ~ 柱顶+30`）分批清成 AIR，**跳过等待点 5×5×5 区域**；`/lp stop`、关服用一次性同步清完（`stop` 会先撤掉 `finish` 起的清场任务）。开局前若 `isClean()==false`（崩溃残留）会先同步清一遍再生成。⚠️ 盒子是照设计稿「盒内全部清空」的，**中心点别设太低**：`center.y - pillar-depth - 2` 低于地面（默认 64）时，局末会把地面也挖掉一块。
   - **缩圈只吃"本局方块集合"**：生成的柱阵 + 中心平台（柱底高度 (2r+1)² 草方块，`center-platform-radius` 默认 1 = 3×3） + 玩家放的方块（`BlockPlaceEvent`）+ 倒桶（`PlayerBucketEmptyEvent`）+ 流体蔓延（`BlockSpreadEvent`/`BlockFromToEvent`/`BlockFormEvent`）。中心平台不参与缩圈（它就在圆心，永远在圈内）。
@@ -75,7 +77,7 @@
   - **PvP**：两人在柱顶互砍，对方掉血、血条变红、有击退（不再是"打了没反应"）；`pvp: false` 时才不掉血。
   - 等待期间（`/lp join` 后）：OP 背包第 5 格有绿色「开始游戏」纸、第 9 格红床，非 OP 只有红床；人数不够时右键纸提示「人数不足（至少 2 人）」，够了右键直接开局（开局后纸随背包清空消失）；`/lp start` 仍然可用。
   - 世界边境墙可见、上下无边界；**开局墙在柱环外 20 格**（柱子在圈内约 20 格处），**60 秒后**才看到墙开始收；缩圈时外侧柱子整根逐批消失（`BLOCK_CRUMBLE` 粒子 + 低频音效）；站圈外 3 秒后每秒掉 1 点血。
-  - 公屏「🏹 箭雨来袭！」/「💥 苦力怕雨！」（每次从几句随机文案里挑一句）；苦力怕炸完**地上方块不变**、人掉血；缩到半径 2 时公屏「终局！」，TNT 雨**能炸方块**也能伤人。
+  - 公屏「🏹 箭雨来袭！」/「💥 苦力怕雨！」（每次从几句随机文案里挑一句）；箭雨有约 3/4 的箭从存活玩家头顶落下，站桩会被射中掉血（4 点/箭）；苦力怕落在玩家附近约 8 格处、2 秒后爆炸，炸完**地上方块不变**、人掉血；缩到半径 2 时公屏「终局！」，TNT 雨**能炸方块**也能伤人。对局世界难度开局会被抬到 NORMAL（日志/`/gw info world_lp` 可看到），局末还原。
   - 只剩 1 人：冠亚季军广播、`/lp stats <冠军>` +1；**接下来 8 秒是展示期**——柱子、圈、脚下方块都还在（冠军站在原地看着）；
     8 秒到点才**全体回主城**，回主城之后柱子才开始一批批消失，最后场地干净、`/lp list` 回到等待。
   - **死亡 → 掉落 + 立刻旁观（2026-10-19）**：3 人以上对局里，任意方式被打死 → **不弹死亡界面**（服务端下一 tick 自动重生）→

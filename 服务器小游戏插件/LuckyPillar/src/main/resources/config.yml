@@ -31,6 +31,7 @@ loot-weight-other: 20      # 其他：食物 / 药水 / 材料 / 桶 等
 loot-enchant-chance: 0.35  # 武器/工具/装备再带 1 个随机低等级附魔的概率（0~1）
 loot-enchant-max-level: 1  # 附魔等级上限（1 = 只有 I 级；2 = 最多 II 级，上限 3）
 disaster-interval: 22      # 天灾池（箭雨 / 苦力怕雨）间隔秒数
+arena-difficulty: NORMAL   # 对局时强制该世界难度（PEACEFUL 会被自动改成 NORMAL；否则苦力怕一生成就被清掉）
 pvp: true                  # 场内玩家互伤开关（世界 world_lp 也要 pvp: true）
 
 # 终局

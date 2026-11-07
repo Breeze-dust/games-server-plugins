@@ -11,6 +11,7 @@ import com.hub.util.SetupMode;
 import com.hub.util.WaitCountdown;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.Difficulty;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -39,6 +40,7 @@ import java.util.Comparator;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
@@ -94,6 +96,8 @@ public class LuckyPillarManager {
     private final Map<String, MatchTasks> tasks = new LinkedHashMap<>();
     /** 世界名 -> 开赛前的世界边境设置（局末/关服还原）。 */
     private final Map<String, BorderSnapshot> borders = new LinkedHashMap<>();
+    /** 世界名 -> 开赛前的难度（局末/关服还原；服务器默认 peaceful 时苦力怕会被直接清掉）。 */
+    private final Map<String, Difficulty> difficulties = new LinkedHashMap<>();
     /** 命令/配置模式层"正在编辑的场"（命令里的 center/lobby/save/start/stop 用得上）。 */
     private final Map<UUID, String> editing = new LinkedHashMap<>();
     /** 圈外方块被吃掉时的低频音效节流（场名 -> 上次播放时刻）。 */
@@ -181,6 +185,7 @@ public class LuckyPillarManager {
             a.clearAllNow();
             a.setClean(true);
             restoreBorder(a);
+            restoreDifficulty(a);
         }
         for (UUID id : new ArrayList<>(playerArena.keySet())) {
             Player p = Bukkit.getPlayer(id);
@@ -600,6 +605,7 @@ public class LuckyPillarManager {
         }
 
         applyBorder(a);
+        applyCombatDifficulty(a);
         startTasks(a, gen);
         reportArena(a);
 
@@ -638,6 +644,7 @@ public class LuckyPillarManager {
         t.cancelAll();
         broadcast(a, "&c本局已被管理员终止。");
         restoreBorder(a);
+        restoreDifficulty(a);
         finish(a, a.getMatch());
         // finish() 里会起分批清场；管理员停止要立刻清完，先把那个任务撤掉
         if (t.clear != null) {
@@ -776,15 +783,32 @@ public class LuckyPillarManager {
         }
     }
 
+    /**
+     * 天灾落点：75% 落在随机存活玩家头顶附近（±1.5 格水平偏移），25% 落在圈内随机点。
+     * <p>原来全部随机撒在整圈里——圈半径 20+ 时玩家站的那点面积占比极小，实战里几乎永远砸不到人。
+     */
+    private Location disasterSpawn(LuckyPillarArena a, List<Player> targets, int abovePlayer, int fallbackAboveCenter) {
+        if (!targets.isEmpty() && RANDOM.nextDouble() < 0.75) {
+            Player t = targets.get(RANDOM.nextInt(targets.size()));
+            Location base = t.getLocation();
+            return new Location(base.getWorld(),
+                    base.getX() + RANDOM.nextDouble() * 3.0 - 1.5,
+                    base.getY() + abovePlayer,
+                    base.getZ() + RANDOM.nextDouble() * 3.0 - 1.5);
+        }
+        return randomInCircle(a, fallbackAboveCenter);
+    }
+
     private void arrowRain(LuckyPillarArena a, int alive) {
         World w = a.getWorld();
         if (w == null) {
             return;
         }
         broadcast(a, ARROW_LINES[RANDOM.nextInt(ARROW_LINES.length)]);
+        List<Player> targets = onlinePlayers(a);
         int count = Math.min(20, 8 + alive);
         for (int i = 0; i < count; i++) {
-            Location loc = randomInCircle(a, LuckyPillarArena.BOX_ABOVE);
+            Location loc = disasterSpawn(a, targets, 16, LuckyPillarArena.BOX_ABOVE);
             if (loc == null) {
                 continue;
             }
@@ -808,9 +832,10 @@ public class LuckyPillarManager {
             return;
         }
         broadcast(a, CREEPER_LINES[RANDOM.nextInt(CREEPER_LINES.length)]);
+        List<Player> targets = onlinePlayers(a);
         int count = Math.min(8, 3 + alive / 3);
         for (int i = 0; i < count; i++) {
-            Location loc = randomInCircle(a, LuckyPillarArena.BOX_ABOVE);
+            Location loc = disasterSpawn(a, targets, 8, LuckyPillarArena.BOX_ABOVE);
             if (loc == null) {
                 continue;
             }
@@ -1020,6 +1045,7 @@ public class LuckyPillarManager {
         MatchTasks t = tasksFor(a);
         t.cancelGameplay();
         restoreBorder(a);
+        restoreDifficulty(a);
 
         broadcast(a, "&6&l========== 游戏结束 ==========");
         if (draw || winner == null) {
@@ -1205,6 +1231,44 @@ public class LuckyPillarManager {
     }
 
     private record BorderSnapshot(Location center, double size, double damage, int warningDistance, int warningTicks) {
+    }
+
+    /**
+     * 开局把对局世界难度抬到非和平（默认 NORMAL，config 的 {@code arena-difficulty}）。
+     * <p>
+     * 服务器默认 {@code difficulty=peaceful} 时，插件生成的苦力怕会在下一 tick 被服务端直接清掉，
+     * 玩家只听到开场白、看不到怪也炸不到人；箭雨/苦力怕雨因此「没生效」。局末还原开赛前难度。
+     */
+    private void applyCombatDifficulty(LuckyPillarArena a) {
+        World w = a.getWorld();
+        if (w == null) {
+            return;
+        }
+        Difficulty target;
+        String diff = plugin.getConfig().getString("arena-difficulty", "NORMAL");
+        try {
+            target = Difficulty.valueOf(diff == null ? "NORMAL" : diff.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            target = Difficulty.NORMAL;
+        }
+        if (target == Difficulty.PEACEFUL) {
+            target = Difficulty.NORMAL; // 和平难度会直接清掉苦力怕
+        }
+        difficulties.putIfAbsent(w.getName(), w.getDifficulty());
+        if (w.getDifficulty() != target) {
+            w.setDifficulty(target);
+        }
+    }
+
+    private void restoreDifficulty(LuckyPillarArena a) {
+        World w = a.getWorld();
+        if (w == null) {
+            return;
+        }
+        Difficulty old = difficulties.remove(w.getName());
+        if (old != null && w.getDifficulty() != old) {
+            w.setDifficulty(old);
+        }
     }
 
     // ---------- 等待倒计时 ----------
