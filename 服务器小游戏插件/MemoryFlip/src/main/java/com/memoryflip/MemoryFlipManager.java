@@ -298,6 +298,11 @@ public final class MemoryFlipManager {
         return isWaiting(player) || isPlaying(player);
     }
 
+    /** 翻牌场地的方块/展示框位（不依赖是否在对局中）。 */
+    public boolean isProtected(Location loc) {
+        return arena.isProtected(loc);
+    }
+
     public boolean isAdmin(Player player) {
         return player.isOp() || player.hasPermission("memory.admin");
     }

@@ -13,6 +13,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.hanging.HangingBreakEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -112,13 +113,33 @@ public final class MemoryFlipListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onBlockBreak(BlockBreakEvent event) {
+        // 场地保护不只看"是不是参赛玩家"：墙 / 展示框位被任何人拆掉，展示框都会整块掉成掉落物
+        if (manager.isProtected(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+            return;
+        }
         if (manager.isInGame(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** 展示框本身不许被破坏（拆支撑方块、爆炸、/kill 等一律拦下，否则会掉成掉落物）。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onHangingBreak(HangingBreakEvent event) {
+        if (!(event.getEntity() instanceof ItemFrame frame)) {
+            return;
+        }
+        if (manager.isProtected(frame.getLocation())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onBlockPlace(BlockPlaceEvent event) {
+        if (manager.isProtected(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+            return;
+        }
         if (manager.isInGame(event.getPlayer())) {
             event.setCancelled(true);
         }

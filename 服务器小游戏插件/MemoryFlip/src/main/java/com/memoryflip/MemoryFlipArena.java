@@ -123,6 +123,23 @@ public final class MemoryFlipArena {
         return boards;
     }
 
+    /**
+     * 这个位置是不是翻牌场地的一部分（墙、地台、展示框所在的空位）。
+     * 用于保护场地：展示框的支撑方块一旦被拆，展示框就会整块掉成掉落物。
+     */
+    public boolean isProtected(Location loc) {
+        if (loc == null || loc.getWorld() == null) {
+            return false;
+        }
+        Location key = new Location(loc.getWorld(), loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+        for (Board board : boards) {
+            if (board.blocks.contains(key) || board.frames.contains(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 清掉旧场地：先删展示框，再把记录过的方块还原成空气。 */
     public void clear() {
         for (Board board : boards) {
