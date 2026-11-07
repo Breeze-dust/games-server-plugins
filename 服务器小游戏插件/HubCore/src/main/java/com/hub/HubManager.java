@@ -94,6 +94,10 @@ public class HubManager implements HubService {
         p.setHealth(20);
         p.setFoodLevel(20);
         p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
+        // 隐身/发光是写进玩家数据的实体标志：小游戏里 setInvisible(true) 后玩家掉线，
+        // 重连会原样恢复，光清药水效果摘不掉。回大厅时一律清掉。
+        p.setInvisible(false);
+        p.setGlowing(false);
     }
 
     public Material getMenuItemMaterial() {
