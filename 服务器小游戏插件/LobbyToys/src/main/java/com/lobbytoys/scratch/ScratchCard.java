@@ -55,6 +55,7 @@ public final class ScratchCard {
     private final long createdAt = System.currentTimeMillis();
     private long lastSwingAt;
     private long lastStrokeAt;
+    private long lastMapSentAt;
     private double lastU;
     private double lastV;
     private boolean hasLastPoint;
@@ -134,6 +135,14 @@ public final class ScratchCard {
 
     public long lastStrokeAt() {
         return lastStrokeAt;
+    }
+
+    public long lastMapSentAt() {
+        return lastMapSentAt;
+    }
+
+    public void markMapSent(long now) {
+        lastMapSentAt = now;
     }
 
     public boolean expired() {

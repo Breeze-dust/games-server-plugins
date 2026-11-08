@@ -15,6 +15,8 @@
   权限 `lobbytoys.scratch`（默认 op）；**故意不加入「小玩具」菜单和 HubCore 主菜单，普通玩家看不到入口**。
   - 配置段 `scratch`：`rows` / `columns`（1-6，**默认行列就在这里改**）、`brush-radius`、`reveal-threshold`、
     `session-seconds`、`screen-distance`、`max-distance`、`max-sessions`、`hide-from-others`，以及 `prizes.<id>`。
+  - 刮除手感靠 `brush-radius`（默认 6，越大越好刮）和 `reveal-threshold`（默认 0.55，越小越容易揭开）调；
+    3×3 的卡用默认值大约两三次扫过就能揭开一格。
   - `hide-from-others: true`（默认）时只有本人看得到卡面，其他玩家被 `hideEntity`；改成 `false` 则附近玩家都能看到
     （适合活动围观，但别人也能看到你刮开的进度）。
   - 每个奖品可配 `name` / `material` / `amount` / `weight` / `color`（#RRGGBB）/ `label`（卡面 ASCII 文字）/

@@ -33,10 +33,12 @@ import java.util.UUID;
  */
 public final class ScratchManager {
 
-    /** 客户端按住左键时，挥臂事件之间存在间隔；这段时间内每 2 刻补一次采样，手感才连续。 */
+    /** 客户端按住左键时，挥臂事件之间存在间隔；这段时间内每刻补一次采样，手感才连续。 */
     private static final long HOLD_WINDOW_MILLIS = 700L;
     /** 两次采样之间至少隔这么久，避免同一刻重复刮。 */
-    private static final long STROKE_INTERVAL_MILLIS = 60L;
+    private static final long STROKE_INTERVAL_MILLIS = 45L;
+    /** 地图整包下发的最小间隔（毫秒），避免每秒 20 次、每次 16KB 的刷屏。 */
+    private static final long MAP_SEND_INTERVAL_MILLIS = 90L;
 
     private final LobbyToysPlugin plugin;
     private final Map<UUID, ScratchCard> sessions = new HashMap<>();
@@ -60,7 +62,7 @@ public final class ScratchManager {
         if (ticker != null) {
             ticker.cancel();
         }
-        ticker = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 2L);
+        ticker = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 1L);
     }
 
     public void shutdown() {
@@ -251,7 +253,10 @@ public final class ScratchManager {
             return;
         }
         List<int[]> revealed = card.scratch(point[0], point[1], settings.brushRadius);
-        player.sendMap(card.mapView());
+        if (now - card.lastMapSentAt() >= MAP_SEND_INTERVAL_MILLIS) {
+            player.sendMap(card.mapView());
+            card.markMapSent(now);
+        }
         for (int[] cell : revealed) {
             award(card, cell[0], cell[1]);
         }
