@@ -42,12 +42,17 @@ public final class ScratchSettings {
     public final int maxSessions;
     /** true = 只有点开的人能看到自己的卡面；false = 附近所有玩家都看得到。 */
     public final boolean hideFromOthers;
+    /** 所有格子都刮开后是否自动收回。 */
+    public final boolean closeWhenComplete;
+    /** 全部刮开后多少秒收回。 */
+    public final int closeDelaySeconds;
     public final List<ScratchPrize> prizes;
     private final double totalWeight;
 
     private ScratchSettings(boolean enabled, int rows, int columns, int brushRadius, double revealThreshold,
                             int sessionSeconds, double screenDistance, double maxDistance, int maxSessions,
-                            boolean hideFromOthers, List<ScratchPrize> prizes) {
+                            boolean hideFromOthers, boolean closeWhenComplete, int closeDelaySeconds,
+                            List<ScratchPrize> prizes) {
         this.enabled = enabled;
         this.rows = rows;
         this.columns = columns;
@@ -58,6 +63,8 @@ public final class ScratchSettings {
         this.maxDistance = maxDistance;
         this.maxSessions = maxSessions;
         this.hideFromOthers = hideFromOthers;
+        this.closeWhenComplete = closeWhenComplete;
+        this.closeDelaySeconds = closeDelaySeconds;
         this.prizes = List.copyOf(prizes);
         double sum = 0;
         for (ScratchPrize prize : prizes) {
@@ -78,6 +85,8 @@ public final class ScratchSettings {
         double maxDistance = clampDouble(section == null ? 6.0 : section.getDouble("max-distance", 6.0), 2.0, 16.0);
         int maxSessions = clampInt(section == null ? 4 : section.getInt("max-sessions", 4), 1, 16);
         boolean hideFromOthers = section == null || section.getBoolean("hide-from-others", true);
+        boolean closeWhenComplete = section == null || section.getBoolean("close-when-complete", true);
+        int closeDelaySeconds = clampInt(section == null ? 5 : section.getInt("close-delay-seconds", 5), 0, 60);
 
         List<ScratchPrize> prizes = readPrizes(plugin, config);
         if (prizes.isEmpty()) {
@@ -85,7 +94,8 @@ public final class ScratchSettings {
             prizes = defaultPrizes();
         }
         return new ScratchSettings(enabled, rows, columns, brushRadius, revealThreshold,
-                sessionSeconds, screenDistance, maxDistance, maxSessions, hideFromOthers, prizes);
+                sessionSeconds, screenDistance, maxDistance, maxSessions, hideFromOthers,
+                closeWhenComplete, closeDelaySeconds, prizes);
     }
 
     /** 按权重随机抽一个奖品。 */

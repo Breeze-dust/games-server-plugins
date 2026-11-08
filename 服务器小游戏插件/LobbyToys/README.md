@@ -14,7 +14,10 @@
   再执行 `/lobbytoys scratch close`、离开 6 格、下线、换世界或超时都会自动收回。
   权限 `lobbytoys.scratch`（默认 op）；**故意不加入「小玩具」菜单和 HubCore 主菜单，普通玩家看不到入口**。
   - 配置段 `scratch`：`rows` / `columns`（1-6，**默认行列就在这里改**）、`brush-radius`、`reveal-threshold`、
-    `session-seconds`、`screen-distance`、`max-distance`、`max-sessions`、`hide-from-others`，以及 `prizes.<id>`。
+    `session-seconds`、`screen-distance`、`max-distance`、`max-sessions`、`hide-from-others`、
+    `close-when-complete`、`close-delay-seconds`，以及 `prizes.<id>`。
+  - 所有格子都刮开后默认 **5 秒**自动收回（`close-when-complete: true` + `close-delay-seconds: 5`）；
+    把 `close-when-complete` 设成 `false` 就只等 `session-seconds` 超时收回。
   - 刮除手感靠 `brush-radius`（默认 6，越大越好刮）和 `reveal-threshold`（默认 0.55，越小越容易揭开）调；
     3×3 的卡用默认值大约两三次扫过就能揭开一格。
   - `hide-from-others: true`（默认）时只有本人看得到卡面，其他玩家被 `hideEntity`；改成 `false` 则附近玩家都能看到

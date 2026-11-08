@@ -223,18 +223,26 @@ public final class ScratchManager {
             return;
         }
         long now = System.currentTimeMillis();
-        List<ScratchCard> closing = new ArrayList<>();
+        List<ScratchCard> expired = new ArrayList<>();
+        List<ScratchCard> finished = new ArrayList<>();
         for (ScratchCard card : sessions.values()) {
             if (card.expired() || card.outOfRange()) {
-                closing.add(card);
+                expired.add(card);
                 continue;
             }
             if (now - card.lastSwingAt() <= holdWindowMillis(card.player())) {
                 sampleSafely(card);
             }
+            if (settings.closeWhenComplete && card.isComplete()
+                    && now - card.completedAt() >= settings.closeDelaySeconds * 1000L) {
+                finished.add(card);
+            }
         }
-        for (ScratchCard card : closing) {
+        for (ScratchCard card : expired) {
             close(card, "&7刮刮乐已收回。");
+        }
+        for (ScratchCard card : finished) {
+            close(card, "&7全部奖品已刮开，刮刮乐已收回。");
         }
     }
 
@@ -288,6 +296,14 @@ public final class ScratchManager {
         }
         for (int[] cell : revealed) {
             award(card, cell[0], cell[1]);
+        }
+        if (card.isComplete() && !card.completionAnnounced()) {
+            card.markCompletionAnnounced();
+            if (settings.closeWhenComplete) {
+                Chat.send(player, "&a全部奖品都刮开了，" + settings.closeDelaySeconds + " 秒后自动收回。");
+            } else {
+                Chat.send(player, "&a全部奖品都刮开了！");
+            }
         }
     }
 

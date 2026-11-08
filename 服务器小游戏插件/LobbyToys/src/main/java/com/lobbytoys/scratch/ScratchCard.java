@@ -56,6 +56,9 @@ public final class ScratchCard {
     private long lastSwingAt;
     private long lastStrokeAt;
     private long lastMapSentAt;
+    private long completedAt;
+    private boolean complete;
+    private boolean completionAnnounced;
     private double lastU;
     private double lastV;
     private boolean hasLastPoint;
@@ -152,6 +155,24 @@ public final class ScratchCard {
 
     public boolean expired() {
         return System.currentTimeMillis() - createdAt > settings.sessionSeconds * 1000L;
+    }
+
+    /** 所有格子都揭开了没有。 */
+    public boolean isComplete() {
+        return complete;
+    }
+
+    /** 全部揭开的时间点（用于自动收回倒计时）。 */
+    public long completedAt() {
+        return completedAt;
+    }
+
+    public boolean completionAnnounced() {
+        return completionAnnounced;
+    }
+
+    public void markCompletionAnnounced() {
+        completionAnnounced = true;
     }
 
     public boolean outOfRange() {
@@ -270,6 +291,19 @@ public final class ScratchCard {
                 int column = index % columns;
                 drawLabel(row, column);
                 result.add(new int[]{row, column});
+            }
+        }
+        if (!complete) {
+            boolean allRevealed = true;
+            for (boolean revealed : cellRevealed) {
+                if (!revealed) {
+                    allRevealed = false;
+                    break;
+                }
+            }
+            if (allRevealed) {
+                complete = true;
+                completedAt = System.currentTimeMillis();
             }
         }
         return result;

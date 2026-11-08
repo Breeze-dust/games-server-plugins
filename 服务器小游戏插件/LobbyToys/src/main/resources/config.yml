@@ -80,6 +80,11 @@ scratch:
   # false = 附近所有玩家都能看到这张卡面（适合活动/围观）。
   hide-from-others: true
 
+  # 所有格子都刮开后，是否自动收回刮刮乐
+  close-when-complete: true
+  # 全部刮开后多少秒收回（0-60；0 = 立刻收回）
+  close-delay-seconds: 5
+
   # 奖品表：每一格独立按 weight 抽一个。
   # blank: true = 谢谢惠顾（不发物品）。
   # material/amount = 实际发放的物品；amount 上限 64。
