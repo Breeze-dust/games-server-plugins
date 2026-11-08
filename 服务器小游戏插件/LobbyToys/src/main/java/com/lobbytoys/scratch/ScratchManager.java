@@ -105,9 +105,7 @@ public final class ScratchManager {
         }
         Location frameLocation = target.getLocation().add(0.5, 0.5, 0.5);
         Vector normal = frameFacing.getDirection();
-        Vector right = new Vector(0, 1, 0).crossProduct(normal).normalize();
         Vector up = new Vector(0, 1, 0);
-        Vector center = frameLocation.toVector().add(normal.clone().multiply(0.5));
 
         MapView mapView = acquireMap(world);
         if (mapView == null) {
@@ -125,6 +123,11 @@ public final class ScratchManager {
                 entity.setItemDropChance(0.0f);
                 entity.setRotation(Rotation.NONE);
             });
+
+            // 展示框实体的位置就是画面所在的平面：服务端把它放在 方块中心 − 朝向×0.46875（贴墙那面），
+            // 不是方块正面。用实体位置当中心，准星才能和刮掉的像素对齐。
+            Vector center = frame.getLocation().toVector();
+            Vector right = up.clone().crossProduct(normal).normalize();
 
             ScratchCard card = new ScratchCard(player, settings, rows, columns, frame, mapView,
                     center, right, up, normal);

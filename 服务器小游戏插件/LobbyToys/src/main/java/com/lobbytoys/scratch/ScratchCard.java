@@ -201,7 +201,7 @@ public final class ScratchCard {
 
         int fromX = px;
         int fromY = py;
-        if (hasLastPoint && now - lastStrokeAt < 800L) {
+        if (hasLastPoint && now - lastStrokeAt < 250L) {
             fromX = clampPixel((int) (lastU * SIZE));
             fromY = clampPixel((int) (lastV * SIZE));
         }

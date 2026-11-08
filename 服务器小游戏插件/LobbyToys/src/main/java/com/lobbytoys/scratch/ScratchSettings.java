@@ -74,7 +74,7 @@ public final class ScratchSettings {
         int brushRadius = clampInt(section == null ? 6 : section.getInt("brush-radius", 6), 1, 16);
         double revealThreshold = clampDouble(section == null ? 0.55 : section.getDouble("reveal-threshold", 0.55), 0.2, 1.0);
         int sessionSeconds = clampInt(section == null ? 90 : section.getInt("session-seconds", 90), 5, 1800);
-        double screenDistance = clampDouble(section == null ? 2.5 : section.getDouble("screen-distance", 2.5), 1.0, 6.0);
+        double screenDistance = clampDouble(section == null ? 2.0 : section.getDouble("screen-distance", 2.0), 1.0, 6.0);
         double maxDistance = clampDouble(section == null ? 6.0 : section.getDouble("max-distance", 6.0), 2.0, 16.0);
         int maxSessions = clampInt(section == null ? 4 : section.getInt("max-sessions", 4), 1, 16);
         boolean hideFromOthers = section == null || section.getBoolean("hide-from-others", true);
