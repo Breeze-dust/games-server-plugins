@@ -1,6 +1,7 @@
 package com.lobbytoys;
 
 import com.hub.util.Chat;
+import com.lobbytoys.scratch.ScratchManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -19,12 +20,15 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
     private final CloneManager clones;
     private final ToyItems items;
     private final ToyMenu menu;
+    private final ScratchManager scratch;
 
-    public ToyCommand(LobbyToysPlugin plugin, CloneManager clones, ToyItems items, ToyMenu menu) {
+    public ToyCommand(LobbyToysPlugin plugin, CloneManager clones, ToyItems items, ToyMenu menu,
+                      ScratchManager scratch) {
         this.plugin = plugin;
         this.clones = clones;
         this.items = items;
         this.menu = menu;
+        this.scratch = scratch;
     }
 
     @Override
@@ -39,6 +43,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
             case "menu" -> openMenu(sender);
             case "give" -> give(sender, args);
             case "off" -> off(sender);
+            case "scratch" -> scratch(sender, args);
             case "debug" -> debug(sender);
             case "reload" -> reload(sender);
             default -> help(sender, label);
@@ -92,6 +97,41 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         clones.stop(player.getUniqueId(), true);
     }
 
+    /** 刮刮乐：只能命令打开，不进入小玩具菜单，没有权限的玩家看不到入口。 */
+    private void scratch(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            Chat.send(sender, "&c只有玩家能生成刮刮乐。");
+            return;
+        }
+        if (!canScratch(sender)) {
+            Chat.send(sender, "&c你没有使用刮刮乐的权限。");
+            return;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("close")) {
+            if (!scratch.hasSession(player)) {
+                Chat.send(player, "&7你当前没有刮刮乐。");
+                return;
+            }
+            scratch.close(player.getUniqueId(), "&7刮刮乐已收回。");
+            return;
+        }
+        int rows = scratch.settings().rows;
+        int columns = scratch.settings().columns;
+        if (args.length >= 3) {
+            rows = parseDimension(args[1], rows);
+            columns = parseDimension(args[2], columns);
+        }
+        scratch.open(player, rows, columns);
+    }
+
+    private static int parseDimension(String raw, int fallback) {
+        try {
+            return Math.max(1, Math.min(6, Integer.parseInt(raw)));
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
     private void debug(CommandSender sender) {
         if (!isAdmin(sender)) {
             Chat.send(sender, "&c只有管理员能看调试信息。");
@@ -133,6 +173,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&b主城小玩具");
         Chat.send(sender, "&7/" + label + " menu &8- 打开小玩具菜单");
         Chat.send(sender, "&7/" + label + " give [玩家] &8- 发放小玩具");
+        Chat.send(sender, "&7/" + label + " scratch [行 列] &8- 生成 / 收回刮刮乐（管理员）");
         Chat.send(sender, "&7/" + label + " off &8- 收回自己的分身");
         Chat.send(sender, "&7/" + label + " debug &8- 查看插件版本与手持道具的玩具标记");
         Chat.send(sender, "&7/" + label + " reload &8- 重载配置");
@@ -144,11 +185,25 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
                 || player.hasPermission("lobbytoys.admin");
     }
 
+    private static boolean canScratch(CommandSender sender) {
+        return !(sender instanceof Player player) || player.isOp()
+                || player.hasPermission("lobbytoys.scratch")
+                || player.hasPermission("lobbytoys.admin");
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("menu", "give", "off", "debug", "reload", "help"), args[0]);
+            return filter(List.of("menu", "give", "off", "scratch", "debug", "reload", "help"), args[0]);
+        }
+        if (args[0].equalsIgnoreCase("scratch")) {
+            if (args.length == 2) {
+                return filter(List.of("close"), args[1]);
+            }
+            if (args.length == 3 || args.length == 4) {
+                return filter(List.of("1", "2", "3", "4", "5", "6"), args[args.length - 1]);
+            }
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
             List<String> names = new ArrayList<>();

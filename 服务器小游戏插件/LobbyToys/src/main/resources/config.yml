@@ -51,3 +51,82 @@ toys:
     lore:
       - "&7右键 缩小 / 恢复自己的身形"
       - "&8只能在主城使用"
+
+# ========== 刮刮乐 ==========
+# 只通过 /lobbytoys scratch 打开（权限 lobbytoys.scratch，默认 op），
+# 暂时不放进「小玩具」菜单，所以普通玩家看不到入口。
+# 玩法：玩家面前生成一个固定 item frame，里面是一张 128x128 的地图；
+#       按住左键在卡面上刮，刮开一格就按该格的奖品发物品 / 触发事件。
+scratch:
+  enabled: true
+  # 奖品格子的行数、列数（1-6）。命令可用 /lobbytoys scratch <行> <列> 临时覆盖。
+  rows: 3
+  columns: 3
+  # 刮除笔刷半径（地图像素，1-16）
+  brush-radius: 4
+  # 一格被刮掉多少比例算揭开（0.2-1.0）
+  reveal-threshold: 0.65
+  # 单张卡最长存在时间（秒），到点自动收回
+  session-seconds: 90
+  # 屏幕离玩家眼睛的距离（格）；面前没空间会自动靠近
+  screen-distance: 2.5
+  # 玩家离开屏幕多远自动收回（格）
+  max-distance: 6.0
+  # 同时存在的刮刮乐上限（也是地图 id 池上限，避免地图文件无限增长）
+  max-sessions: 4
+
+  # 奖品表：每一格独立按 weight 抽一个。
+  # blank: true = 谢谢惠顾（不发物品）。
+  # material/amount = 实际发放的物品；amount 上限 64。
+  # color  = 卡面上这一格的颜色（#RRGGBB）；label = 刮开后在卡面上显示的 ASCII 文字（地图字体不支持中文）。
+  # image  = 可选，plugins/LobbyToys/scratch-images/ 下的 PNG 文件名，会缩放画在格子里。
+  # sound  = 可选，Bukkit 音效名（如 ENTITY_PLAYER_LEVELUP）。
+  # message = 可选，刮开时发给玩家的消息。
+  # commands = 可选，控制台命令列表，支持 %player% / %uuid% / %prize% 占位符。
+  #            这就是「事件效果」的接入点：give、effect、lp、其他插件命令都能挂在这里。
+  # 另外每次揭开都会触发自定义事件 ScratchCardPrizeEvent，其他插件可直接监听。
+  prizes:
+    blank:
+      name: "&8谢谢惠顾"
+      blank: true
+      weight: 55
+      color: "#3A3A3A"
+      label: "SORRY"
+    diamond:
+      name: "&b钻石"
+      material: DIAMOND
+      amount: 1
+      weight: 8
+      color: "#4AEDD9"
+      label: "DIAMOND"
+      sound: ENTITY_PLAYER_LEVELUP
+      message: "&b你刮到了一颗钻石！"
+    emerald:
+      name: "&a绿宝石"
+      material: EMERALD
+      amount: 1
+      weight: 10
+      color: "#41F384"
+      label: "EMERALD"
+      sound: ENTITY_PLAYER_LEVELUP
+    gold:
+      name: "&6金锭"
+      material: GOLD_INGOT
+      amount: 2
+      weight: 17
+      color: "#FCEB4B"
+      label: "GOLD"
+      sound: BLOCK_NOTE_BLOCK_PLING
+    firework:
+      name: "&e烟花礼包"
+      material: FIREWORK_ROCKET
+      amount: 3
+      weight: 10
+      color: "#F5B043"
+      label: "FIREWORK"
+      sound: ENTITY_FIREWORK_ROCKET_LAUNCH
+      message: "&e你刮到了烟花礼包！"
+      # 事件效果示例：以控制台身份执行，%player% 会换成玩家名
+      commands:
+        - "say %player% 刮到了烟花礼包"
+

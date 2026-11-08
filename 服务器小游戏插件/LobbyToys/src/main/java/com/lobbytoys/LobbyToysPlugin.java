@@ -1,5 +1,7 @@
 package com.lobbytoys;
 
+import com.lobbytoys.scratch.ScratchListener;
+import com.lobbytoys.scratch.ScratchManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -10,6 +12,7 @@ public final class LobbyToysPlugin extends JavaPlugin {
     private ToyRegistry registry;
     private CloneManager clones;
     private ShrinkManager shrinks;
+    private ScratchManager scratch;
 
     @Override
     public void onEnable() {
@@ -25,7 +28,11 @@ public final class LobbyToysPlugin extends JavaPlugin {
         ToyMenu menu = new ToyMenu(this, items, clones, shrinks);
         getServer().getPluginManager().registerEvents(menu, this);
 
-        ToyCommand command = new ToyCommand(this, clones, items, menu);
+        scratch = new ScratchManager(this);
+        getServer().getPluginManager().registerEvents(new ScratchListener(scratch), this);
+        scratch.start();
+
+        ToyCommand command = new ToyCommand(this, clones, items, menu, scratch);
         PluginCommand pluginCommand = getCommand("lobbytoys");
         if (pluginCommand != null) {
             pluginCommand.setExecutor(command);
@@ -48,6 +55,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
         if (shrinks != null) {
             shrinks.shutdown();
         }
+        if (scratch != null) {
+            scratch.shutdown();
+        }
     }
 
     public Settings settings() {
@@ -65,6 +75,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
         registry.reload(getConfig());
         if (clones != null) {
             clones.refreshVisibility();
+        }
+        if (scratch != null) {
+            scratch.reload();
         }
     }
 }

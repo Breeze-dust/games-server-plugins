@@ -1,8 +1,8 @@
 name: LobbyToys
-version: '1.2.0'
+version: '1.3.0'
 main: com.lobbytoys.LobbyToysPlugin
 api-version: '1.21'
-description: 主城小玩具：右键生成会自转、上下弹动并跟随你的玩家分身
+description: 主城小玩具：分身、缩小药水，以及命令调用的刮刮乐
 
 depend: [MiniGameLib]
 
@@ -18,4 +18,7 @@ permissions:
     default: true
   lobbytoys.admin:
     description: 允许发放/管理主城小玩具
+    default: op
+  lobbytoys.scratch:
+    description: 允许用 /lobbytoys scratch 生成刮刮乐（暂不进入小玩具菜单）
     default: op

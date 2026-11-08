@@ -8,11 +8,25 @@
   再右键一次收回。主菜单里点「小玩具」可打开切换菜单（目前有 **分身玩具** 与 **缩小药水** 两种）。
 - **缩小药水**：右键把自己的 `Attribute.SCALE` 设成 `shrink-scale`（默认 0.5），**模型和碰撞箱一起缩小**；
   再右键、离开主城、进入小游戏、死亡、下线、关服都会自动恢复原大小。分身也会跟着你一起缩小。
+- **刮刮乐（实验功能，不在菜单里）**：`/lobbytoys scratch [行 列]` 在玩家面前生成一个**固定的 item frame**，
+  里面是一张 128×128 的地图：上层是灰色涂层，下层是 `行 × 列` 的奖品格子。**按住左键**在卡面上刮，
+  涂层按笔刷半径被擦掉；某格被刮掉 `reveal-threshold` 比例后算揭开，立刻发该格奖品并触发事件效果。
+  再执行 `/lobbytoys scratch close`、离开 6 格、下线、换世界或超时都会自动收回。
+  权限 `lobbytoys.scratch`（默认 op）；**故意不加入「小玩具」菜单和 HubCore 主菜单，普通玩家看不到入口**。
+  - 配置段 `scratch`：`rows` / `columns`（1-6）、`brush-radius`、`reveal-threshold`、`session-seconds`、
+    `screen-distance`、`max-distance`、`max-sessions`，以及 `prizes.<id>`。
+  - 每个奖品可配 `name` / `material` / `amount` / `weight` / `color`（#RRGGBB）/ `label`（卡面 ASCII 文字）/
+    `sound` / `message` / `image`（`plugins/LobbyToys/scratch-images/` 下的 PNG）/ `commands`。
+  - **事件效果**：`commands` 会以控制台身份执行，支持 `%player%` / `%uuid%` / `%prize%`；
+    每次揭开还会触发自定义事件 `ScratchCardPrizeEvent`（`com.lobbytoys.scratch`），其他插件可直接监听。
+  - 屏幕只对本人可见（其他玩家被 `hideEntity`），地图 id 按 `max-sessions` 建池复用，不会无限增长。
+  - 地图像素字体只认 ASCII，所以 `label` 里的中文会被过滤；中文奖品名仍会显示在聊天/动作栏里。
 - **入口**：`LobbyToys/src/main/java/com/lobbytoys/LobbyToysPlugin.java#onEnable`
   （`saveDefaultConfig` → `Settings` + `ToyRegistry` → `CloneManager` 每刻 tick 任务 → 注册 `ToyListener` + `ToyMenu` →
   `/lobbytoys` 命令 → 每 100 刻 `ToyListener#refillAll` 给主城玩家补道具）。
-- **命令**：`/lobbytoys menu`、`/lobbytoys give [玩家]`、`/lobbytoys off`、`/lobbytoys debug`、`/lobbytoys reload`、`/lobbytoys help`；
-  别名 `toys` / `toy`。权限 `lobbytoys.use`（默认 true）、`lobbytoys.admin`（默认 op）。
+- **命令**：`/lobbytoys menu`、`/lobbytoys give [玩家]`、`/lobbytoys off`、`/lobbytoys scratch [行 列|close]`、
+  `/lobbytoys debug`、`/lobbytoys reload`、`/lobbytoys help`；
+  别名 `toys` / `toy`。权限 `lobbytoys.use`（默认 true）、`lobbytoys.admin`（默认 op）、`lobbytoys.scratch`（默认 op）。
   `/lobbytoys debug` 会输出插件版本、手持道具上的 `toy-id` / `toy-look` / 旧标记，以及当前配置的期望指纹，排障先用它。
 - **HubCore 集成**：`HubCore` 的 `MenuLayout#ensureToysMenuEntry()` 在检测到本插件时，自动在主菜单第一个空槽放
   「小玩具」（PLAYER_HEAD，动作 `cmd:lobbytoys menu`，所有人可见）；已有同动作条目就不重复添加。
@@ -45,6 +59,11 @@
   | 玩具切换 GUI | `LobbyToys/src/main/java/com/lobbytoys/ToyMenu.java` |
   | 右键/丢弃/进世界/进出服/补发道具 | `LobbyToys/src/main/java/com/lobbytoys/ToyListener.java` |
   | 命令与补全 | `LobbyToys/src/main/java/com/lobbytoys/ToyCommand.java` |
+  | 刮刮乐会话/屏幕生成/奖品发放/事件 | `LobbyToys/src/main/java/com/lobbytoys/scratch/ScratchManager.java` |
+  | 刮刮乐地图像素、涂层、格子揭晓判定 | `LobbyToys/src/main/java/com/lobbytoys/scratch/ScratchCard.java` |
+  | 刮刮乐配置解析与权重抽奖 | `LobbyToys/src/main/java/com/lobbytoys/scratch/ScratchSettings.java` |
+  | 刮刮乐左键/误触事件接入 | `LobbyToys/src/main/java/com/lobbytoys/scratch/ScratchListener.java` |
+  | 刮刮乐奖品揭晓事件（给其他插件监听） | `LobbyToys/src/main/java/com/lobbytoys/scratch/ScratchCardPrizeEvent.java` |
   | 配置读取 | `LobbyToys/src/main/java/com/lobbytoys/Settings.java` |
   | 主菜单自动加入口 | `HubCore/src/main/java/com/hub/menu/MenuLayout.java#ensureToysMenuEntry` |
 - **加一个新玩具**：`ToyType` 加一项（缺省外观）→ 在 `config.yml` 的 `toys.<新id>` 里配名字/道具/描述 →
@@ -88,6 +107,11 @@
   6. 在非 `world` 世界右键：动作栏提示「分身玩具只能在主城使用」。
   7. 缩小药水：右键身形变小、碰撞箱同步变小；再右键恢复；离开主城/进游戏会自动恢复。
      `/lobbytoys debug` 里 `shrink-scale` 相关行为不单独输出，但可在 `config.yml` 核对。
+  8. 刮刮乐：`/lobbytoys scratch` → 面前 2.5 格处出现一张灰色卡面（3 行 × 3 列）；
+     **按住左键**扫过卡面，涂层被擦掉、露出底色；刮开某格到阈值后动作栏提示「第 x 行第 y 列：奖品」，
+     物品进背包、配置的 `sound/message/commands` 生效。
+     `/lobbytoys scratch 2 4` 可临时改成 2 行 4 列；`/lobbytoys scratch close` 收回。
+     无 `lobbytoys.scratch` 权限的玩家执行会提示没有权限。
 - **未确认 / TODO**：
   - 无客户端环境，**缩放弹跳的实际手感、第一人称穿模程度未实机验证**；太跳就调小 `squash-amount`、
     调大 `squash-period-ticks`，或设 `squash-amount: 0` 关掉。
