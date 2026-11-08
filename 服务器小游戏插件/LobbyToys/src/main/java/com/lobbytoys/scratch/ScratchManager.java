@@ -130,7 +130,9 @@ public final class ScratchManager {
             frame.setItem(createMapItem(mapView), false);
 
             sessions.put(player.getUniqueId(), card);
-            hideFromOthers(frame, player);
+            if (settings.hideFromOthers) {
+                hideFromOthers(frame, player);
+            }
 
             Chat.send(player, "&e刮刮乐已生成：&f" + rows + " 行 × " + columns + " 列"
                     + "&e，&f按住左键&e在卡面上刮开涂层。");
@@ -195,6 +197,9 @@ public final class ScratchManager {
 
     /** 新玩家进服时，把已经存在的刮刮乐屏幕从他那边藏掉（他只该看到自己的）。 */
     public void hideFrom(Player joiner) {
+        if (!settings.hideFromOthers) {
+            return;
+        }
         for (ScratchCard card : sessions.values()) {
             if (!card.player().equals(joiner) && card.frame().getWorld().equals(joiner.getWorld())) {
                 joiner.hideEntity(plugin, card.frame());

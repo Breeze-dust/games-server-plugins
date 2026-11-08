@@ -75,6 +75,10 @@ scratch:
   # 同时存在的刮刮乐上限（也是地图 id 池上限，避免地图文件无限增长）
   max-sessions: 4
 
+  # true  = 只有点开刮刮乐的人能看到卡面（其他玩家被隐藏，适合主城）；
+  # false = 附近所有玩家都能看到这张卡面（适合活动/围观）。
+  hide-from-others: true
+
   # 奖品表：每一格独立按 weight 抽一个。
   # blank: true = 谢谢惠顾（不发物品）。
   # material/amount = 实际发放的物品；amount 上限 64。

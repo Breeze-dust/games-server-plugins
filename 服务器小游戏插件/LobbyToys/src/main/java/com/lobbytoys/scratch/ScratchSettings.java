@@ -40,12 +40,14 @@ public final class ScratchSettings {
     public final double maxDistance;
     /** 同时存在的刮刮乐上限，也是地图 id 池上限。 */
     public final int maxSessions;
+    /** true = 只有点开的人能看到自己的卡面；false = 附近所有玩家都看得到。 */
+    public final boolean hideFromOthers;
     public final List<ScratchPrize> prizes;
     private final double totalWeight;
 
     private ScratchSettings(boolean enabled, int rows, int columns, int brushRadius, double revealThreshold,
                             int sessionSeconds, double screenDistance, double maxDistance, int maxSessions,
-                            List<ScratchPrize> prizes) {
+                            boolean hideFromOthers, List<ScratchPrize> prizes) {
         this.enabled = enabled;
         this.rows = rows;
         this.columns = columns;
@@ -55,6 +57,7 @@ public final class ScratchSettings {
         this.screenDistance = screenDistance;
         this.maxDistance = maxDistance;
         this.maxSessions = maxSessions;
+        this.hideFromOthers = hideFromOthers;
         this.prizes = List.copyOf(prizes);
         double sum = 0;
         for (ScratchPrize prize : prizes) {
@@ -74,6 +77,7 @@ public final class ScratchSettings {
         double screenDistance = clampDouble(section == null ? 2.5 : section.getDouble("screen-distance", 2.5), 1.0, 6.0);
         double maxDistance = clampDouble(section == null ? 6.0 : section.getDouble("max-distance", 6.0), 2.0, 16.0);
         int maxSessions = clampInt(section == null ? 4 : section.getInt("max-sessions", 4), 1, 16);
+        boolean hideFromOthers = section == null || section.getBoolean("hide-from-others", true);
 
         List<ScratchPrize> prizes = readPrizes(plugin, config);
         if (prizes.isEmpty()) {
@@ -81,7 +85,7 @@ public final class ScratchSettings {
             prizes = defaultPrizes();
         }
         return new ScratchSettings(enabled, rows, columns, brushRadius, revealThreshold,
-                sessionSeconds, screenDistance, maxDistance, maxSessions, prizes);
+                sessionSeconds, screenDistance, maxDistance, maxSessions, hideFromOthers, prizes);
     }
 
     /** 按权重随机抽一个奖品。 */

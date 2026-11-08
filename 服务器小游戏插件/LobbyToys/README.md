@@ -13,13 +13,16 @@
   涂层按笔刷半径被擦掉；某格被刮掉 `reveal-threshold` 比例后算揭开，立刻发该格奖品并触发事件效果。
   再执行 `/lobbytoys scratch close`、离开 6 格、下线、换世界或超时都会自动收回。
   权限 `lobbytoys.scratch`（默认 op）；**故意不加入「小玩具」菜单和 HubCore 主菜单，普通玩家看不到入口**。
-  - 配置段 `scratch`：`rows` / `columns`（1-6）、`brush-radius`、`reveal-threshold`、`session-seconds`、
-    `screen-distance`、`max-distance`、`max-sessions`，以及 `prizes.<id>`。
+  - 配置段 `scratch`：`rows` / `columns`（1-6，**默认行列就在这里改**）、`brush-radius`、`reveal-threshold`、
+    `session-seconds`、`screen-distance`、`max-distance`、`max-sessions`、`hide-from-others`，以及 `prizes.<id>`。
+  - `hide-from-others: true`（默认）时只有本人看得到卡面，其他玩家被 `hideEntity`；改成 `false` 则附近玩家都能看到
+    （适合活动围观，但别人也能看到你刮开的进度）。
   - 每个奖品可配 `name` / `material` / `amount` / `weight` / `color`（#RRGGBB）/ `label`（卡面 ASCII 文字）/
     `sound` / `message` / `image`（`plugins/LobbyToys/scratch-images/` 下的 PNG）/ `commands`。
   - **事件效果**：`commands` 会以控制台身份执行，支持 `%player%` / `%uuid%` / `%prize%`；
     每次揭开还会触发自定义事件 `ScratchCardPrizeEvent`（`com.lobbytoys.scratch`），其他插件可直接监听。
-  - 屏幕只对本人可见（其他玩家被 `hideEntity`），地图 id 按 `max-sessions` 建池复用，不会无限增长。
+  - 屏幕只对本人可见（其他玩家被 `hideEntity`，可用 `scratch.hide-from-others: false` 改成所有人可见），
+    地图 id 按 `max-sessions` 建池复用，不会无限增长。
   - 地图像素字体只认 ASCII，所以 `label` 里的中文会被过滤；中文奖品名仍会显示在聊天/动作栏里。
 - **入口**：`LobbyToys/src/main/java/com/lobbytoys/LobbyToysPlugin.java#onEnable`
   （`saveDefaultConfig` → `Settings` + `ToyRegistry` → `CloneManager` 每刻 tick 任务 → 注册 `ToyListener` + `ToyMenu` →
