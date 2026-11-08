@@ -156,15 +156,16 @@ public final class ScratchCard {
         Location eye = viewer.getEyeLocation();
         Vector origin = eye.toVector();
         Vector direction = eye.getDirection();
-        // 只认站在屏幕正面的人；从背面穿过去不该能刮
-        if (center.clone().subtract(origin).dot(normal) <= 0) {
+        // normal 指向卡面看得见的那一侧：玩家在正面时 (眼睛 - 中心)·normal > 0；站在背面不算
+        double viewerSide = origin.clone().subtract(center).dot(normal);
+        if (viewerSide <= 0) {
             return null;
         }
         double denominator = direction.dot(normal);
         if (Math.abs(denominator) < 1.0E-6) {
             return null;
         }
-        double distance = center.clone().subtract(origin).dot(normal) / denominator;
+        double distance = -viewerSide / denominator;
         if (distance <= 0 || distance > settings.maxDistance) {
             return null;
         }

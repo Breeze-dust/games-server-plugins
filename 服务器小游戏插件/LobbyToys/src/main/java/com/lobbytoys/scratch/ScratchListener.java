@@ -1,5 +1,6 @@
 package com.lobbytoys.scratch;
 
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -29,11 +30,14 @@ public final class ScratchListener implements Listener {
         }
     }
 
-    /** 固定住的展示框本来就不该受伤；万一客户端发了攻击包，这里兜住。 */
+    /** 固定住的展示框本来就不该受伤；攻击包既是兜底也是「点一下就刮」的可靠入口。 */
     @EventHandler
     public void onDamage(EntityDamageByEntityEvent event) {
         if (scratch.isCardFrame(event.getEntity())) {
             event.setCancelled(true);
+            if (event.getDamager() instanceof Player player) {
+                scratch.onSwing(player);
+            }
         }
     }
 
