@@ -7,6 +7,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Rotation;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
@@ -33,8 +35,12 @@ import java.util.UUID;
  */
 public final class ScratchManager {
 
-    /** 客户端按住左键时，挥臂事件之间存在间隔；这段时间内每刻补一次采样，手感才连续。 */
-    private static final long HOLD_WINDOW_MILLIS = 700L;
+    /**
+     * 客户端按住左键时，攻击包按物品的攻击冷却间隔发出（空手约 0.25 秒，镐/斧可能到 1 秒以上）。
+     * 判定窗口按玩家当前的攻击速度动态放大，窗口内每刻补采样，笔触才不会中途断掉。
+     */
+    private static final long MIN_HOLD_WINDOW_MILLIS = 450L;
+    private static final long HOLD_WINDOW_MARGIN_MILLIS = 350L;
     /** 两次采样之间至少隔这么久，避免同一刻重复刮。 */
     private static final long STROKE_INTERVAL_MILLIS = 45L;
     /** 地图整包下发的最小间隔（毫秒），避免每秒 20 次、每次 16KB 的刷屏。 */
@@ -223,12 +229,31 @@ public final class ScratchManager {
                 closing.add(card);
                 continue;
             }
-            if (now - card.lastSwingAt() <= HOLD_WINDOW_MILLIS) {
-                sample(card);
+            if (now - card.lastSwingAt() <= holdWindowMillis(card.player())) {
+                sampleSafely(card);
             }
         }
         for (ScratchCard card : closing) {
             close(card, "&7刮刮乐已收回。");
+        }
+    }
+
+    private static long holdWindowMillis(Player player) {
+        double attacksPerSecond = 4.0;
+        AttributeInstance attribute = player.getAttribute(Attribute.ATTACK_SPEED);
+        if (attribute != null) {
+            attacksPerSecond = Math.max(0.5, attribute.getValue());
+        }
+        long cooldown = (long) Math.ceil(1000.0 / attacksPerSecond);
+        return Math.max(MIN_HOLD_WINDOW_MILLIS, cooldown + HOLD_WINDOW_MARGIN_MILLIS);
+    }
+
+    /** 单张卡出错（比如奖品命令抛异常）不应该把整个 tick 任务弄停。 */
+    private void sampleSafely(ScratchCard card) {
+        try {
+            sample(card);
+        } catch (RuntimeException ex) {
+            plugin.getLogger().warning("刮刮乐采样失败：" + ex);
         }
     }
 
@@ -239,7 +264,7 @@ public final class ScratchManager {
             return;
         }
         card.markSwing();
-        sample(card);
+        sampleSafely(card);
     }
 
     private void sample(ScratchCard card) {
@@ -249,6 +274,7 @@ public final class ScratchManager {
         }
         double[] point = card.screenCoords(player);
         if (point == null) {
+            card.breakStroke();
             return;
         }
         long now = System.currentTimeMillis();

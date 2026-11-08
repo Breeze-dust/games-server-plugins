@@ -129,6 +129,11 @@ public final class ScratchCard {
         lastSwingAt = System.currentTimeMillis();
     }
 
+    /** 准星离开卡面时断笔，重新进入不会和上一笔连成一条穿过卡面的直线。 */
+    public void breakStroke() {
+        hasLastPoint = false;
+    }
+
     public long lastSwingAt() {
         return lastSwingAt;
     }
