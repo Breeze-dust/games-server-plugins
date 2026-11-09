@@ -5,9 +5,10 @@
 #   平台 / 尖刺的 size 是 [x, z] 平面尺寸；
 #   发射器的 size 是 [宽度, 高度]，深度固定 1 格，旋转后发射口始终朝外，不会被同机关的方块挡住。
 # rotation 取值：
-#   four-way   左键水平转 90°，右键上下翻 180°
-#   six-way    左键水平转 90°，右键上下翻 180°（发射器朝向）
-#   vertical   只能上下翻 180°
+#   four-way        左键水平 90°，右键竖直 90°
+#   six-way         左键水平 90°，右键竖直 90°（发射器朝向）
+#   horizontal-flip 左键水平 90°，右键竖直 180°（尖刺）
+#   vertical        只能竖直 180°
 
 mechanisms:
   spike:
@@ -18,8 +19,8 @@ mechanisms:
     lore:
       - '&7由滴水石构成'
       - '&7碰到尖刺的玩家本回合失败'
-      - '&7只能上下翻转 180°'
-    rotation: vertical
+      - '&7左键水平旋转，右键上下翻转'
+    rotation: horizontal-flip
     variants:
       single:
         name: '1x1'

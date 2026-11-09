@@ -1230,7 +1230,7 @@ public final class GameRoom {
             case PLACING -> {
                 for (PlacementSession session : sessions.values()) {
                     if (!session.confirmed()) {
-                        plugin.mechanismManager().updatePreview(session, arena);
+                        plugin.mechanismManager().updatePreview(this, session);
                     }
                 }
                 phaseTicks--;

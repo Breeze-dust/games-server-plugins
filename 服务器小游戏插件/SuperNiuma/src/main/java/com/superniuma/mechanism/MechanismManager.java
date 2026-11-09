@@ -33,7 +33,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -63,7 +62,7 @@ public final class MechanismManager {
 
     // ---------- 预览 ----------
 
-    public void updatePreview(PlacementSession session, Arena arena) {
+    public void updatePreview(GameRoom room, PlacementSession session) {
         if (session.confirmed()) {
             return;
         }
@@ -79,24 +78,85 @@ public final class MechanismManager {
         clearGhosts(session);
         session.setGhostCells(cells);
         session.setRendered(anchor, session.yawSteps(), session.pitchSteps());
-        BlockFace facing = facingFor(session.choice().def(), session.yawSteps(), session.pitchSteps());
-        BlockData ghostData = ghostBlock(session.choice().def(), facing);
-        for (Location cell : cells) {
-            BlockDisplay display = cell.getWorld().spawn(
-                    cell.clone(), BlockDisplay.class, d -> {
-                        d.setBlock(ghostData.clone());
-                        d.setPersistent(false);
-                        d.setGravity(false);
-                        d.setInvulnerable(true);
-                        d.setSilent(true);
-                        d.setInterpolationDuration(2);
-                    });
-            for (Player other : Bukkit.getOnlinePlayers()) {
-                if (!other.getUniqueId().equals(session.owner())) {
-                    other.hideEntity(plugin, display);
+        spawnGhosts(room, session, cells);
+    }
+
+    /** 预览使用机关真实方块/实体，不再用染色玻璃占位。 */
+    private void spawnGhosts(GameRoom room, PlacementSession session, List<Location> cells) {
+        MechanismChoice choice = session.choice();
+        MechanismDef def = choice.def();
+        BlockFace facing = facingFor(def, session.yawSteps(), session.pitchSteps());
+        switch (def.id()) {
+            case "platform" -> {
+                BlockData wool = room.woolFor(session.owner()).createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, wool);
                 }
             }
-            session.ghosts().add(display);
+            case "spike" -> {
+                int bases = choice.variant().sizeX() * choice.variant().sizeZ();
+                BlockData base = Material.DRIPSTONE_BLOCK.createBlockData();
+                BlockData tip = Material.POINTED_DRIPSTONE.createBlockData();
+                if (tip instanceof PointedDripstone dripstone) {
+                    dripstone.setVerticalDirection((session.pitchSteps() & 2) == 2
+                            ? BlockFace.DOWN : BlockFace.UP);
+                    dripstone.setThickness(Speleothem.Thickness.TIP);
+                }
+                for (int i = 0; i < cells.size(); i++) {
+                    spawnBlockGhost(session, cells.get(i), i < bases ? base : tip);
+                }
+            }
+            case "dispenser" -> {
+                BlockData data = Material.DISPENSER.createBlockData();
+                if (data instanceof Directional directional) {
+                    directional.setFacing(facing);
+                }
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "coin" -> spawnCoinGhost(session);
+            case "bomb" -> spawnBlockGhost(session, session.anchor(), Material.TNT.createBlockData());
+            default -> {
+            }
+        }
+    }
+
+    private void spawnBlockGhost(PlacementSession session, Location location, BlockData data) {
+        BlockDisplay display = location.getWorld().spawn(location.clone(), BlockDisplay.class, d -> {
+            d.setBlock(data.clone());
+            d.setPersistent(false);
+            d.setGravity(false);
+            d.setInvulnerable(true);
+            d.setSilent(true);
+            d.setInterpolationDuration(2);
+        });
+        hideFromOthers(session, display);
+        session.ghosts().add(display);
+    }
+
+    private void spawnCoinGhost(PlacementSession session) {
+        Location center = session.anchor().clone().add(0.5, 0.15, 0.5);
+        float scale = (float) session.choice().def().scale();
+        ItemDisplay display = center.getWorld().spawn(center, ItemDisplay.class, entity -> {
+            entity.setItemStack(new ItemStack(Material.GOLD_BLOCK));
+            entity.setTransformation(new Transformation(
+                    new Vector3f(), new Quaternionf(),
+                    new Vector3f(scale, scale, scale), new Quaternionf()));
+            entity.setPersistent(false);
+            entity.setGravity(false);
+            entity.setInvulnerable(true);
+            entity.setSilent(true);
+        });
+        hideFromOthers(session, display);
+        session.ghosts().add(display);
+    }
+
+    private void hideFromOthers(PlacementSession session, Entity entity) {
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (!other.getUniqueId().equals(session.owner())) {
+                other.hideEntity(plugin, entity);
+            }
         }
     }
 
@@ -106,9 +166,9 @@ public final class MechanismManager {
     }
 
     private void clearGhosts(PlacementSession session) {
-        for (BlockDisplay display : session.ghosts()) {
-            if (display.isValid()) {
-                display.remove();
+        for (Entity entity : session.ghosts()) {
+            if (entity.isValid()) {
+                entity.remove();
             }
         }
         session.ghosts().clear();
@@ -180,7 +240,7 @@ public final class MechanismManager {
             return;
         }
         RotationRule rule = session.choice().def().rotation();
-        int step = rule == RotationRule.VERTICAL ? 2 : 1;
+        int step = rule.verticalStepIsHalfTurn() ? 2 : 1;
         session.setPitchSteps(session.pitchSteps() + step);
         Msg.actionBar(session.player(), "&e竖直翻转 " + (step * 90) + "°（当前 "
                 + (session.pitchSteps() * 90) + "°）");
@@ -403,9 +463,13 @@ public final class MechanismManager {
         if (instance.entities().isEmpty()) {
             return;
         }
-        Location center = instance.anchor().clone().add(0.5, 0.5, 0.5);
+        Location center = instance.anchor().clone().add(0.5, 0.15, 0.5);
+        // 用玩家碰撞箱与金币包围盒相交判定，而不是只看脚底位置。
+        BoundingBox coinBox = new BoundingBox(
+                center.getX() - 0.4, center.getY() - 0.4, center.getZ() - 0.4,
+                center.getX() + 0.4, center.getY() + 0.4, center.getZ() + 0.4);
         for (Player player : room.activePlayers()) {
-            if (player.getLocation().distanceSquared(center) <= 1.5) {
+            if (player.getBoundingBox().overlaps(coinBox)) {
                 for (Entity entity : instance.entities()) {
                     if (entity.isValid()) {
                         entity.remove();
@@ -670,17 +734,6 @@ public final class MechanismManager {
         return true;
     }
 
-    private Material ghostMaterial(MechanismDef def) {
-        return switch (def.id().toLowerCase(Locale.ROOT)) {
-            case "spike" -> Material.RED_STAINED_GLASS;
-            case "platform" -> Material.WHITE_STAINED_GLASS;
-            case "dispenser" -> Material.GRAY_STAINED_GLASS;
-            case "coin" -> Material.YELLOW_STAINED_GLASS;
-            case "bomb" -> Material.RED_STAINED_GLASS;
-            default -> Material.WHITE_STAINED_GLASS;
-        };
-    }
-
     private BlockFace facingFor(MechanismDef def, int yawSteps, int pitchSteps) {
         if (!"dispenser".equals(def.id())) {
             return BlockFace.SOUTH;
@@ -700,17 +753,6 @@ public final class MechanismManager {
             face = face.getOppositeFace();
         }
         return face;
-    }
-
-    private BlockData ghostBlock(MechanismDef def, BlockFace facing) {
-        if ("dispenser".equals(def.id())) {
-            BlockData data = Material.DISPENSER.createBlockData();
-            if (data instanceof Directional directional) {
-                directional.setFacing(facing);
-            }
-            return data;
-        }
-        return ghostMaterial(def).createBlockData();
     }
 
     /** 玩家朝向对应的基准 yaw：南 0、西 1、北 2、东 3。 */

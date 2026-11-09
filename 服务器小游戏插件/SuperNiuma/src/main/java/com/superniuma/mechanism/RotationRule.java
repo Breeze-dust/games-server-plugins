@@ -10,7 +10,10 @@ public enum RotationRule {
     SIX_WAY,
 
     /** 只能上下翻 180°。 */
-    VERTICAL;
+    VERTICAL,
+
+    /** 左键水平转 90°，右键上下翻 180°（尖刺这类）。 */
+    HORIZONTAL_FLIP;
 
     public boolean supportsHorizontal() {
         return this != VERTICAL;
@@ -18,5 +21,10 @@ public enum RotationRule {
 
     public boolean supportsVertical() {
         return true;
+    }
+
+    /** 右键一次是否翻 180°（否则是 90°）。 */
+    public boolean verticalStepIsHalfTurn() {
+        return this == VERTICAL || this == HORIZONTAL_FLIP;
     }
 }

@@ -1,7 +1,7 @@
 package com.superniuma.mechanism;
 
 import org.bukkit.Location;
-import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ public final class PlacementSession {
     private int pitchSteps;
     private int baseYawSteps;
     private Location anchor;
-    private final List<BlockDisplay> ghosts = new ArrayList<>();
+    private final List<Entity> ghosts = new ArrayList<>();
     private List<Location> ghostCells = List.of();
     private boolean confirmed;
     private boolean locked;
@@ -88,7 +88,7 @@ public final class PlacementSession {
         this.anchor = anchor == null ? null : anchor.clone();
     }
 
-    public List<BlockDisplay> ghosts() {
+    public List<Entity> ghosts() {
         return ghosts;
     }
 
