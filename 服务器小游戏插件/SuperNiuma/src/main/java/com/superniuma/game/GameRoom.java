@@ -538,8 +538,8 @@ public final class GameRoom {
         if (meta != null) {
             meta.setDisplayName(Msg.c(choice.def().displayName() + " &7（调整中）"));
             meta.setLore(Arrays.asList(
-                    Msg.c("&7左键：顺时针旋转 90° / 上下翻转"),
-                    Msg.c("&7右键：逆时针旋转 90° / 上下翻转"),
+                    Msg.c("&7左键：水平旋转 90°"),
+                    Msg.c("&7右键：竖直翻转 90°（尖刺类每次 180°）"),
                     Msg.c("&7滚轮：向前 / 向后移动"),
                     Msg.c("&7Q 两次：确认放置")));
             meta.getPersistentDataContainer().set(plugin.itemKey(), PersistentDataType.BYTE, (byte) 1);

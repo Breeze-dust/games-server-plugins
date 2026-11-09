@@ -15,7 +15,7 @@ public final class PlacementSession {
     private final MechanismChoice choice;
     private int distance;
     private int yawSteps;
-    private boolean flipped;
+    private int pitchSteps;
     private Location anchor;
     private final List<BlockDisplay> ghosts = new ArrayList<>();
     private List<Location> ghostCells = List.of();
@@ -56,12 +56,12 @@ public final class PlacementSession {
         this.yawSteps = yawSteps & 3;
     }
 
-    public boolean flipped() {
-        return flipped;
+    public int pitchSteps() {
+        return pitchSteps;
     }
 
-    public void setFlipped(boolean flipped) {
-        this.flipped = flipped;
+    public void setPitchSteps(int pitchSteps) {
+        this.pitchSteps = pitchSteps & 3;
     }
 
     public Location anchor() {

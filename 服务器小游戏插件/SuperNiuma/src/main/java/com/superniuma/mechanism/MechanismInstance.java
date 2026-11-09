@@ -17,7 +17,7 @@ public final class MechanismInstance {
     private final UUID owner;
     private final Location anchor;
     private final int yawSteps;
-    private final boolean flipped;
+    private final int pitchSteps;
     private final BlockFace facing;
     private final List<PlacedBlock> blocks = new ArrayList<>();
     private final List<Entity> entities = new ArrayList<>();
@@ -25,14 +25,14 @@ public final class MechanismInstance {
     private boolean removed;
 
     public MechanismInstance(MechanismDef def, MechanismDef.Variant variant, UUID owner,
-                             Location anchor, int yawSteps, boolean flipped, BlockFace facing) {
+                             Location anchor, int yawSteps, int pitchSteps, BlockFace facing) {
         this.id = UUID.randomUUID().toString();
         this.def = def;
         this.variant = variant;
         this.owner = owner;
         this.anchor = anchor.clone();
         this.yawSteps = yawSteps & 3;
-        this.flipped = flipped;
+        this.pitchSteps = pitchSteps & 3;
         this.facing = facing;
         this.cooldown = def.intervalTicks();
     }
@@ -61,8 +61,8 @@ public final class MechanismInstance {
         return yawSteps;
     }
 
-    public boolean flipped() {
-        return flipped;
+    public int pitchSteps() {
+        return pitchSteps;
     }
 
     public BlockFace facing() {

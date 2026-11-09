@@ -72,7 +72,7 @@ public final class MechanismManager {
         if (anchor == null) {
             return;
         }
-        List<Location> cells = cells(session.choice(), anchor, session.yawSteps(), session.flipped());
+        List<Location> cells = cells(session.choice(), anchor, session.yawSteps(), session.pitchSteps());
         if (sameCells(cells, session.ghostCells())) {
             return;
         }
@@ -161,8 +161,9 @@ public final class MechanismManager {
             session.setYawSteps(session.yawSteps() + 1);
             Msg.actionBar(session.player(), "&e水平旋转 90°（" + (session.yawSteps() * 90) + "°）");
         } else {
-            session.setFlipped(!session.flipped());
-            Msg.actionBar(session.player(), "&e上下翻转：" + (session.flipped() ? "下" : "上"));
+            session.setPitchSteps(session.pitchSteps() + 2);
+            Msg.actionBar(session.player(), "&e竖直翻转 180°（"
+                    + (session.pitchSteps() == 2 ? "下" : "上") + "）");
         }
         session.setGhostCells(List.of());
     }
@@ -172,14 +173,10 @@ public final class MechanismManager {
             return;
         }
         RotationRule rule = session.choice().def().rotation();
-        if (rule == RotationRule.FOUR_WAY) {
-            // 平铺类机关没有上下方向：右键反向水平旋转 90°。
-            session.setYawSteps(session.yawSteps() + 3);
-            Msg.actionBar(session.player(), "&e水平反向旋转 90°（" + (session.yawSteps() * 90) + "°）");
-        } else {
-            session.setFlipped(!session.flipped());
-            Msg.actionBar(session.player(), "&e上下翻转：" + (session.flipped() ? "下" : "上"));
-        }
+        int step = rule == RotationRule.VERTICAL ? 2 : 1;
+        session.setPitchSteps(session.pitchSteps() + step);
+        Msg.actionBar(session.player(), "&e竖直翻转 " + (step * 90) + "°（当前 "
+                + (session.pitchSteps() * 90) + "°）");
         session.setGhostCells(List.of());
     }
 
@@ -225,7 +222,7 @@ public final class MechanismManager {
             return PlaceResult.ok(null);
         }
 
-        List<Location> cells = cells(choice, anchor, session.yawSteps(), session.flipped());
+        List<Location> cells = cells(choice, anchor, session.yawSteps(), session.pitchSteps());
         for (Location cell : cells) {
             if (!arena.inBuildBounds(cell)) {
                 return PlaceResult.fail("机关超出了可建造范围。");
@@ -239,7 +236,7 @@ public final class MechanismManager {
         }
 
         MechanismInstance instance = new MechanismInstance(def, choice.variant(), session.owner(),
-                anchor, session.yawSteps(), session.flipped(), facingFor(session, def));
+                anchor, session.yawSteps(), session.pitchSteps(), facingFor(session, def));
 
         switch (def.id()) {
             case "spike" -> placeSpike(room, instance, cells);
@@ -264,7 +261,7 @@ public final class MechanismManager {
         setBlock(instance, cells.get(0), Material.DRIPSTONE_BLOCK.createBlockData());
         BlockData tipData = Material.POINTED_DRIPSTONE.createBlockData();
         if (tipData instanceof PointedDripstone dripstone) {
-            dripstone.setVerticalDirection(instance.flipped() ? BlockFace.DOWN : BlockFace.UP);
+            dripstone.setVerticalDirection((instance.pitchSteps() & 2) == 2 ? BlockFace.DOWN : BlockFace.UP);
             dripstone.setThickness(Speleothem.Thickness.TIP);
         }
         setBlock(instance, cells.get(1), tipData);
@@ -492,21 +489,20 @@ public final class MechanismManager {
 
     // ---------- cells ----------
 
-    public List<Location> cells(MechanismChoice choice, Location anchor, int yawSteps, boolean flipped) {
+    public List<Location> cells(MechanismChoice choice, Location anchor, int yawSteps, int pitchSteps) {
         MechanismDef def = choice.def();
         List<Location> out = new ArrayList<>();
         switch (def.id()) {
             case "spike" -> {
                 out.add(anchor.clone());
-                out.add(anchor.clone().add(0, flipped ? -1 : 1, 0));
+                out.add(rotated(anchor, 0, 1, 0, yawSteps, pitchSteps));
             }
             case "platform" -> {
                 int sizeX = choice.variant().sizeX();
                 int sizeZ = choice.variant().sizeZ();
                 for (int x = 0; x < sizeX; x++) {
                     for (int z = 0; z < sizeZ; z++) {
-                        int[] rotated = rotate(x - sizeX / 2, z - sizeZ / 2, yawSteps);
-                        out.add(anchor.clone().add(rotated[0], 0, rotated[1]));
+                        out.add(rotated(anchor, x - sizeX / 2, 0, z - sizeZ / 2, yawSteps, pitchSteps));
                     }
                 }
             }
@@ -525,13 +521,52 @@ public final class MechanismManager {
         return out;
     }
 
-    private int[] rotate(int x, int z, int steps) {
-        return switch (steps & 3) {
-            case 1 -> new int[]{-z, x};
-            case 2 -> new int[]{-x, -z};
-            case 3 -> new int[]{z, -x};
-            default -> new int[]{x, z};
-        };
+    /** 先把相对偏移绕 Y 轴水平旋转，再绕 X 轴竖直翻转。 */
+    private Location rotated(Location anchor, int dx, int dy, int dz, int yawSteps, int pitchSteps) {
+        int x = dx;
+        int y = dy;
+        int z = dz;
+        switch (yawSteps & 3) {
+            case 1 -> {
+                int nx = -z;
+                int nz = x;
+                x = nx;
+                z = nz;
+            }
+            case 2 -> {
+                x = -x;
+                z = -z;
+            }
+            case 3 -> {
+                int nx = z;
+                int nz = -x;
+                x = nx;
+                z = nz;
+            }
+            default -> {
+            }
+        }
+        switch (pitchSteps & 3) {
+            case 1 -> {
+                int ny = -z;
+                int nz = y;
+                y = ny;
+                z = nz;
+            }
+            case 2 -> {
+                y = -y;
+                z = -z;
+            }
+            case 3 -> {
+                int ny = z;
+                int nz = -y;
+                y = ny;
+                z = nz;
+            }
+            default -> {
+            }
+        }
+        return anchor.clone().add(x, y, z);
     }
 
     private boolean sameCells(List<Location> a, List<Location> b) {
@@ -566,14 +601,17 @@ public final class MechanismManager {
         if (!"dispenser".equals(def.id())) {
             return BlockFace.SOUTH;
         }
+        int pitch = session.pitchSteps() & 3;
+        if (pitch == 1) {
+            return BlockFace.UP;
+        }
+        if (pitch == 3) {
+            return BlockFace.DOWN;
+        }
         Player player = session.player();
         Vector direction = player.getEyeLocation().getDirection();
         BlockFace face;
-        if (direction.getY() > 0.7) {
-            face = BlockFace.UP;
-        } else if (direction.getY() < -0.7) {
-            face = BlockFace.DOWN;
-        } else if (Math.abs(direction.getX()) > Math.abs(direction.getZ())) {
+        if (Math.abs(direction.getX()) > Math.abs(direction.getZ())) {
             face = direction.getX() > 0 ? BlockFace.EAST : BlockFace.WEST;
         } else {
             face = direction.getZ() > 0 ? BlockFace.SOUTH : BlockFace.NORTH;
@@ -581,7 +619,7 @@ public final class MechanismManager {
         for (int i = 0; i < session.yawSteps(); i++) {
             face = rotateY(face);
         }
-        if (session.flipped()) {
+        if (pitch == 2) {
             face = face.getOppositeFace();
         }
         return face;
