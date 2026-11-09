@@ -21,6 +21,7 @@ import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 
 /** 对局内的玩家交互与机关运行事件。 */
 public final class GameListener implements Listener {
@@ -35,14 +36,21 @@ public final class GameListener implements Listener {
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
         GameRoom room = plugin.rooms().roomOf(player);
-        if (room == null || room.phase() != GameRoom.Phase.PLACING) {
+        if (room == null) {
+            return;
+        }
+        if (event.getHand() != null && event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+        if (room.phase() == GameRoom.Phase.WAITING) {
+            handleWaitItem(event, player, room);
+            return;
+        }
+        if (room.phase() != GameRoom.Phase.PLACING) {
             return;
         }
         PlacementSession session = room.session(player);
         if (session == null || session.confirmed()) {
-            return;
-        }
-        if (event.getHand() != null && event.getHand() != EquipmentSlot.HAND) {
             return;
         }
         Action action = event.getAction();
@@ -52,6 +60,22 @@ public final class GameListener implements Listener {
         } else if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
             event.setCancelled(true);
             room.rotateRight(player);
+        }
+    }
+
+    /** 等待阶段：右键「开始游戏」/「退出房间」。 */
+    private void handleWaitItem(PlayerInteractEvent event, Player player, GameRoom room) {
+        Action action = event.getAction();
+        if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        ItemStack item = event.getItem();
+        if (room.isStartItem(item)) {
+            event.setCancelled(true);
+            room.startGame(player);
+        } else if (room.isExitItem(item)) {
+            event.setCancelled(true);
+            plugin.rooms().leave(player, true);
         }
     }
 
@@ -90,7 +114,17 @@ public final class GameListener implements Listener {
     public void onDrop(PlayerDropItemEvent event) {
         Player player = event.getPlayer();
         GameRoom room = plugin.rooms().roomOf(player);
-        if (room == null || room.phase() != GameRoom.Phase.PLACING) {
+        if (room == null) {
+            return;
+        }
+        if (room.phase() == GameRoom.Phase.WAITING) {
+            ItemStack item = event.getItemDrop().getItemStack();
+            if (room.isStartItem(item) || room.isExitItem(item)) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+        if (room.phase() != GameRoom.Phase.PLACING) {
             return;
         }
         event.setCancelled(true);

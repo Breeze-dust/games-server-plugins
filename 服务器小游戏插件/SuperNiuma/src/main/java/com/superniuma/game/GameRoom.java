@@ -15,6 +15,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -256,6 +257,7 @@ public final class GameRoom {
         }
         player.setGameMode(org.bukkit.GameMode.ADVENTURE);
         player.setCanPickupItems(false);
+        giveWaitItems(player);
         broadcast("&a" + player.getName() + " 加入了房间（" + participants.size() + "/" + maxPlayers + "）。");
         return true;
     }
@@ -303,6 +305,9 @@ public final class GameRoom {
         if (host.equals(player.getUniqueId())) {
             host = participants.get(0).uuid();
             broadcast("&e房主已转移给 " + participants.get(0).name() + "。");
+            if (phase == Phase.WAITING) {
+                refreshWaitItems();
+            }
         }
         if (phase != Phase.WAITING && phase != Phase.ENDED) {
             participant.setFailed(true);
@@ -324,7 +329,7 @@ public final class GameRoom {
             return false;
         }
         if (!starter.getUniqueId().equals(host) && !starter.hasPermission("sn.admin")) {
-            Msg.send(starter, "&c只有房主能开始游戏。");
+            Msg.send(starter, "&c只有房主或管理员能开始游戏。");
             return false;
         }
         int min = plugin.getConfig().getInt("room.min-players", 2);
@@ -349,6 +354,11 @@ public final class GameRoom {
     /** 倒计时结束后的真正开局。 */
     private void actuallyStart() {
         if (phase != Phase.WAITING) {
+            return;
+        }
+        int min = plugin.getConfig().getInt("room.min-players", 2);
+        if (participants.size() < min) {
+            broadcast("&c人数不足，已取消开局。");
             return;
         }
         assignTeamsBalanced();
@@ -545,6 +555,55 @@ public final class GameRoom {
             sessions.put(player.getUniqueId(), session);
         }
         broadcast("&e摆放环节开始：飞到想要的位置，按左键/右键/滚轮锁定机关，Q 两次确认。");
+    }
+
+    /** 等待阶段：所有人右键退出房间；房主与管理员额外获得开始游戏道具。 */
+    private void giveWaitItems(Player player) {
+        clearGameInventory(player);
+        player.getInventory().setItem(8, waitItem(Material.RED_BED,
+                "&c&l退出房间 &7(右键)",
+                "&7右键退出房间并回到主城（同 /hub）", plugin.exitItemKey()));
+        if (player.getUniqueId().equals(host) || player.hasPermission("sn.admin")) {
+            player.getInventory().setItem(4, waitItem(Material.PAPER,
+                    "&a&l开始游戏 &7(右键)",
+                    "&7人齐后右键开始", plugin.startItemKey()));
+        }
+        player.updateInventory();
+    }
+
+    private void refreshWaitItems() {
+        for (Participant participant : participants) {
+            Player player = Bukkit.getPlayer(participant.uuid());
+            if (player != null) {
+                giveWaitItems(player);
+            }
+        }
+    }
+
+    private ItemStack waitItem(Material material, String name, String lore, NamespacedKey key) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(Msg.c(name));
+            meta.setLore(List.of(Msg.c(lore)));
+            meta.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public boolean isStartItem(ItemStack item) {
+        return hasItemKey(item, plugin.startItemKey());
+    }
+
+    public boolean isExitItem(ItemStack item) {
+        return hasItemKey(item, plugin.exitItemKey());
+    }
+
+    private boolean hasItemKey(ItemStack item, NamespacedKey key) {
+        return item != null && item.hasItemMeta() && item.getItemMeta() != null
+                && item.getItemMeta().getPersistentDataContainer()
+                        .has(key, PersistentDataType.BYTE);
     }
 
     private void givePlacementItems(Player player, MechanismChoice choice) {

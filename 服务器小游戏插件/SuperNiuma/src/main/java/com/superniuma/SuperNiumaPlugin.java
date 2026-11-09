@@ -22,6 +22,8 @@ public final class SuperNiumaPlugin extends JavaPlugin {
     private MechanismManager mechanismManager;
     private RoomManager rooms;
     private NamespacedKey itemKey;
+    private NamespacedKey startItemKey;
+    private NamespacedKey exitItemKey;
     private StartCountdown startCountdown;
 
     @Override
@@ -32,6 +34,8 @@ public final class SuperNiumaPlugin extends JavaPlugin {
         }
 
         itemKey = new NamespacedKey(this, "sn_item");
+        startItemKey = new NamespacedKey(this, "start_item");
+        exitItemKey = new NamespacedKey(this, "exit_item");
 
         arenas = new ArenaManager(this);
         arenas.load();
@@ -92,6 +96,14 @@ public final class SuperNiumaPlugin extends JavaPlugin {
 
     public NamespacedKey itemKey() {
         return itemKey;
+    }
+
+    public NamespacedKey startItemKey() {
+        return startItemKey;
+    }
+
+    public NamespacedKey exitItemKey() {
+        return exitItemKey;
     }
 
     public StartCountdown startCountdown() {
