@@ -71,6 +71,7 @@ public final class GameRoom {
     private final Map<String, Integer> selectionSlots = new LinkedHashMap<>();
     private final Map<String, UUID> optionOwners = new HashMap<>();
     private final Map<String, List<ScoreNote>> scoreNotes = new LinkedHashMap<>();
+    private final Map<String, Integer> roundsMissed = new HashMap<>();
 
     private record ScoreNote(String reason, double points) {
     }
@@ -453,18 +454,34 @@ public final class GameRoom {
         int coinAllowance = coin == null ? 0
                 : Math.max(0, coin.maxOnField() - coinOnField());
 
+        // 本轮尽量不重复；久未出现的机关会逐渐提高权重。
+        List<MechanismDef> candidates = new ArrayList<>(enabled);
+        if (coinAllowance <= 0) {
+            candidates.removeIf(def -> "coin".equals(def.id()));
+        }
+        double bombWeight = lowClear ? bomb.lowClearWeight() : -1;
+
         for (int i = 0; i < optionCount; i++) {
             MechanismDef def;
             if (forced > 0) {
                 def = bomb;
                 forced--;
+                candidates.remove(bomb);
             } else {
-                def = plugin.mechanisms().pickDef(random, lowClear ? bomb.lowClearWeight() : -1);
-                if (def != null && "coin".equals(def.id())) {
+                if (candidates.isEmpty()) {
+                    candidates = new ArrayList<>(enabled);
                     if (coinAllowance <= 0) {
-                        def = pickNonCoinDef();
-                    } else {
+                        candidates.removeIf(candidate -> "coin".equals(candidate.id()));
+                    }
+                }
+                def = pickFrom(candidates, bombWeight);
+                if (def != null) {
+                    candidates.remove(def);
+                    if ("coin".equals(def.id()) && coinAllowance > 0) {
                         coinAllowance--;
+                        if (coinAllowance <= 0) {
+                            candidates.removeIf(candidate -> "coin".equals(candidate.id()));
+                        }
                     }
                 }
             }
@@ -473,6 +490,18 @@ public final class GameRoom {
             }
             MechanismDef.Variant variant = plugin.mechanisms().pickVariant(def, random);
             selectionPool.add(new MechanismChoice("opt-" + i + "-" + def.id(), def, variant));
+        }
+
+        for (MechanismDef def : enabled) {
+            boolean appeared = false;
+            for (MechanismChoice choice : selectionPool) {
+                if (choice.def().id().equals(def.id())) {
+                    appeared = true;
+                    break;
+                }
+            }
+            roundsMissed.put(def.id(), appeared ? 0
+                    : roundsMissed.getOrDefault(def.id(), 0) + 1);
         }
 
         // 同一回合所有玩家看到同一套槽位；只在回合开始时洗一次。
@@ -497,19 +526,37 @@ public final class GameRoom {
         return count;
     }
 
-    private MechanismDef pickNonCoinDef() {
-        for (int attempt = 0; attempt < 20; attempt++) {
-            MechanismDef def = plugin.mechanisms().pickDef(random, -1);
-            if (def != null && !"coin".equals(def.id())) {
-                return def;
+    private MechanismDef pickFrom(List<MechanismDef> candidates, double bombWeight) {
+        List<MechanismDef> pool = new ArrayList<>();
+        List<Double> weights = new ArrayList<>();
+        double total = 0.0;
+        for (MechanismDef def : candidates) {
+            if (!def.enabled()) {
+                continue;
+            }
+            double weight = def.weight();
+            if ("bomb".equals(def.id()) && bombWeight >= 0) {
+                weight = bombWeight;
+            }
+            weight *= 1.0 + roundsMissed.getOrDefault(def.id(), 0) * 0.35;
+            if (weight <= 0) {
+                continue;
+            }
+            pool.add(def);
+            weights.add(weight);
+            total += weight;
+        }
+        if (pool.isEmpty() || total <= 0) {
+            return null;
+        }
+        double roll = random.nextDouble() * total;
+        for (int i = 0; i < pool.size(); i++) {
+            roll -= weights.get(i);
+            if (roll <= 0) {
+                return pool.get(i);
             }
         }
-        for (MechanismDef candidate : plugin.mechanisms().enabled()) {
-            if (!"coin".equals(candidate.id())) {
-                return candidate;
-            }
-        }
-        return plugin.mechanisms().def("coin");
+        return pool.get(pool.size() - 1);
     }
 
     // ---------- 选择机关 ----------

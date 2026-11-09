@@ -906,7 +906,8 @@ public final class MechanismManager {
                     out.add(rotated(anchor, 0, i, 0, yawSteps, pitchSteps));
                 }
             }
-            case "mine", "intermittent" -> out.add(anchor.clone());
+            case "mine" -> out.add(anchor.clone());
+            case "intermittent" -> planarCells(choice, anchor, yawSteps, pitchSteps, out);
             case "bomb" -> {
                 int radius = def.bombRadius();
                 for (int x = -radius; x <= radius; x++) {
