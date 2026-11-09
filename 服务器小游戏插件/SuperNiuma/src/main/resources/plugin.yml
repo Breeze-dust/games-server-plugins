@@ -1,0 +1,25 @@
+name: SuperNiuma
+version: '0.1.0'
+main: com.superniuma.SuperNiumaPlugin
+api-version: '1.21'
+description: 超级牛马：选机关、摆机关、跑酷、记分的多回合小游戏
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+# ===== 给主城插件（HubCore）的标记：自动登记到 tab / 播报 =====
+minigame-game: true
+minigame:
+  name: 超级牛马
+  icon: LEATHER_HORSE_ARMOR
+  color: 'e'
+
+commands:
+  sn:
+    description: 超级牛马
+    usage: /sn help
+    aliases: [niuma, superniuma]
+permissions:
+  sn.use:
+    default: true
+  sn.admin:
+    default: op

@@ -1,0 +1,33 @@
+# ========== 超级牛马 配置 ==========
+# 改完执行 /sn reload 即可生效（对局中的房间沿用开局时的数值）。
+
+room:
+  min-players: 2           # 至少几人才能开局
+  default-max-players: 8   # 默认房间人数上限
+  default-win-score: 10    # 默认获胜分数
+  default-max-rounds: 8    # 默认最高回合数
+  default-team-count: 2    # 团队模式默认队伍数
+
+selection:
+  duration-seconds: 20     # 选择机关环节时长
+
+placement:
+  duration-seconds: 90     # 摆放机关环节时长
+  start-distance: 3        # 半透明预览与玩家的初始距离（格）
+  max-distance: 12         # 滚轮能推到的最大距离（格）
+
+running:
+  duration-seconds: 180    # 跑酷环节最长时长，超时未到终点算失败
+
+scoring:
+  display-seconds: 5       # 记分结果展示时长
+  team:
+    pass-points: 1.0       # 多方通关时每队得分
+    only-pass-points: 1.5  # 只有一队通关时的得分
+    fastest-bonus: 0.5     # 最快通关队伍额外分
+    most-finishers-bonus: 0.5 # 通关人数最多队伍额外分
+  solo:
+    pass-points: 1.0       # 多人通关时每人得分
+    only-pass-points: 1.5  # 只有一人通关时的得分
+    fastest-bonus: 0.5     # 最快通关玩家额外分
+    trap-bonus: 0.5        # 自己的机关害最多人失败的额外分

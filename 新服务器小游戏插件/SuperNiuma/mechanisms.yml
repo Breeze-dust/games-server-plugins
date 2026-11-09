@@ -1,0 +1,79 @@
+# ========== 超级牛马 机关列表 ==========
+# 每个机关都可以在这里改：是否启用、权重、图标、说明、参数。
+# 权重越大越容易被抽到；weight: 0 等于不出现。
+# rotation 取值：
+#   four-way   左键水平转 90°，右键上下翻 180°
+#   six-way    左键水平转 90°，右键上下翻 180°（发射器朝向）
+#   vertical   只能上下翻 180°
+
+mechanisms:
+  spike:
+    enabled: true
+    weight: 20
+    icon: POINTED_DRIPSTONE
+    name: '&c尖刺'
+    lore:
+      - '&7由滴水石构成'
+      - '&7碰到尖刺的玩家本回合失败'
+      - '&7只能上下翻转 180°'
+    rotation: vertical
+
+  platform:
+    enabled: true
+    weight: 20
+    icon: WHITE_WOOL
+    name: '&f平台'
+    lore:
+      - '&7可以站立的羊毛平台'
+      - '&7左键旋转，右键翻转'
+    rotation: four-way
+    variants:
+      small:
+        name: '&f小平台 1x2'
+        weight: 50
+        size: [1, 2]
+      medium:
+        name: '&f中平台 2x3'
+        weight: 30
+        size: [2, 3]
+      large:
+        name: '&f大平台 3x3'
+        weight: 20
+        size: [3, 3]
+
+  dispenser:
+    enabled: true
+    weight: 15
+    icon: DISPENSER
+    name: '&7发射器'
+    lore:
+      - '&7按固定间隔发射箭矢'
+      - '&7碰到箭的玩家本回合失败'
+    rotation: six-way
+    interval-ticks: 40
+    arrow-range: 20
+    arrow-speed: 1.6
+
+  coin:
+    enabled: true
+    weight: 25
+    icon: GOLD_BLOCK
+    name: '&6金币'
+    lore:
+      - '&7没有碰撞箱的缩小金块'
+      - '&7碰到后消失，回合结算加分'
+    points: 0.5
+    scale: 0.5
+
+  bomb:
+    enabled: true
+    weight: 10
+    icon: TNT
+    name: '&c炸弹'
+    lore:
+      - '&7炸掉范围内的所有机关'
+      - '&7不会破坏地图原本的方块'
+    radius: 1               # 1 = 3x3x3
+    low-clear-rate: 0.05    # 本回合通关率低于该值时触发保底
+    low-clear-weight: 40    # 触发保底时炸弹使用的权重
+    low-clear-min-count: 1  # 保底至少出现几个炸弹
