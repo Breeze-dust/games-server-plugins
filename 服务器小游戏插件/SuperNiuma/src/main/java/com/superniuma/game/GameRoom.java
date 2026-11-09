@@ -62,6 +62,10 @@ public final class GameRoom {
     private final List<MechanismChoice> selectionPool = new ArrayList<>();
     private final Map<String, Integer> selectionSlots = new LinkedHashMap<>();
     private final Map<String, UUID> optionOwners = new HashMap<>();
+    private final Map<String, List<ScoreNote>> scoreNotes = new LinkedHashMap<>();
+
+    private record ScoreNote(String reason, double points) {
+    }
     private final Random random = new Random();
 
     private final Map<UUID, ItemStack[]> savedInventory = new HashMap<>();
@@ -827,6 +831,7 @@ public final class GameRoom {
         int finishers = roundData.finishOrder().size();
         lastClearRate = participants.isEmpty() ? 0.0 : (double) finishers / participants.size();
 
+        scoreNotes.clear();
         if (mode == GameMode.TEAM) {
             scoreTeams();
         } else {
@@ -840,16 +845,35 @@ public final class GameRoom {
         broadcast("&e&l第 " + round + " 回合结算");
         if (mode == GameMode.TEAM) {
             for (TeamState team : teams.values()) {
-                broadcast(team.coloredName() + " &f" + format(team.score()) + " 分");
+                List<ScoreNote> notes = scoreNotes.getOrDefault("team:" + team.id(), List.of());
+                double roundTotal = notes.stream().mapToDouble(ScoreNote::points).sum();
+                broadcast(team.coloredName() + " &f" + format(team.score()) + " 分 &7(本回合 +"
+                        + format(roundTotal) + ")");
+                showNotes(notes);
             }
         } else {
             List<Participant> sorted = new ArrayList<>(participants);
             sorted.sort(Comparator.comparingDouble(Participant::score).reversed());
             for (Participant participant : sorted) {
-                broadcast("&f" + participant.name() + " &7- &e" + format(participant.score()) + " 分");
+                List<ScoreNote> notes = scoreNotes.getOrDefault(
+                        "player:" + participant.uuid(), List.of());
+                double roundTotal = notes.stream().mapToDouble(ScoreNote::points).sum();
+                broadcast("&f" + participant.name() + " &7- &e" + format(participant.score())
+                        + " 分 &7(本回合 +" + format(roundTotal) + ")");
+                showNotes(notes);
             }
         }
         broadcast("&7通关率 " + Math.round(lastClearRate * 100) + "%");
+    }
+
+    private void showNotes(List<ScoreNote> notes) {
+        if (notes.isEmpty()) {
+            broadcast("&7  本回合无加分");
+            return;
+        }
+        for (ScoreNote note : notes) {
+            broadcast("&7  +" + format(note.points()) + " &f" + note.reason());
+        }
     }
 
     private void scoreTeams() {
@@ -866,30 +890,34 @@ public final class GameRoom {
 
         Set<Integer> passed = new HashSet<>(finishersPerTeam.keySet());
         if (!passed.isEmpty()) {
-            double pass = passed.size() == 1
+            boolean only = passed.size() == 1;
+            double pass = only
                     ? configDouble("scoring.team.only-pass-points", 1.5)
                     : configDouble("scoring.team.pass-points", 1.0);
             for (int teamId : passed) {
-                addTeamScore(teamId, pass);
+                awardTeam(teamId, pass, only ? "唯一通关队伍" : "成功通关");
             }
             int fastestTeam = passed.stream()
                     .min(Comparator.comparingLong(fastestPerTeam::get))
                     .orElse(-1);
             if (fastestTeam >= 0) {
-                addTeamScore(fastestTeam, configDouble("scoring.team.fastest-bonus", 0.5));
+                awardTeam(fastestTeam, configDouble("scoring.team.fastest-bonus", 0.5),
+                        "最快通关队伍");
             }
             int most = passed.stream().mapToInt(finishersPerTeam::get).max().orElse(0);
             if (most > 0) {
                 for (int teamId : passed) {
                     if (finishersPerTeam.get(teamId) == most) {
-                        addTeamScore(teamId, configDouble("scoring.team.most-finishers-bonus", 0.5));
+                        awardTeam(teamId, configDouble("scoring.team.most-finishers-bonus", 0.5),
+                                "通关人数最多");
                     }
                 }
             }
         }
         for (Participant participant : participants) {
             if (participant.roundCoinPoints() > 0) {
-                addTeamScore(participant.teamId(), participant.roundCoinPoints());
+                awardTeam(participant.teamId(), participant.roundCoinPoints(),
+                        "金币（" + participant.name() + "）");
             }
         }
     }
@@ -903,13 +931,15 @@ public final class GameRoom {
         }
         finishers.sort(Comparator.comparingLong(Participant::finishTime));
         if (!finishers.isEmpty()) {
-            double pass = finishers.size() == 1
+            boolean only = finishers.size() == 1;
+            double pass = only
                     ? configDouble("scoring.solo.only-pass-points", 1.5)
                     : configDouble("scoring.solo.pass-points", 1.0);
             for (Participant participant : finishers) {
-                participant.addScore(pass);
+                awardPlayer(participant, pass, only ? "唯一到达终点" : "到达终点");
             }
-            finishers.get(0).addScore(configDouble("scoring.solo.fastest-bonus", 0.5));
+            awardPlayer(finishers.get(0), configDouble("scoring.solo.fastest-bonus", 0.5),
+                    "最快到达终点");
 
             int mostFails = 0;
             for (Participant participant : participants) {
@@ -919,23 +949,33 @@ public final class GameRoom {
                 double bonus = configDouble("scoring.solo.trap-bonus", 0.5);
                 for (Participant participant : participants) {
                     if (participant.roundTrapFails() == mostFails) {
-                        participant.addScore(bonus);
+                        awardPlayer(participant, bonus,
+                                "机关害最多人失败（" + mostFails + " 人）");
                     }
                 }
             }
         }
         for (Participant participant : participants) {
             if (participant.roundCoinPoints() > 0) {
-                participant.addScore(participant.roundCoinPoints());
+                awardPlayer(participant, participant.roundCoinPoints(), "金币");
             }
         }
     }
 
-    private void addTeamScore(int teamId, double amount) {
+    private void awardTeam(int teamId, double amount, String reason) {
         TeamState team = teams.get(teamId);
-        if (team != null) {
-            team.addScore(amount);
+        if (team == null) {
+            return;
         }
+        team.addScore(amount);
+        scoreNotes.computeIfAbsent("team:" + teamId, k -> new ArrayList<>())
+                .add(new ScoreNote(reason, amount));
+    }
+
+    private void awardPlayer(Participant participant, double amount, String reason) {
+        participant.addScore(amount);
+        scoreNotes.computeIfAbsent("player:" + participant.uuid(), k -> new ArrayList<>())
+                .add(new ScoreNote(reason, amount));
     }
 
     // ---------- 胜负 ----------
