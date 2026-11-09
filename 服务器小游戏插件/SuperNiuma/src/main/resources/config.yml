@@ -11,6 +11,7 @@ room:
 selection:
   duration-seconds: 20     # 选择机关环节时长
   auto-close-seconds: 2    # 所有人都选好后，再过几秒自动关闭界面并进入摆放
+  min-options: 4           # 机关选择界面至少提供多少个机关（取玩家人数与该值的较大者）
 
 countdown:
   enabled: true            # 开局前是否播放 3 秒倒计时

@@ -441,9 +441,12 @@ public final class GameRoom {
         }
         MechanismDef bomb = plugin.mechanisms().def("bomb");
         boolean lowClear = bomb != null && bomb.enabled() && round > 1 && lastClearRate < bomb.lowClearRate();
-        int forced = lowClear ? Math.min(participants.size(), bomb.lowClearMinCount()) : 0;
+        int optionCount = Math.max(participants.size(),
+                plugin.getConfig().getInt("selection.min-options", 4));
+        optionCount = Math.min(27, optionCount);
+        int forced = lowClear ? Math.min(optionCount, bomb.lowClearMinCount()) : 0;
 
-        for (int i = 0; i < participants.size(); i++) {
+        for (int i = 0; i < optionCount; i++) {
             MechanismDef def;
             if (forced > 0) {
                 def = bomb;
