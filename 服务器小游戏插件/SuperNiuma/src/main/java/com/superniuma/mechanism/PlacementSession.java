@@ -20,6 +20,7 @@ public final class PlacementSession {
     private final List<BlockDisplay> ghosts = new ArrayList<>();
     private List<Location> ghostCells = List.of();
     private boolean confirmed;
+    private boolean locked;
 
     public PlacementSession(Player player, MechanismChoice choice, int startDistance) {
         this.player = player;
@@ -89,5 +90,14 @@ public final class PlacementSession {
 
     public void setConfirmed(boolean confirmed) {
         this.confirmed = confirmed;
+    }
+
+    /** 机关位置是否已被第一次调整操作锁定；锁定后不再跟随玩家移动。 */
+    public boolean locked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 }

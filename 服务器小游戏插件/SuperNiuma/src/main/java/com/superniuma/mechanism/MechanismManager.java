@@ -1,5 +1,6 @@
 package com.superniuma.mechanism;
 
+import com.superniuma.Msg;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
 import com.superniuma.game.GameRoom;
@@ -66,11 +67,11 @@ public final class MechanismManager {
         if (session.confirmed()) {
             return;
         }
-        Location anchor = computeAnchor(session);
+        // 位置由第一次调整操作锁定；锁定前不生成、也不跟随玩家。
+        Location anchor = session.anchor();
         if (anchor == null) {
             return;
         }
-        session.setAnchor(anchor);
         List<Location> cells = cells(session.choice(), anchor, session.yawSteps(), session.flipped());
         if (sameCells(cells, session.ghostCells())) {
             return;
@@ -117,6 +118,12 @@ public final class MechanismManager {
         if (!player.isOnline()) {
             return null;
         }
+        Vector direction = horizontalFacing(player);
+        Location target = player.getLocation().clone().add(direction.multiply(session.distance()));
+        return target.getBlock().getLocation();
+    }
+
+    private Vector horizontalFacing(Player player) {
         Vector direction = player.getEyeLocation().getDirection();
         direction.setY(0);
         if (direction.lengthSquared() < 1.0E-4) {
@@ -126,36 +133,72 @@ public final class MechanismManager {
         if (direction.lengthSquared() < 1.0E-4) {
             direction = new Vector(0, 0, 1);
         }
-        direction.normalize();
-        Location target = player.getEyeLocation().add(direction.multiply(session.distance()));
-        return target.getBlock().getLocation();
+        return direction.normalize();
+    }
+
+    /** 第一次调整操作：把机关锁定在玩家面前，并消耗这次操作。 */
+    private boolean lockIfNeeded(PlacementSession session) {
+        if (session.locked()) {
+            return false;
+        }
+        Location anchor = computeAnchor(session);
+        if (anchor == null) {
+            return true;
+        }
+        session.setAnchor(anchor);
+        session.setLocked(true);
+        session.setGhostCells(List.of());
+        Msg.actionBar(session.player(), "&a机关位置已锁定；继续用左键/右键/滚轮调整");
+        return true;
     }
 
     public void rotateLeft(PlacementSession session) {
+        if (lockIfNeeded(session)) {
+            return;
+        }
         RotationRule rule = session.choice().def().rotation();
         if (rule.supportsHorizontal()) {
             session.setYawSteps(session.yawSteps() + 1);
+            Msg.actionBar(session.player(), "&e水平旋转 90°（" + (session.yawSteps() * 90) + "°）");
         } else {
             session.setFlipped(!session.flipped());
+            Msg.actionBar(session.player(), "&e上下翻转：" + (session.flipped() ? "下" : "上"));
         }
         session.setGhostCells(List.of());
     }
 
     public void rotateRight(PlacementSession session) {
-        RotationRule rule = session.choice().def().rotation();
-        // 平铺类机关（four-way）没有上下方向，右键不改变形态。
-        if (rule == RotationRule.FOUR_WAY) {
+        if (lockIfNeeded(session)) {
             return;
         }
-        session.setFlipped(!session.flipped());
+        RotationRule rule = session.choice().def().rotation();
+        if (rule == RotationRule.FOUR_WAY) {
+            // 平铺类机关没有上下方向：右键反向水平旋转 90°。
+            session.setYawSteps(session.yawSteps() + 3);
+            Msg.actionBar(session.player(), "&e水平反向旋转 90°（" + (session.yawSteps() * 90) + "°）");
+        } else {
+            session.setFlipped(!session.flipped());
+            Msg.actionBar(session.player(), "&e上下翻转：" + (session.flipped() ? "下" : "上"));
+        }
         session.setGhostCells(List.of());
     }
 
     public void scroll(PlacementSession session, boolean forward) {
-        int max = plugin.getConfig().getInt("placement.max-distance", 12);
-        int next = session.distance() + (forward ? 1 : -1);
-        session.setDistance(Math.max(1, Math.min(Math.max(1, max), next)));
+        if (lockIfNeeded(session)) {
+            return;
+        }
+        Location anchor = session.anchor();
+        if (anchor == null) {
+            return;
+        }
+        Vector direction = horizontalFacing(session.player());
+        if (!forward) {
+            direction.multiply(-1);
+        }
+        Location next = anchor.clone().add(direction.getX(), 0, direction.getZ());
+        session.setAnchor(next.getBlock().getLocation());
         session.setGhostCells(List.of());
+        Msg.actionBar(session.player(), forward ? "&e向前移动 1 格" : "&e向后移动 1 格");
     }
 
     // ---------- 放置 ----------
@@ -165,7 +208,12 @@ public final class MechanismManager {
         MechanismDef def = choice.def();
         Location anchor = session.anchor();
         if (anchor == null) {
-            return PlaceResult.fail("还没有可放置的位置。");
+            anchor = computeAnchor(session);
+            if (anchor == null) {
+                return PlaceResult.fail("还没有可放置的位置。");
+            }
+            session.setAnchor(anchor);
+            session.setLocked(true);
         }
         Arena arena = room.arena();
 
@@ -231,6 +279,10 @@ public final class MechanismManager {
     }
 
     private void placeCoin(MechanismInstance instance) {
+        spawnCoinEntity(instance);
+    }
+
+    private void spawnCoinEntity(MechanismInstance instance) {
         MechanismDef def = instance.def();
         Location center = instance.anchor().clone().add(0.5, 0.15, 0.5);
         ItemDisplay display = center.getWorld().spawn(center, ItemDisplay.class, entity -> {
@@ -245,6 +297,26 @@ public final class MechanismManager {
             entity.setSilent(true);
         });
         instance.entities().add(display);
+    }
+
+    /** 回合开始时把上一回合被吃掉的金币重新显示出来。 */
+    public void respawnCoins(GameRoom room) {
+        for (MechanismInstance instance : room.mechanisms()) {
+            if (instance.removed() || !"coin".equals(instance.def().id())) {
+                continue;
+            }
+            boolean live = false;
+            for (Entity entity : instance.entities()) {
+                if (entity.isValid()) {
+                    live = true;
+                    break;
+                }
+            }
+            if (!live) {
+                instance.entities().clear();
+                spawnCoinEntity(instance);
+            }
+        }
     }
 
     private void setBlock(MechanismInstance instance, Location location, BlockData data) {
@@ -285,8 +357,7 @@ public final class MechanismManager {
                 }
                 instance.entities().clear();
                 room.onCoinTouched(player, instance);
-                instance.setRemoved(true);
-                room.removeMechanism(instance);
+                // 保留机关实例，下回合 respawnCoins() 会重新生成实体。
                 return;
             }
         }

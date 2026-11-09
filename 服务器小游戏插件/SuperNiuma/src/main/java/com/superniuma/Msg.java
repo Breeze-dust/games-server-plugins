@@ -2,6 +2,9 @@ package com.superniuma;
 
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 /** 统一消息格式。 */
 public final class Msg {
@@ -25,5 +28,14 @@ public final class Msg {
         if (to != null) {
             to.sendMessage(c(text));
         }
+    }
+
+    /** 动作栏提示（不刷屏）。 */
+    public static void actionBar(Player player, String text) {
+        if (player == null) {
+            return;
+        }
+        player.sendActionBar(LegacyComponentSerializer.legacyAmpersand()
+                .deserialize(text == null ? "" : text));
     }
 }

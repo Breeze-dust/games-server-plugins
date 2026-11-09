@@ -364,6 +364,8 @@ public final class GameRoom {
         for (Participant participant : participants) {
             participant.resetRound();
         }
+        // 上一回合被吃掉的金币重新出现；其余机关跨回合保留。
+        plugin.mechanismManager().respawnCoins(this);
         buildSelectionPool();
 
         phase = Phase.SELECTING;
@@ -518,29 +520,33 @@ public final class GameRoom {
             player.setGameMode(org.bukkit.GameMode.ADVENTURE);
             player.setAllowFlight(true);
             player.setFlying(true);
-            givePlacementItems(player);
+            givePlacementItems(player, participant.choice());
             PlacementSession session = new PlacementSession(player, participant.choice(), startDistance);
             sessions.put(player.getUniqueId(), session);
         }
-        broadcast("&e摆放环节开始：飞行 + 左键旋转 + 右键翻转 + 滚轮移动 + Q 两次确认。");
+        broadcast("&e摆放环节开始：飞到想要的位置，按左键/右键/滚轮锁定机关，Q 两次确认。");
     }
 
-    private void givePlacementItems(Player player) {
+    private void givePlacementItems(Player player, MechanismChoice choice) {
         clearGameInventory(player);
-        ItemStack stick = new ItemStack(Material.STICK);
-        ItemMeta meta = stick.getItemMeta();
+        Material icon = choice.def().icon();
+        if ("platform".equals(choice.def().id())) {
+            icon = woolFor(player.getUniqueId());
+        }
+        ItemStack tool = new ItemStack(icon);
+        ItemMeta meta = tool.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(Msg.c("&e机关调整棒"));
+            meta.setDisplayName(Msg.c(choice.def().displayName() + " &7（调整中）"));
             meta.setLore(Arrays.asList(
-                    Msg.c("&7左键：水平旋转 / 上下翻转"),
-                    Msg.c("&7右键：上下翻转"),
+                    Msg.c("&7左键：顺时针旋转 90° / 上下翻转"),
+                    Msg.c("&7右键：逆时针旋转 90° / 上下翻转"),
                     Msg.c("&7滚轮：向前 / 向后移动"),
                     Msg.c("&7Q 两次：确认放置")));
             meta.getPersistentDataContainer().set(plugin.itemKey(), PersistentDataType.BYTE, (byte) 1);
-            stick.setItemMeta(meta);
+            tool.setItemMeta(meta);
         }
         for (int slot = 0; slot < 9; slot++) {
-            player.getInventory().setItem(slot, stick.clone());
+            player.getInventory().setItem(slot, tool.clone());
         }
         player.getInventory().setHeldItemSlot(4);
         player.updateInventory();
@@ -965,8 +971,6 @@ public final class GameRoom {
     }
 
     private void nextRound() {
-        plugin.mechanismManager().removeAll(this);
-        mechanisms.clear();
         sessions.clear();
         startRound();
     }
@@ -1163,6 +1167,14 @@ public final class GameRoom {
                     }
                 }
                 phaseTicks--;
+                if (phaseTicks % 20 == 0) {
+                    for (PlacementSession session : sessions.values()) {
+                        if (!session.locked() && !session.confirmed()) {
+                            Msg.actionBar(session.player(),
+                                    "&e飞到想要的位置，按左键/右键/滚轮锁定机关");
+                        }
+                    }
+                }
                 if (allPlaced()) {
                     broadcast("&a所有机关都已放置，提前开始跑酷！");
                     beginRunning();
