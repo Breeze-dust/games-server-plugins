@@ -5,6 +5,7 @@ import com.superniuma.game.GameRoom;
 import com.superniuma.mechanism.PlacementSession;
 import io.papermc.paper.event.player.PlayerPickBlockEvent;
 import io.papermc.paper.event.player.PlayerPickEntityEvent;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -171,7 +172,20 @@ public final class GameListener implements Listener {
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
         GameRoom room = plugin.rooms().roomOf(event.getPlayer());
-        if (room == null || room.phase() != GameRoom.Phase.RUNNING) {
+        if (room == null) {
+            return;
+        }
+        if (room.phase() == GameRoom.Phase.STARTING) {
+            // 跑酷倒计时期间锁住位置，只允许转头。
+            Location from = event.getFrom();
+            Location to = event.getTo();
+            if (to != null) {
+                event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(),
+                        to.getYaw(), to.getPitch()));
+            }
+            return;
+        }
+        if (room.phase() != GameRoom.Phase.RUNNING) {
             return;
         }
         room.handleMove(event.getPlayer());

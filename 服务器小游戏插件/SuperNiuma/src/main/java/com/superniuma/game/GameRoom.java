@@ -2,6 +2,7 @@ package com.superniuma.game;
 
 import com.hub.api.GameState;
 import com.hub.api.HubAPI;
+import com.hub.util.Chat;
 import com.superniuma.Msg;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
@@ -90,6 +91,7 @@ public final class GameRoom {
     private Phase phase = Phase.WAITING;
     private int phaseTicks;
     private int autoCloseTicks = -1;
+    private int runCountdownTicks;
     private int round;
     private RoundData roundData = new RoundData();
     private double lastClearRate = 1.0;
@@ -792,7 +794,10 @@ public final class GameRoom {
         }
 
         phase = Phase.STARTING;
-        phaseTicks = 0;
+        int countdownSeconds = Math.max(0,
+                plugin.getConfig().getInt("running.countdown-seconds", 3));
+        runCountdownTicks = countdownSeconds * 20;
+        phaseTicks = runCountdownTicks;
 
         Location start = arena.getStart();
         for (Participant participant : participants) {
@@ -808,14 +813,29 @@ public final class GameRoom {
             clearGameInventory(player);
             player.setFireTicks(0);
         }
-        broadcast("&e跑酷即将开始，3 秒倒计时后出发。");
 
-        List<UUID> ids = new ArrayList<>();
-        for (Participant participant : participants) {
-            ids.add(participant.uuid());
-        }
-        if (!plugin.startCountdown().begin("run:" + id, ids, this::actuallyStartRunning)) {
+        if (runCountdownTicks <= 0) {
             actuallyStartRunning();
+            return;
+        }
+        showRunCountdownTitle(countdownSeconds);
+        broadcast("&e跑酷即将开始，" + countdownSeconds + " 秒倒计时后出发。");
+    }
+
+    private void showRunCountdownTitle(int seconds) {
+        String title = plugin.getConfig().getString(
+                "running.countdown-title", "&e跑酷即将开始：{time}");
+        String subtitle = plugin.getConfig().getString(
+                "running.countdown-subtitle", "&7准备出发");
+        if (title == null) {
+            title = "&e跑酷即将开始：{time}";
+        }
+        if (subtitle == null) {
+            subtitle = "";
+        }
+        title = title.replace("{time}", String.valueOf(seconds));
+        for (Player player : onlinePlayers()) {
+            Chat.title(player, title, subtitle, 1);
         }
     }
 
@@ -1220,7 +1240,6 @@ public final class GameRoom {
         ending = true;
         phase = Phase.ENDED;
         plugin.startCountdown().cancel("room:" + id);
-        plugin.startCountdown().cancel("run:" + id);
         if (task != null) {
             task.cancel();
             task = null;
@@ -1477,6 +1496,14 @@ public final class GameRoom {
                     beginRunning();
                 } else if (phaseTicks <= 0) {
                     beginRunning();
+                }
+            }
+            case STARTING -> {
+                runCountdownTicks--;
+                if (runCountdownTicks <= 0) {
+                    actuallyStartRunning();
+                } else if (runCountdownTicks % 20 == 0) {
+                    showRunCountdownTitle((runCountdownTicks + 19) / 20);
                 }
             }
             case RUNNING -> {

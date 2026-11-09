@@ -127,9 +127,9 @@
 `cmd:` 后面的命令会以玩家身份执行，点击后打开房间菜单。改完 `/hub reload` 或重启。
 游戏内的场地状态会通过 `HubAPI.setArena` 上报（等待中/对战中）。
 
-## 开局倒计时
+## 倒计时
 
-`/sn start` 后复用 MiniGameLib 的 `StartCountdown`，播放「游戏即将开始：3 / 2 / 1」并冻结移动，然后进入选择机关。可在 `config.yml` 调整：
+**开场前**：`/sn start` 后复用 MiniGameLib 的 `StartCountdown`，播放「游戏即将开始：3 / 2 / 1」并冻结移动，然后进入选择机关。可在 `config.yml` 调整：
 
 ```yaml
 countdown:
@@ -139,6 +139,17 @@ countdown:
   title: '&e游戏即将开始：{time}'
   subtitle: '&7准备好'
 ```
+
+**跑酷前**：所有人传送到起点后使用独立的一套倒计时配置，不复用上面的 `countdown` 段：
+
+```yaml
+running:
+  countdown-seconds: 3
+  countdown-title: '&e跑酷即将开始：{time}'
+  countdown-subtitle: '&7准备出发'
+```
+
+倒计时期间同样冻结移动，只允许转头；`countdown-seconds` 设为 `0` 则传送后立即开跑。
 
 ## 当前限制（骨架阶段）
 

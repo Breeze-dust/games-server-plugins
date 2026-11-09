@@ -28,6 +28,9 @@ placement:
 
 running:
   duration-seconds: 180    # 跑酷环节最长时长，超时未到终点算失败
+  countdown-seconds: 3     # 传送到起点后的跑酷倒计时
+  countdown-title: '&e跑酷即将开始：{time}'
+  countdown-subtitle: '&7准备出发'
 
 scoring:
   display-seconds: 5       # 记分结果展示时长
