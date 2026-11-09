@@ -332,10 +332,24 @@ public final class GameRoom {
             Msg.send(starter, "&c这张地图还没有配置完整（出生点/起点/终点/建造范围）。");
             return false;
         }
+        List<UUID> ids = new ArrayList<>();
+        for (Participant participant : participants) {
+            ids.add(participant.uuid());
+        }
+        if (!plugin.startCountdown().begin("room:" + id, ids, this::actuallyStart)) {
+            actuallyStart();
+        }
+        return true;
+    }
+
+    /** 倒计时结束后的真正开局。 */
+    private void actuallyStart() {
+        if (phase != Phase.WAITING) {
+            return;
+        }
         assignTeamsBalanced();
         round = 0;
         startRound();
-        return true;
     }
 
     private void assignTeamsBalanced() {
@@ -1040,6 +1054,7 @@ public final class GameRoom {
         }
         ending = true;
         phase = Phase.ENDED;
+        plugin.startCountdown().cancel("room:" + id);
         if (task != null) {
             task.cancel();
             task = null;

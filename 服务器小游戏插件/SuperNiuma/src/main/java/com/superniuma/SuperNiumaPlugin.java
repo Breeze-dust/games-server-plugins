@@ -7,6 +7,7 @@ import com.superniuma.listener.GameListener;
 import com.superniuma.mechanism.MechanismManager;
 import com.superniuma.mechanism.MechanismRegistry;
 import com.superniuma.menu.MenuListener;
+import com.hub.util.StartCountdown;
 import org.bukkit.NamespacedKey;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -21,6 +22,7 @@ public final class SuperNiumaPlugin extends JavaPlugin {
     private MechanismManager mechanismManager;
     private RoomManager rooms;
     private NamespacedKey itemKey;
+    private StartCountdown startCountdown;
 
     @Override
     public void onEnable() {
@@ -39,6 +41,7 @@ public final class SuperNiumaPlugin extends JavaPlugin {
 
         mechanismManager = new MechanismManager(this);
         rooms = new RoomManager(this);
+        startCountdown = new StartCountdown(this);
 
         PluginCommand command = getCommand("sn");
         if (command != null) {
@@ -57,6 +60,9 @@ public final class SuperNiumaPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (startCountdown != null) {
+            startCountdown.cancelAll();
+        }
         if (rooms != null) {
             rooms.shutdown();
         }
@@ -86,5 +92,9 @@ public final class SuperNiumaPlugin extends JavaPlugin {
 
     public NamespacedKey itemKey() {
         return itemKey;
+    }
+
+    public StartCountdown startCountdown() {
+        return startCountdown;
     }
 }

@@ -32,7 +32,7 @@
 ## 游戏流程
 
 1. **创建房间**：`/sn menu` 选地图 → 设置模式（个人 / 团队 2/3/4 队）、目标分数、最高回合 → 创建。
-2. **等待**：其他玩家 `/sn join <房间号>` 或从菜单加入；房主 `/sn start`。
+2. **等待**：其他玩家 `/sn join <房间号>` 或从菜单加入；房主 `/sn start` 后先播放 3 秒开局倒计时（可配置），再进入选择机关。
 3. **选择机关（默认 20 秒）**：每回合只随机一次槽位，所有玩家看到同一套排布；每人一个机关，被选走的机关会标注「该机关已被【玩家】选择」；界面不可自行关闭。所有人都选好后，再过 `selection.auto-close-seconds`（默认 2 秒）自动关闭并进入摆放；20 秒是兜底上限，时间到会随机分配剩余机关。
 4. **摆放机关（默认 90 秒）**：可飞行；飞到想要的位置后，第一次左键/右键/滚轮会把机关锁定在面前，之后机关不再跟随玩家：
    - 左键：水平旋转 90°（尖刺这类只能上下翻转的机关改为 180° 翻转）
@@ -107,19 +107,33 @@
 ## 接入 HubCore
 
 `plugin.yml` 已带 `minigame-game: true`，HubCore 会自动登记「超级牛马」。
-要在主城指南针菜单里点开房间界面，在 `server/plugins/HubCore/config.yml` 的菜单项里加一条：
+本机已在 `server/plugins/HubCore/config.yml` 的 `menu.items` 30 号槽位加入入口：
 
 ```yaml
-menu:
-  items:
-    '<槽位>':
+    '30':
       material: LEATHER_HORSE_ARMOR
-      name: '&e超级牛马'
-      lore: ['&7点击创建/加入房间']
-      action: 'cmd sn menu'
+      name: '&e&l超级牛马'
+      lore:
+      - '&7选机关、摆机关、跑酷、记分'
+      - '&7点击创建 / 加入房间'
+      action: cmd:sn menu
 ```
 
-然后 `/hub reload`。游戏内的场地状态会通过 `HubAPI.setArena` 上报（等待中/对战中）。
+`cmd:` 后面的命令会以玩家身份执行，点击后打开房间菜单。改完 `/hub reload` 或重启。
+游戏内的场地状态会通过 `HubAPI.setArena` 上报（等待中/对战中）。
+
+## 开局倒计时
+
+`/sn start` 后复用 MiniGameLib 的 `StartCountdown`，播放「游戏即将开始：3 / 2 / 1」并冻结移动，然后进入选择机关。可在 `config.yml` 调整：
+
+```yaml
+countdown:
+  enabled: true
+  seconds: 3
+  freeze: true
+  title: '&e游戏即将开始：{time}'
+  subtitle: '&7准备好'
+```
 
 ## 当前限制（骨架阶段）
 
