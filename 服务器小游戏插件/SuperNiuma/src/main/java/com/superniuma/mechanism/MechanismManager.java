@@ -188,23 +188,36 @@ public final class MechanismManager {
         if (anchor == null) {
             return;
         }
-        Vector direction = horizontalFacing(session.player());
-        int stepX;
-        int stepZ;
-        if (Math.abs(direction.getX()) >= Math.abs(direction.getZ())) {
+        Vector direction = session.player().getEyeLocation().getDirection();
+        int stepX = 0;
+        int stepY = 0;
+        int stepZ = 0;
+        double ax = Math.abs(direction.getX());
+        double ay = Math.abs(direction.getY());
+        double az = Math.abs(direction.getZ());
+        if (ay >= ax && ay >= az) {
+            stepY = direction.getY() >= 0 ? 1 : -1;
+        } else if (ax >= az) {
             stepX = direction.getX() >= 0 ? 1 : -1;
-            stepZ = 0;
         } else {
-            stepX = 0;
             stepZ = direction.getZ() >= 0 ? 1 : -1;
         }
         if (!forward) {
             stepX = -stepX;
+            stepY = -stepY;
             stepZ = -stepZ;
         }
-        session.setAnchor(anchor.clone().add(stepX, 0, stepZ));
+        session.setAnchor(anchor.clone().add(stepX, stepY, stepZ));
         session.setGhostCells(List.of());
-        Msg.actionBar(session.player(), forward ? "&e向前移动 1 格" : "&e向后移动 1 格");
+        String message;
+        if (stepY > 0) {
+            message = "&e向上移动 1 格";
+        } else if (stepY < 0) {
+            message = "&e向下移动 1 格";
+        } else {
+            message = forward ? "&e向前移动 1 格" : "&e向后移动 1 格";
+        }
+        Msg.actionBar(session.player(), message);
     }
 
     // ---------- 放置 ----------

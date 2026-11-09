@@ -542,7 +542,7 @@ public final class GameRoom {
             meta.setLore(Arrays.asList(
                     Msg.c("&7左键：水平旋转 90°"),
                     Msg.c("&7右键：竖直翻转 90°（尖刺类每次 180°）"),
-                    Msg.c("&7滚轮：向前 / 向后移动"),
+                    Msg.c("&7滚轮：沿视线前后/上下移动"),
                     Msg.c("&7Q 两次：确认放置")));
             meta.getPersistentDataContainer().set(plugin.itemKey(), PersistentDataType.BYTE, (byte) 1);
             tool.setItemMeta(meta);
