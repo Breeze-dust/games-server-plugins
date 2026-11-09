@@ -669,11 +669,33 @@ public final class MechanismManager {
         return out;
     }
 
-    /** 先把相对偏移绕 Y 轴水平旋转，再绕 X 轴竖直翻转。 */
+    /** 先把相对偏移绕 X 轴竖直翻转（机关局部），再绕世界 Y 轴水平旋转。 */
     private Location rotated(Location anchor, int dx, int dy, int dz, int yawSteps, int pitchSteps) {
         int x = dx;
         int y = dy;
         int z = dz;
+        switch (pitchSteps & 3) {
+            case 1 -> {
+                // 局部 +Z 转到 +Y（朝上）
+                int ny = z;
+                int nz = -y;
+                y = ny;
+                z = nz;
+            }
+            case 2 -> {
+                y = -y;
+                z = -z;
+            }
+            case 3 -> {
+                // 局部 +Z 转到 -Y（朝下）
+                int ny = -z;
+                int nz = y;
+                y = ny;
+                z = nz;
+            }
+            default -> {
+            }
+        }
         switch (yawSteps & 3) {
             case 1 -> {
                 int nx = -z;
@@ -689,26 +711,6 @@ public final class MechanismManager {
                 int nx = z;
                 int nz = -x;
                 x = nx;
-                z = nz;
-            }
-            default -> {
-            }
-        }
-        switch (pitchSteps & 3) {
-            case 1 -> {
-                int ny = -z;
-                int nz = y;
-                y = ny;
-                z = nz;
-            }
-            case 2 -> {
-                y = -y;
-                z = -z;
-            }
-            case 3 -> {
-                int ny = z;
-                int nz = -y;
-                y = ny;
                 z = nz;
             }
             default -> {
