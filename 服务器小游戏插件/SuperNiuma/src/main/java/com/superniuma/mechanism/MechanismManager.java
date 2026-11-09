@@ -78,6 +78,7 @@ public final class MechanismManager {
         }
         clearGhosts(session);
         session.setGhostCells(cells);
+        session.setRendered(anchor, session.yawSteps(), session.pitchSteps());
         Material material = ghostMaterial(session.choice().def());
         for (Location cell : cells) {
             BlockDisplay display = cell.getWorld().spawn(
@@ -226,6 +227,17 @@ public final class MechanismManager {
         MechanismChoice choice = session.choice();
         MechanismDef def = choice.def();
         Location anchor = session.anchor();
+        int yawSteps = session.yawSteps();
+        int pitchSteps = session.pitchSteps();
+        // 以最后一次真正渲染出来的预览为准，避免预览没刷新就确认导致"放下时自己转了一圈"。
+        if (session.rendered()) {
+            Location rendered = session.renderedAnchor();
+            if (rendered != null) {
+                anchor = rendered;
+            }
+            yawSteps = session.renderedYawSteps();
+            pitchSteps = session.renderedPitchSteps();
+        }
         if (anchor == null) {
             anchor = computeAnchor(session);
             if (anchor == null) {
@@ -244,7 +256,7 @@ public final class MechanismManager {
             return PlaceResult.ok(null);
         }
 
-        List<Location> cells = cells(choice, anchor, session.yawSteps(), session.pitchSteps());
+        List<Location> cells = cells(choice, anchor, yawSteps, pitchSteps);
         for (Location cell : cells) {
             if (!arena.inBuildBounds(cell)) {
                 return PlaceResult.fail("机关超出了可建造范围。");
@@ -258,7 +270,7 @@ public final class MechanismManager {
         }
 
         MechanismInstance instance = new MechanismInstance(def, choice.variant(), session.owner(),
-                anchor, session.yawSteps(), session.pitchSteps(), facingFor(session, def));
+                anchor, yawSteps, pitchSteps, facingFor(session, def, yawSteps, pitchSteps));
 
         switch (def.id()) {
             case "spike" -> placeSpike(room, instance, cells);
@@ -619,11 +631,11 @@ public final class MechanismManager {
         };
     }
 
-    private BlockFace facingFor(PlacementSession session, MechanismDef def) {
+    private BlockFace facingFor(PlacementSession session, MechanismDef def, int yawSteps, int pitchSteps) {
         if (!"dispenser".equals(def.id())) {
             return BlockFace.SOUTH;
         }
-        int pitch = session.pitchSteps() & 3;
+        int pitch = pitchSteps & 3;
         if (pitch == 1) {
             return BlockFace.UP;
         }
@@ -638,7 +650,7 @@ public final class MechanismManager {
         } else {
             face = direction.getZ() > 0 ? BlockFace.SOUTH : BlockFace.NORTH;
         }
-        for (int i = 0; i < session.yawSteps(); i++) {
+        for (int i = 0; i < yawSteps; i++) {
             face = rotateY(face);
         }
         if (pitch == 2) {

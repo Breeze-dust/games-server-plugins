@@ -563,6 +563,10 @@ public final class GameRoom {
     public void rotateLeft(Player player) {
         PlacementSession session = session(player);
         if (phase == Phase.PLACING && session != null && !session.confirmed()) {
+            if (session.pendingConfirm()) {
+                Msg.actionBar(player, "&e已按 Q，再按一次确认放置");
+                return;
+            }
             plugin.mechanismManager().rotateLeft(session);
         }
     }
@@ -570,6 +574,10 @@ public final class GameRoom {
     public void rotateRight(Player player) {
         PlacementSession session = session(player);
         if (phase == Phase.PLACING && session != null && !session.confirmed()) {
+            if (session.pendingConfirm()) {
+                Msg.actionBar(player, "&e已按 Q，再按一次确认放置");
+                return;
+            }
             plugin.mechanismManager().rotateRight(session);
         }
     }
@@ -577,6 +585,10 @@ public final class GameRoom {
     public void scroll(Player player, boolean forward) {
         PlacementSession session = session(player);
         if (phase == Phase.PLACING && session != null && !session.confirmed()) {
+            if (session.pendingConfirm()) {
+                Msg.actionBar(player, "&e已按 Q，再按一次确认放置");
+                return;
+            }
             plugin.mechanismManager().scroll(session, forward);
         }
     }
@@ -588,6 +600,7 @@ public final class GameRoom {
         }
         MechanismManager.PlaceResult result = plugin.mechanismManager().place(this, session);
         if (!result.success()) {
+            session.setPendingConfirm(false);
             Msg.send(player, "&c" + result.error());
             return;
         }
@@ -623,7 +636,11 @@ public final class GameRoom {
         }
         long now = System.currentTimeMillis();
         long last = lastDropMillis.getOrDefault(player.getUniqueId(), 0L);
-        int count = now - last > 3000L ? 0 : dropCounts.getOrDefault(player.getUniqueId(), 0);
+        boolean fresh = now - last > 3000L;
+        if (fresh) {
+            session.setPendingConfirm(false);
+        }
+        int count = fresh ? 0 : dropCounts.getOrDefault(player.getUniqueId(), 0);
         count++;
         lastDropMillis.put(player.getUniqueId(), now);
         dropCounts.put(player.getUniqueId(), count);
@@ -631,6 +648,7 @@ public final class GameRoom {
             dropCounts.remove(player.getUniqueId());
             confirmPlacement(player);
         } else {
+            session.setPendingConfirm(true);
             Msg.send(player, "&e再按一次 Q 确认放置。");
         }
     }

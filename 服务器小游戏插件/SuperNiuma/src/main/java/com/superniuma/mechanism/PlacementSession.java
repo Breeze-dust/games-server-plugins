@@ -21,6 +21,12 @@ public final class PlacementSession {
     private List<Location> ghostCells = List.of();
     private boolean confirmed;
     private boolean locked;
+    private boolean pendingConfirm;
+
+    private boolean rendered;
+    private int renderedYawSteps;
+    private int renderedPitchSteps;
+    private Location renderedAnchor;
 
     public PlacementSession(Player player, MechanismChoice choice, int startDistance) {
         this.player = player;
@@ -99,5 +105,38 @@ public final class PlacementSession {
 
     public void setLocked(boolean locked) {
         this.locked = locked;
+    }
+
+    /** 已按过一次 Q，等待第二次确认；期间忽略调整操作。 */
+    public boolean pendingConfirm() {
+        return pendingConfirm;
+    }
+
+    public void setPendingConfirm(boolean pendingConfirm) {
+        this.pendingConfirm = pendingConfirm;
+    }
+
+    /** 记录最后一次真正渲染出来的预览形态，放置时以它为准。 */
+    public void setRendered(Location anchor, int yawSteps, int pitchSteps) {
+        this.rendered = anchor != null;
+        this.renderedAnchor = anchor == null ? null : anchor.clone();
+        this.renderedYawSteps = yawSteps & 3;
+        this.renderedPitchSteps = pitchSteps & 3;
+    }
+
+    public boolean rendered() {
+        return rendered;
+    }
+
+    public int renderedYawSteps() {
+        return renderedYawSteps;
+    }
+
+    public int renderedPitchSteps() {
+        return renderedPitchSteps;
+    }
+
+    public Location renderedAnchor() {
+        return renderedAnchor == null ? null : renderedAnchor.clone();
     }
 }
