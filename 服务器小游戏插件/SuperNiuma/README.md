@@ -91,13 +91,14 @@
 ## 机关配置（`mechanisms.yml`）
 
 每种机关支持：`enabled`、`weight`、`icon`、`name`、`lore`、`rotation` 和各自参数。
-`weight: 0` 等于不出现。当前内置：
+`weight: 0` 等于不出现。尺寸规则：平台/尖刺的 `size` 是 `[x, z]` 平面尺寸；
+发射器的 `size` 是 `[宽度, 高度]`，深度固定 1 格，旋转时宽度轴始终垂直于发射方向，出口不会被同机关的方块挡住。当前内置：
 
 | 机关 | 行为 | 关键参数 |
 | --- | --- | --- |
-| `spike` 尖刺 | 滴水石 + 钟乳石；碰到任意一格失败；只能上下翻转 | — |
+| `spike` 尖刺 | 滴水石 + 钟乳石；碰到任意一格失败；支持 1x1/1x3/2x3/3x3 平面尺寸 | `variants.*.size` |
 | `platform` 平台 | 羊毛平台，按队伍染色；多种尺寸子类 | `variants.small/medium/large.size` |
-| `dispenser` 发射器 | 定时朝朝向发射箭，命中失败 | `interval-ticks`、`arrow-range`、`arrow-speed` |
+| `dispenser` 发射器 | 定时朝朝向发射箭；支持 1x1/1x3/2x3（宽度×高度，深度固定 1）；多格一起发射；预览显示真实发射器，出口始终朝外 | `variants.*.size`、`interval-ticks`、`arrow-range`、`arrow-speed` |
 | `coin` 金币 | 缩小的金块展示实体，无碰撞；碰到消失并记分 | `points`、`scale` |
 | `bomb` 炸弹 | 放置时炸掉范围内所有机关（含金币），不破坏地图方块 | `radius`、`low-clear-*` |
 

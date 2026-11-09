@@ -16,6 +16,7 @@ public final class PlacementSession {
     private int distance;
     private int yawSteps;
     private int pitchSteps;
+    private int baseYawSteps;
     private Location anchor;
     private final List<BlockDisplay> ghosts = new ArrayList<>();
     private List<Location> ghostCells = List.of();
@@ -60,6 +61,15 @@ public final class PlacementSession {
 
     public void setYawSteps(int yawSteps) {
         this.yawSteps = yawSteps & 3;
+    }
+
+    /** 锁定位置时玩家朝向对应的基准 yaw；发射器等需要保持出口朝向的机关会用到。 */
+    public int baseYawSteps() {
+        return baseYawSteps;
+    }
+
+    public void setBaseYawSteps(int baseYawSteps) {
+        this.baseYawSteps = baseYawSteps & 3;
     }
 
     public int pitchSteps() {

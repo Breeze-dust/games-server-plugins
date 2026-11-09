@@ -79,11 +79,12 @@ public final class MechanismManager {
         clearGhosts(session);
         session.setGhostCells(cells);
         session.setRendered(anchor, session.yawSteps(), session.pitchSteps());
-        Material material = ghostMaterial(session.choice().def());
+        BlockFace facing = facingFor(session.choice().def(), session.yawSteps(), session.pitchSteps());
+        BlockData ghostData = ghostBlock(session.choice().def(), facing);
         for (Location cell : cells) {
             BlockDisplay display = cell.getWorld().spawn(
                     cell.clone(), BlockDisplay.class, d -> {
-                        d.setBlock(material.createBlockData());
+                        d.setBlock(ghostData.clone());
                         d.setPersistent(false);
                         d.setGravity(false);
                         d.setInvulnerable(true);
@@ -148,6 +149,11 @@ public final class MechanismManager {
         }
         session.setAnchor(anchor);
         session.setLocked(true);
+        if ("dispenser".equals(session.choice().def().id())) {
+            int base = baseYawSteps(session.player().getFacing());
+            session.setBaseYawSteps(base);
+            session.setYawSteps(base);
+        }
         session.setGhostCells(List.of());
         Msg.actionBar(session.player(), "&a机关位置已锁定；继续用左键/右键/滚轮调整");
         return true;
@@ -160,7 +166,7 @@ public final class MechanismManager {
         RotationRule rule = session.choice().def().rotation();
         if (rule.supportsHorizontal()) {
             session.setYawSteps(session.yawSteps() + 1);
-            Msg.actionBar(session.player(), "&e水平旋转 90°（" + (session.yawSteps() * 90) + "°）");
+            Msg.actionBar(session.player(), "&e水平旋转 90°（" + shownYaw(session) + "°）");
         } else {
             session.setPitchSteps(session.pitchSteps() + 2);
             Msg.actionBar(session.player(), "&e竖直翻转 180°（"
@@ -245,6 +251,12 @@ public final class MechanismManager {
             }
             session.setAnchor(anchor);
             session.setLocked(true);
+            if ("dispenser".equals(def.id())) {
+                int base = baseYawSteps(session.player().getFacing());
+                session.setBaseYawSteps(base);
+                session.setYawSteps(base);
+                yawSteps = base;
+            }
         }
         Arena arena = room.arena();
 
@@ -270,11 +282,12 @@ public final class MechanismManager {
         }
 
         MechanismInstance instance = new MechanismInstance(def, choice.variant(), session.owner(),
-                anchor, yawSteps, pitchSteps, facingFor(session, def, yawSteps, pitchSteps));
+                anchor, yawSteps, pitchSteps,
+                facingFor(def, yawSteps, pitchSteps));
 
         switch (def.id()) {
-            case "spike" -> placeSpike(room, instance, cells);
-            case "dispenser" -> placeDispenser(instance, cells.get(0));
+            case "spike" -> placeSpike(instance, choice, anchor, yawSteps, pitchSteps);
+            case "dispenser" -> placeDispenser(instance, cells);
             case "coin" -> placeCoin(instance);
             default -> placePlatform(room, instance, cells);
         }
@@ -291,22 +304,34 @@ public final class MechanismManager {
         }
     }
 
-    private void placeSpike(GameRoom room, MechanismInstance instance, List<Location> cells) {
-        setBlock(instance, cells.get(0), Material.DRIPSTONE_BLOCK.createBlockData());
+    private void placeSpike(MechanismInstance instance, MechanismChoice choice,
+                            Location anchor, int yawSteps, int pitchSteps) {
+        int sizeX = choice.variant().sizeX();
+        int sizeZ = choice.variant().sizeZ();
+        BlockData base = Material.DRIPSTONE_BLOCK.createBlockData();
         BlockData tipData = Material.POINTED_DRIPSTONE.createBlockData();
         if (tipData instanceof PointedDripstone dripstone) {
-            dripstone.setVerticalDirection((instance.pitchSteps() & 2) == 2 ? BlockFace.DOWN : BlockFace.UP);
+            dripstone.setVerticalDirection((pitchSteps & 2) == 2 ? BlockFace.DOWN : BlockFace.UP);
             dripstone.setThickness(Speleothem.Thickness.TIP);
         }
-        setBlock(instance, cells.get(1), tipData);
+        for (int x = 0; x < sizeX; x++) {
+            for (int z = 0; z < sizeZ; z++) {
+                int dx = x - sizeX / 2;
+                int dz = z - sizeZ / 2;
+                setBlock(instance, rotated(anchor, dx, 0, dz, yawSteps, pitchSteps), base);
+                setBlock(instance, rotated(anchor, dx, 1, dz, yawSteps, pitchSteps), tipData);
+            }
+        }
     }
 
-    private void placeDispenser(MechanismInstance instance, Location cell) {
+    private void placeDispenser(MechanismInstance instance, List<Location> cells) {
         BlockData data = Material.DISPENSER.createBlockData();
         if (data instanceof Directional directional) {
             directional.setFacing(instance.facing());
         }
-        setBlock(instance, cell, data);
+        for (Location cell : cells) {
+            setBlock(instance, cell, data);
+        }
     }
 
     private void placeCoin(MechanismInstance instance) {
@@ -427,14 +452,18 @@ public final class MechanismManager {
 
     private void shoot(GameRoom room, MechanismInstance instance) {
         Vector direction = instance.facing().getDirection();
-        Location spawn = instance.anchor().clone().add(0.5, 0.5, 0.5).add(direction.clone().multiply(0.6));
-        Arrow arrow = spawn.getWorld().spawnArrow(spawn, direction,
-                (float) instance.def().arrowSpeed(), 0.0f);
-        arrow.setDamage(0.0);
-        arrow.setPersistent(false);
-        arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
-        arrows.put(arrow.getUniqueId(), new ArrowShot(arrow.getUniqueId(), instance.id(), room,
-                instance.owner(), spawn.clone(), instance.def().arrowRange()));
+        for (PlacedBlock block : instance.blocks()) {
+            Location center = block.location().clone().add(0.5, 0.5, 0.5);
+            Location spawn = center.clone().add(direction.clone().multiply(0.6));
+            Arrow arrow = spawn.getWorld().spawnArrow(spawn, direction,
+                    (float) instance.def().arrowSpeed(), 0.0f);
+            arrow.setDamage(0.0);
+            arrow.setPersistent(false);
+            arrow.setGravity(false);
+            arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+            arrows.put(arrow.getUniqueId(), new ArrowShot(arrow.getUniqueId(), instance.id(), room,
+                    instance.owner(), spawn.clone(), instance.def().arrowRange()));
+        }
     }
 
     private void tickArrows() {
@@ -528,8 +557,29 @@ public final class MechanismManager {
         List<Location> out = new ArrayList<>();
         switch (def.id()) {
             case "spike" -> {
-                out.add(anchor.clone());
-                out.add(rotated(anchor, 0, 1, 0, yawSteps, pitchSteps));
+                int sizeX = choice.variant().sizeX();
+                int sizeZ = choice.variant().sizeZ();
+                for (int x = 0; x < sizeX; x++) {
+                    for (int z = 0; z < sizeZ; z++) {
+                        out.add(rotated(anchor, x - sizeX / 2, 0, z - sizeZ / 2,
+                                yawSteps, pitchSteps));
+                    }
+                }
+                for (int x = 0; x < sizeX; x++) {
+                    for (int z = 0; z < sizeZ; z++) {
+                        out.add(rotated(anchor, x - sizeX / 2, 1, z - sizeZ / 2,
+                                yawSteps, pitchSteps));
+                    }
+                }
+            }
+            case "dispenser" -> {
+                int width = choice.variant().sizeX();
+                int height = choice.variant().sizeY();
+                for (int x = 0; x < width; x++) {
+                    for (int y = 0; y < height; y++) {
+                        out.add(rotated(anchor, x - width / 2, y, 0, yawSteps, pitchSteps));
+                    }
+                }
             }
             case "platform" -> {
                 int sizeX = choice.variant().sizeX();
@@ -631,7 +681,7 @@ public final class MechanismManager {
         };
     }
 
-    private BlockFace facingFor(PlacementSession session, MechanismDef def, int yawSteps, int pitchSteps) {
+    private BlockFace facingFor(MechanismDef def, int yawSteps, int pitchSteps) {
         if (!"dispenser".equals(def.id())) {
             return BlockFace.SOUTH;
         }
@@ -642,21 +692,40 @@ public final class MechanismManager {
         if (pitch == 3) {
             return BlockFace.DOWN;
         }
-        Player player = session.player();
-        Vector direction = player.getEyeLocation().getDirection();
-        BlockFace face;
-        if (Math.abs(direction.getX()) > Math.abs(direction.getZ())) {
-            face = direction.getX() > 0 ? BlockFace.EAST : BlockFace.WEST;
-        } else {
-            face = direction.getZ() > 0 ? BlockFace.SOUTH : BlockFace.NORTH;
-        }
-        for (int i = 0; i < yawSteps; i++) {
+        BlockFace face = BlockFace.SOUTH;
+        for (int i = 0; i < (yawSteps & 3); i++) {
             face = rotateY(face);
         }
         if (pitch == 2) {
             face = face.getOppositeFace();
         }
         return face;
+    }
+
+    private BlockData ghostBlock(MechanismDef def, BlockFace facing) {
+        if ("dispenser".equals(def.id())) {
+            BlockData data = Material.DISPENSER.createBlockData();
+            if (data instanceof Directional directional) {
+                directional.setFacing(facing);
+            }
+            return data;
+        }
+        return ghostMaterial(def).createBlockData();
+    }
+
+    /** 玩家朝向对应的基准 yaw：南 0、西 1、北 2、东 3。 */
+    private int baseYawSteps(BlockFace face) {
+        return switch (face) {
+            case WEST -> 1;
+            case NORTH -> 2;
+            case EAST -> 3;
+            default -> 0;
+        };
+    }
+
+    /** 动作栏显示的是相对基准朝向的角度，而不是加上基准后的绝对值。 */
+    private int shownYaw(PlacementSession session) {
+        return ((session.yawSteps() - session.baseYawSteps()) & 3) * 90;
     }
 
     private BlockFace rotateY(BlockFace face) {

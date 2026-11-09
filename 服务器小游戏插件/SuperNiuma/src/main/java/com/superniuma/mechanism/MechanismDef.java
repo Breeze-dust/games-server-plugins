@@ -116,7 +116,7 @@ public final class MechanismDef {
         return variants;
     }
 
-    /** 平台等机关的尺寸子类。 */
-    public record Variant(String id, String name, double weight, int sizeX, int sizeZ) {
+    /** 机关的尺寸子类。平台/尖刺用 sizeX × sizeZ 的平面尺寸；发射器用 sizeX（宽）× sizeY（高），深度固定 1。 */
+    public record Variant(String id, String name, double weight, int sizeX, int sizeY, int sizeZ) {
     }
 }

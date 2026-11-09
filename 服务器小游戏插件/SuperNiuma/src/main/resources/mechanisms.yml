@@ -1,6 +1,9 @@
 # ========== 超级牛马 机关列表 ==========
 # 每个机关都可以在这里改：是否启用、权重、图标、说明、参数。
 # 权重越大越容易被抽到；weight: 0 等于不出现。
+# 尺寸规则：
+#   平台 / 尖刺的 size 是 [x, z] 平面尺寸；
+#   发射器的 size 是 [宽度, 高度]，深度固定 1 格，旋转后发射口始终朝外，不会被同机关的方块挡住。
 # rotation 取值：
 #   four-way   左键水平转 90°，右键上下翻 180°
 #   six-way    左键水平转 90°，右键上下翻 180°（发射器朝向）
@@ -17,6 +20,23 @@ mechanisms:
       - '&7碰到尖刺的玩家本回合失败'
       - '&7只能上下翻转 180°'
     rotation: vertical
+    variants:
+      single:
+        name: '1x1'
+        weight: 20
+        size: [1, 1]
+      row:
+        name: '1x3'
+        weight: 30
+        size: [1, 3]
+      medium:
+        name: '2x3'
+        weight: 30
+        size: [2, 3]
+      large:
+        name: '3x3'
+        weight: 20
+        size: [3, 3]
 
   platform:
     enabled: true
@@ -49,10 +69,24 @@ mechanisms:
     lore:
       - '&7按固定间隔发射箭矢'
       - '&7碰到箭的玩家本回合失败'
+      - '&7多格发射器会一起发射'
     rotation: six-way
     interval-ticks: 40
     arrow-range: 20
     arrow-speed: 1.6
+    variants:
+      single:
+        name: '1x1'
+        weight: 30
+        size: [1, 1]
+      tall:
+        name: '1x3'
+        weight: 40
+        size: [1, 3]
+      wall:
+        name: '2x3'
+        weight: 30
+        size: [2, 3]
 
   coin:
     enabled: true

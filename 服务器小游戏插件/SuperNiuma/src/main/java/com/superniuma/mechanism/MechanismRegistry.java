@@ -78,13 +78,21 @@ public final class MechanismRegistry {
                 }
                 List<Integer> size = v.getIntegerList("size");
                 int sx = size.isEmpty() ? 1 : Math.max(1, size.get(0));
-                int sz = size.size() > 1 ? Math.max(1, size.get(1)) : sx;
+                int sy = 1;
+                int sz;
+                if ("dispenser".equals(id)) {
+                    // 发射器：size = [宽度, 高度]，深度固定 1 格，保证出口不被自己挡住。
+                    sy = size.size() > 1 ? Math.max(1, size.get(1)) : 1;
+                    sz = 1;
+                } else {
+                    sz = size.size() > 1 ? Math.max(1, size.get(1)) : sx;
+                }
                 variants.add(new MechanismDef.Variant(
-                        vid, v.getString("name", vid), v.getDouble("weight", 10.0), sx, sz));
+                        vid, v.getString("name", vid), v.getDouble("weight", 10.0), sx, sy, sz));
             }
         }
         if (variants.isEmpty()) {
-            variants.add(new MechanismDef.Variant("default", name, 1.0, 1, 1));
+            variants.add(new MechanismDef.Variant("default", name, 1.0, 1, 1, 1));
         }
 
         return new MechanismDef(id, enabled, weight, icon, name, lore, rotation, points,
