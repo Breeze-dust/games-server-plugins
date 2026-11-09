@@ -116,7 +116,17 @@ public final class MechanismManager {
                 }
             }
             case "coin" -> spawnCoinGhost(session);
-            case "bomb" -> spawnBlockGhost(session, session.anchor(), Material.TNT.createBlockData());
+            case "bomb" -> {
+                Location anchor = session.anchor();
+                BlockData glass = Material.RED_STAINED_GLASS.createBlockData();
+                for (Location cell : cells) {
+                    if (sameBlock(cell, anchor)) {
+                        continue;
+                    }
+                    spawnBlockGhost(session, cell, glass);
+                }
+                spawnBlockGhost(session, anchor, Material.TNT.createBlockData());
+            }
             default -> {
             }
         }
@@ -750,6 +760,14 @@ public final class MechanismManager {
             }
         }
         return true;
+    }
+
+    private boolean sameBlock(Location a, Location b) {
+        return a != null && b != null && a.getWorld() != null && b.getWorld() != null
+                && a.getWorld().equals(b.getWorld())
+                && a.getBlockX() == b.getBlockX()
+                && a.getBlockY() == b.getBlockY()
+                && a.getBlockZ() == b.getBlockZ();
     }
 
     private BlockFace facingFor(MechanismDef def, int yawSteps, int pitchSteps) {
