@@ -454,7 +454,7 @@ public final class GameRoom {
         int coinAllowance = coin == null ? 0
                 : Math.max(0, coin.maxOnField() - coinOnField());
 
-        // 本轮尽量不重复；久未出现的机关会逐渐提高权重。
+        // 允许本轮重复；久未出现的机关会逐渐提高权重。
         List<MechanismDef> candidates = new ArrayList<>(enabled);
         if (coinAllowance <= 0) {
             candidates.removeIf(def -> "coin".equals(def.id()));
@@ -466,22 +466,12 @@ public final class GameRoom {
             if (forced > 0) {
                 def = bomb;
                 forced--;
-                candidates.remove(bomb);
             } else {
-                if (candidates.isEmpty()) {
-                    candidates = new ArrayList<>(enabled);
+                def = pickFrom(candidates, bombWeight);
+                if (def != null && "coin".equals(def.id()) && coinAllowance > 0) {
+                    coinAllowance--;
                     if (coinAllowance <= 0) {
                         candidates.removeIf(candidate -> "coin".equals(candidate.id()));
-                    }
-                }
-                def = pickFrom(candidates, bombWeight);
-                if (def != null) {
-                    candidates.remove(def);
-                    if ("coin".equals(def.id()) && coinAllowance > 0) {
-                        coinAllowance--;
-                        if (coinAllowance <= 0) {
-                            candidates.removeIf(candidate -> "coin".equals(candidate.id()));
-                        }
                     }
                 }
             }
