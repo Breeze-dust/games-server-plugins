@@ -52,7 +52,7 @@ public final class MenuListener implements Listener {
         if (action.startsWith("join:")) {
             GameRoom room = plugin.rooms().byId(action.substring("join:".length()));
             if (room == null) {
-                Msg.send(player, "&c房间不存在。");
+                Msg.send(player, "&c这个房间已经结束或不存在了，请点「刷新」重新读取房间列表。");
                 return;
             }
             if (plugin.rooms().roomOf(player) != null) {

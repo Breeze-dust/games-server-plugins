@@ -11,6 +11,8 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+
 /** 超级牛马主插件。 */
 public final class SuperNiumaPlugin extends JavaPlugin {
 
@@ -23,7 +25,9 @@ public final class SuperNiumaPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        saveResource("mechanisms.yml", false);
+        if (!new File(getDataFolder(), "mechanisms.yml").exists()) {
+            saveResource("mechanisms.yml", false);
+        }
 
         itemKey = new NamespacedKey(this, "sn_item");
 

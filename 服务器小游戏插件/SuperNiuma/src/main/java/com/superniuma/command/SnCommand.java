@@ -141,7 +141,8 @@ public final class SnCommand implements CommandExecutor, TabCompleter {
         }
         GameRoom room = plugin.rooms().byId(args[1]);
         if (room == null) {
-            Msg.send(player, "&c房间不存在：" + args[1]);
+            Msg.send(player, "&c房间不存在或已结束：&e" + args[1]
+                    + "&c。这里要填 /sn create 返回的 4 位房间号，不是地图名；用 /sn list 查看当前房间。");
             return;
         }
         if (!plugin.rooms().join(room.id(), player)) {
