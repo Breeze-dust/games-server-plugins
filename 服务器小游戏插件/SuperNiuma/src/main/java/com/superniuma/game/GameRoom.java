@@ -26,6 +26,7 @@ import org.bukkit.scoreboard.Team;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,6 +60,7 @@ public final class GameRoom {
     private final List<MechanismInstance> mechanisms = new ArrayList<>();
     private final Map<UUID, PlacementSession> sessions = new LinkedHashMap<>();
     private final List<MechanismChoice> selectionPool = new ArrayList<>();
+    private final Map<String, Integer> selectionSlots = new LinkedHashMap<>();
     private final Map<String, UUID> optionOwners = new HashMap<>();
     private final Random random = new Random();
 
@@ -160,6 +162,11 @@ public final class GameRoom {
 
     public List<MechanismChoice> selectionPool() {
         return selectionPool;
+    }
+
+    /** 本回合所有玩家共用的机关槽位（optionId -> 箱子槽位）。 */
+    public Map<String, Integer> selectionSlots() {
+        return selectionSlots;
     }
 
     public UUID optionOwner(String optionId) {
@@ -352,6 +359,7 @@ public final class GameRoom {
         roundData = new RoundData();
         optionOwners.clear();
         selectionPool.clear();
+        selectionSlots.clear();
         sessions.clear();
         for (Participant participant : participants) {
             participant.resetRound();
@@ -408,6 +416,17 @@ public final class GameRoom {
             }
             MechanismDef.Variant variant = plugin.mechanisms().pickVariant(def, random);
             selectionPool.add(new MechanismChoice("opt-" + i + "-" + def.id(), def, variant));
+        }
+
+        // 同一回合所有玩家看到同一套槽位；只在回合开始时洗一次。
+        selectionSlots.clear();
+        List<Integer> slots = new ArrayList<>();
+        for (int i = 0; i < 27; i++) {
+            slots.add(i);
+        }
+        Collections.shuffle(slots, random);
+        for (int i = 0; i < selectionPool.size() && i < slots.size(); i++) {
+            selectionSlots.put(selectionPool.get(i).optionId(), slots.get(i));
         }
     }
 
@@ -570,6 +589,18 @@ public final class GameRoom {
         if (participant != null) {
             participant.setPlaced(true);
         }
+        int placed = 0;
+        int total = 0;
+        for (Participant other : participants) {
+            if (other.choice() == null) {
+                continue;
+            }
+            total++;
+            if (other.placed()) {
+                placed++;
+            }
+        }
+        broadcast("&7" + player.getName() + " 已放置机关（" + placed + "/" + total + "）");
         Msg.send(player, "&a机关已放置！");
         player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.4f);
     }
@@ -702,6 +733,23 @@ public final class GameRoom {
                 continue;
             }
             if (Bukkit.getPlayer(participant.uuid()) != null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 所有有机关的玩家都确认放置（离线玩家视为已放好）。 */
+    private boolean allPlaced() {
+        for (Participant participant : participants) {
+            if (participant.choice() == null) {
+                continue;
+            }
+            if (Bukkit.getPlayer(participant.uuid()) == null) {
+                continue;
+            }
+            PlacementSession session = sessions.get(participant.uuid());
+            if (session == null || !session.confirmed()) {
                 return false;
             }
         }
@@ -1115,7 +1163,10 @@ public final class GameRoom {
                     }
                 }
                 phaseTicks--;
-                if (phaseTicks <= 0) {
+                if (allPlaced()) {
+                    broadcast("&a所有机关都已放置，提前开始跑酷！");
+                    beginRunning();
+                } else if (phaseTicks <= 0) {
                     beginRunning();
                 }
             }

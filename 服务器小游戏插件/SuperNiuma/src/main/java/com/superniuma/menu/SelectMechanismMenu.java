@@ -13,15 +13,11 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 import java.util.UUID;
 
 /** 选择一个机关（20 秒，不可自己关闭）。 */
 public final class SelectMechanismMenu {
-
-    private static final Random RANDOM = new Random();
 
     private SelectMechanismMenu() {
     }
@@ -46,24 +42,19 @@ public final class SelectMechanismMenu {
     }
 
     private static void fill(GameRoom room, Player player, Inventory inventory, MenuHolder holder) {
-        List<Integer> slots = new ArrayList<>();
-        for (int i = 0; i < inventory.getSize(); i++) {
-            slots.add(i);
-        }
-        Collections.shuffle(slots, RANDOM);
-
-        int index = 0;
         for (MechanismChoice choice : room.selectionPool()) {
-            if (index >= slots.size()) {
-                break;
+            Integer slot = room.selectionSlots().get(choice.optionId());
+            if (slot == null || slot < 0 || slot >= inventory.getSize()) {
+                continue;
             }
-            int slot = slots.get(index++);
             inventory.setItem(slot, item(room, player, choice));
             holder.action(slot, "select:" + choice.optionId());
         }
-        for (; index < slots.size(); index++) {
-            inventory.setItem(slots.get(index), RoomMenu.item(
-                    Material.GRAY_STAINED_GLASS_PANE, "&8", List.of()));
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            if (inventory.getItem(slot) == null) {
+                inventory.setItem(slot, RoomMenu.item(
+                        Material.GRAY_STAINED_GLASS_PANE, "&8", List.of()));
+            }
         }
     }
 
