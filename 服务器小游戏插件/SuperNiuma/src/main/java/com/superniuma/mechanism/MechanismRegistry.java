@@ -67,6 +67,7 @@ public final class MechanismRegistry {
         double lowWeight = sec.getDouble("low-clear-weight", 40.0);
         int lowMin = sec.getInt("low-clear-min-count", 1);
         double scale = sec.getDouble("scale", 0.5);
+        int maxOnField = sec.getInt("max-on-field", 3);
 
         List<MechanismDef.Variant> variants = new ArrayList<>();
         ConfigurationSection variantRoot = sec.getConfigurationSection("variants");
@@ -96,7 +97,8 @@ public final class MechanismRegistry {
         }
 
         return new MechanismDef(id, enabled, weight, icon, name, lore, rotation, points,
-                interval, range, arrowSpeed, radius, lowRate, lowWeight, lowMin, scale, variants);
+                interval, range, arrowSpeed, radius, lowRate, lowWeight, lowMin, scale,
+                maxOnField, variants);
     }
 
     private RotationRule parseRotation(String raw) {

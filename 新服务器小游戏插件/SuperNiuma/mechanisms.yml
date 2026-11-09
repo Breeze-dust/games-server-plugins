@@ -97,8 +97,10 @@ mechanisms:
     lore:
       - '&7没有碰撞箱的缩小金块'
       - '&7碰到后消失，回合结算加分'
+      - '&7场上同时存在数量有上限'
     points: 0.5
     scale: 0.5
+    max-on-field: 3         # 整局同时存在的金币上限；炸掉一个后才会再出现在选择里
 
   bomb:
     enabled: true

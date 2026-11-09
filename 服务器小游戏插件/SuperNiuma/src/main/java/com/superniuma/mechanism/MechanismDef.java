@@ -23,12 +23,14 @@ public final class MechanismDef {
     private final double lowClearWeight;
     private final int lowClearMinCount;
     private final double scale;
+    private final int maxOnField;
     private final List<Variant> variants;
 
     public MechanismDef(String id, boolean enabled, double weight, Material icon, String displayName,
                         List<String> lore, RotationRule rotation, double points, int intervalTicks,
                         int arrowRange, double arrowSpeed, int bombRadius, double lowClearRate,
-                        double lowClearWeight, int lowClearMinCount, double scale, List<Variant> variants) {
+                        double lowClearWeight, int lowClearMinCount, double scale, int maxOnField,
+                        List<Variant> variants) {
         this.id = id;
         this.enabled = enabled;
         this.weight = Math.max(0.0, weight);
@@ -45,6 +47,7 @@ public final class MechanismDef {
         this.lowClearWeight = Math.max(0.0, lowClearWeight);
         this.lowClearMinCount = Math.max(0, lowClearMinCount);
         this.scale = scale;
+        this.maxOnField = Math.max(0, maxOnField);
         this.variants = List.copyOf(variants);
     }
 
@@ -110,6 +113,11 @@ public final class MechanismDef {
 
     public double scale() {
         return scale;
+    }
+
+    /** 该机关在场上同时存在的最大数量（金币用；0 表示不允许出现）。 */
+    public int maxOnField() {
+        return maxOnField;
     }
 
     public List<Variant> variants() {

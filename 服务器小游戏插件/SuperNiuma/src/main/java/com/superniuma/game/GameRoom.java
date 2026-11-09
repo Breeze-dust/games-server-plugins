@@ -48,7 +48,7 @@ import java.util.UUID;
 public final class GameRoom {
 
     public enum Phase {
-        WAITING, SELECTING, PLACING, RUNNING, SCORING, ENDED
+        WAITING, SELECTING, PLACING, STARTING, RUNNING, SCORING, ENDED
     }
 
     public static final String GAME_NAME = "超级牛马";
@@ -446,6 +446,10 @@ public final class GameRoom {
         optionCount = Math.min(27, optionCount);
         int forced = lowClear ? Math.min(optionCount, bomb.lowClearMinCount()) : 0;
 
+        MechanismDef coin = plugin.mechanisms().def("coin");
+        int coinAllowance = coin == null ? 0
+                : Math.max(0, coin.maxOnField() - coinOnField());
+
         for (int i = 0; i < optionCount; i++) {
             MechanismDef def;
             if (forced > 0) {
@@ -453,6 +457,13 @@ public final class GameRoom {
                 forced--;
             } else {
                 def = plugin.mechanisms().pickDef(random, lowClear ? bomb.lowClearWeight() : -1);
+                if (def != null && "coin".equals(def.id())) {
+                    if (coinAllowance <= 0) {
+                        def = pickNonCoinDef();
+                    } else {
+                        coinAllowance--;
+                    }
+                }
             }
             if (def == null) {
                 def = enabled.get(random.nextInt(enabled.size()));
@@ -471,6 +482,31 @@ public final class GameRoom {
         for (int i = 0; i < selectionPool.size() && i < slots.size(); i++) {
             selectionSlots.put(selectionPool.get(i).optionId(), slots.get(i));
         }
+    }
+
+    private int coinOnField() {
+        int count = 0;
+        for (MechanismInstance instance : mechanisms) {
+            if (!instance.removed() && "coin".equals(instance.def().id())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private MechanismDef pickNonCoinDef() {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            MechanismDef def = plugin.mechanisms().pickDef(random, -1);
+            if (def != null && !"coin".equals(def.id())) {
+                return def;
+            }
+        }
+        for (MechanismDef candidate : plugin.mechanisms().enabled()) {
+            if (!"coin".equals(candidate.id())) {
+                return candidate;
+            }
+        }
+        return plugin.mechanisms().def("coin");
     }
 
     // ---------- 选择机关 ----------
@@ -755,8 +791,8 @@ public final class GameRoom {
             plugin.mechanismManager().clearPreview(session);
         }
 
-        phase = Phase.RUNNING;
-        phaseTicks = secondsToTicks(plugin.getConfig().getInt("running.duration-seconds", 180));
+        phase = Phase.STARTING;
+        phaseTicks = 0;
 
         Location start = arena.getStart();
         for (Participant participant : participants) {
@@ -772,6 +808,23 @@ public final class GameRoom {
             clearGameInventory(player);
             player.setFireTicks(0);
         }
+        broadcast("&e跑酷即将开始，3 秒倒计时后出发。");
+
+        List<UUID> ids = new ArrayList<>();
+        for (Participant participant : participants) {
+            ids.add(participant.uuid());
+        }
+        if (!plugin.startCountdown().begin("run:" + id, ids, this::actuallyStartRunning)) {
+            actuallyStartRunning();
+        }
+    }
+
+    private void actuallyStartRunning() {
+        if (phase != Phase.STARTING) {
+            return;
+        }
+        phase = Phase.RUNNING;
+        phaseTicks = secondsToTicks(plugin.getConfig().getInt("running.duration-seconds", 180));
         broadcast("&a&l跑酷开始！到达终点即可过关。");
         for (Player player : onlinePlayers()) {
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
@@ -1167,6 +1220,7 @@ public final class GameRoom {
         ending = true;
         phase = Phase.ENDED;
         plugin.startCountdown().cancel("room:" + id);
+        plugin.startCountdown().cancel("run:" + id);
         if (task != null) {
             task.cancel();
             task = null;
@@ -1360,6 +1414,7 @@ public final class GameRoom {
             case WAITING -> "等待中";
             case SELECTING -> "选择机关";
             case PLACING -> "摆放机关";
+            case STARTING -> "跑酷倒计时";
             case RUNNING -> "跑酷中";
             case SCORING -> "记分中";
             case ENDED -> "已结束";
