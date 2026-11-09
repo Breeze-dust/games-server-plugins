@@ -45,7 +45,8 @@ public final class MenuListener implements Listener {
         if (action.startsWith("create:")) {
             Arena arena = plugin.arenas().get(action.substring("create:".length()));
             if (arena != null) {
-                CreateRoomMenu.open(plugin, player, arena);
+                // 在 InventoryClickEvent 里直接 openInventory 容易被服务端随后关闭，延后 1 tick 打开。
+                later(player, () -> CreateRoomMenu.open(plugin, player, arena));
             }
             return;
         }
@@ -75,16 +76,24 @@ public final class MenuListener implements Listener {
             return;
         }
         switch (action) {
-            case "refresh", "back" -> RoomMenu.open(plugin, player);
-            case "mode" -> CreateRoomMenu.cycleMode(plugin, player);
-            case "win:-" -> CreateRoomMenu.adjustWin(plugin, player, -1);
-            case "win:+" -> CreateRoomMenu.adjustWin(plugin, player, 1);
-            case "rounds:-" -> CreateRoomMenu.adjustRounds(plugin, player, -1);
-            case "rounds:+" -> CreateRoomMenu.adjustRounds(plugin, player, 1);
+            case "refresh", "back" -> later(player, () -> RoomMenu.open(plugin, player));
+            case "mode" -> later(player, () -> CreateRoomMenu.cycleMode(plugin, player));
+            case "win:-" -> later(player, () -> CreateRoomMenu.adjustWin(plugin, player, -1));
+            case "win:+" -> later(player, () -> CreateRoomMenu.adjustWin(plugin, player, 1));
+            case "rounds:-" -> later(player, () -> CreateRoomMenu.adjustRounds(plugin, player, -1));
+            case "rounds:+" -> later(player, () -> CreateRoomMenu.adjustRounds(plugin, player, 1));
             case "create" -> CreateRoomMenu.create(plugin, player);
             default -> {
             }
         }
+    }
+
+    private void later(Player player, Runnable action) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) {
+                action.run();
+            }
+        });
     }
 
     @EventHandler
