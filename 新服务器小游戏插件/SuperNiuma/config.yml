@@ -10,11 +10,20 @@ room:
 
 selection:
   duration-seconds: 20     # 选择机关环节时长
+  auto-close-seconds: 2    # 所有人都选好后，再过几秒自动关闭界面并进入摆放
+
+countdown:
+  enabled: true            # 开局前是否播放 3 秒倒计时
+  seconds: 3
+  freeze: true             # 倒计时期间锁住移动（仍可转头）
+  title: '&e游戏即将开始：{time}'
+  subtitle: '&7准备好'
 
 placement:
   duration-seconds: 90     # 摆放机关环节时长
   start-distance: 3        # 半透明预览与玩家的初始距离（格）
   max-distance: 12         # 滚轮能推到的最大距离（格）
+  reach-distance: 40       # 摆放阶段临时扩大的方块交互距离，供中键对准星定位
 
 running:
   duration-seconds: 180    # 跑酷环节最长时长，超时未到终点算失败

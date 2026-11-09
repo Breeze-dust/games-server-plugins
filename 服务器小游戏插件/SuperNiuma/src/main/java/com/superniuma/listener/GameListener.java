@@ -3,6 +3,8 @@ package com.superniuma.listener;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.game.GameRoom;
 import com.superniuma.mechanism.PlacementSession;
+import io.papermc.paper.event.player.PlayerPickBlockEvent;
+import io.papermc.paper.event.player.PlayerPickEntityEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -14,6 +16,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -108,6 +111,40 @@ public final class GameListener implements Listener {
         // 取消槽位变化，把滚轮当成"向前 / 向后"一步。
         event.setCancelled(true);
         room.scroll(player, delta > 0);
+    }
+
+    /** 摆放阶段中键（创造模式拾取方块）：把机关移动到准星位置。 */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPickBlock(PlayerPickBlockEvent event) {
+        Player player = event.getPlayer();
+        GameRoom room = plugin.rooms().roomOf(player);
+        if (room == null || room.phase() != GameRoom.Phase.PLACING) {
+            return;
+        }
+        event.setCancelled(true);
+        PlacementSession session = room.session(player);
+        if (session != null && !session.confirmed()) {
+            room.moveToCrosshair(player, event.getBlock());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPickEntity(PlayerPickEntityEvent event) {
+        GameRoom room = plugin.rooms().roomOf(event.getPlayer());
+        if (room != null && room.phase() == GameRoom.Phase.PLACING) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** 创造模式下拦截背包打开，避免玩家从创造物品栏拿东西。 */
+    @EventHandler
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getPlayer() instanceof Player player) {
+            GameRoom room = plugin.rooms().roomOf(player);
+            if (room != null && room.phase() == GameRoom.Phase.PLACING) {
+                event.setCancelled(true);
+            }
+        }
     }
 
     @EventHandler

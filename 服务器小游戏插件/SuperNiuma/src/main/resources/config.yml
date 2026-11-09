@@ -23,6 +23,7 @@ placement:
   duration-seconds: 90     # 摆放机关环节时长
   start-distance: 3        # 半透明预览与玩家的初始距离（格）
   max-distance: 12         # 滚轮能推到的最大距离（格）
+  reach-distance: 40       # 摆放阶段临时扩大的方块交互距离，供中键对准星定位
 
 running:
   duration-seconds: 180    # 跑酷环节最长时长，超时未到终点算失败

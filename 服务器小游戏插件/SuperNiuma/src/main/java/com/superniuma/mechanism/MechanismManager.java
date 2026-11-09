@@ -287,6 +287,22 @@ public final class MechanismManager {
         Msg.actionBar(session.player(), message);
     }
 
+    public void moveTo(PlacementSession session, Location anchor) {
+        if (anchor == null) {
+            return;
+        }
+        session.setAnchor(anchor.clone());
+        if (!session.locked()) {
+            if ("dispenser".equals(session.choice().def().id())) {
+                int base = baseYawSteps(session.player().getFacing());
+                session.setBaseYawSteps(base);
+                session.setYawSteps(base);
+            }
+            session.setLocked(true);
+        }
+        session.setGhostCells(List.of());
+    }
+
     // ---------- 放置 ----------
 
     public PlaceResult place(GameRoom room, PlacementSession session) {

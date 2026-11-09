@@ -13,10 +13,16 @@ import com.superniuma.mechanism.PlacementSession;
 import com.superniuma.menu.SelectMechanismMenu;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -71,6 +77,8 @@ public final class GameRoom {
 
     private final Map<UUID, ItemStack[]> savedInventory = new HashMap<>();
     private final Map<UUID, ItemStack[]> savedArmor = new HashMap<>();
+    private final Map<UUID, org.bukkit.GameMode> savedModes = new HashMap<>();
+    private final Map<UUID, Double> savedReach = new HashMap<>();
     private final Map<UUID, Scoreboard> savedBoards = new HashMap<>();
     private final Map<UUID, Integer> dropCounts = new HashMap<>();
     private final Map<UUID, Long> lastDropMillis = new HashMap<>();
@@ -547,9 +555,10 @@ public final class GameRoom {
                 continue;
             }
             player.teleport(arena.getSpawn());
-            player.setGameMode(org.bukkit.GameMode.ADVENTURE);
+            player.setGameMode(org.bukkit.GameMode.CREATIVE);
             player.setAllowFlight(true);
             player.setFlying(true);
+            enableReach(player);
             givePlacementItems(player, participant.choice());
             PlacementSession session = new PlacementSession(player, participant.choice(), startDistance);
             sessions.put(player.getUniqueId(), session);
@@ -756,6 +765,7 @@ public final class GameRoom {
             player.setGameMode(org.bukkit.GameMode.ADVENTURE);
             player.setAllowFlight(false);
             player.setFlying(false);
+            restoreReach(player);
             clearGameInventory(player);
             player.setFireTicks(0);
         }
@@ -1196,8 +1206,10 @@ public final class GameRoom {
         player.setFlying(false);
         player.setFireTicks(0);
         player.setCanPickupItems(true);
-        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
-            player.setGameMode(org.bukkit.GameMode.ADVENTURE);
+        restoreReach(player);
+        org.bukkit.GameMode savedMode = savedModes.remove(uuid);
+        if (savedMode != null) {
+            player.setGameMode(savedMode);
         }
         Scoreboard previous = savedBoards.remove(uuid);
         player.setScoreboard(previous != null
@@ -1229,6 +1241,67 @@ public final class GameRoom {
             armorCopy[i] = armor[i] == null ? null : armor[i].clone();
         }
         savedArmor.put(uuid, armorCopy);
+        savedModes.putIfAbsent(uuid, player.getGameMode());
+    }
+
+    /** 摆放阶段临时扩大方块交互距离，让中键拾取准星处的方块。 */
+    private void enableReach(Player player) {
+        AttributeInstance attribute = player.getAttribute(Attribute.BLOCK_INTERACTION_RANGE);
+        if (attribute == null) {
+            return;
+        }
+        savedReach.putIfAbsent(player.getUniqueId(), attribute.getBaseValue());
+        double reach = Math.max(attribute.getBaseValue(),
+                plugin.getConfig().getDouble("placement.reach-distance", 40.0));
+        attribute.setBaseValue(reach);
+    }
+
+    private void restoreReach(Player player) {
+        Double previous = savedReach.remove(player.getUniqueId());
+        AttributeInstance attribute = player.getAttribute(Attribute.BLOCK_INTERACTION_RANGE);
+        if (attribute != null) {
+            attribute.setBaseValue(previous != null ? previous : attribute.getDefaultValue());
+        }
+    }
+
+    /** 中键：把机关直接移动到准星指向的位置。 */
+    public void moveToCrosshair(Player player, Block picked) {
+        PlacementSession session = session(player);
+        if (phase != Phase.PLACING || session == null || session.confirmed()) {
+            return;
+        }
+        Location target = crosshairTarget(player, picked);
+        if (target == null) {
+            Msg.actionBar(player, "&c准星没有指向可放置的位置");
+            return;
+        }
+        plugin.mechanismManager().moveTo(session, target);
+        plugin.mechanismManager().updatePreview(this, session);
+        Msg.actionBar(player, "&a机关已移动到准星位置");
+    }
+
+    private Location crosshairTarget(Player player, Block picked) {
+        int reach = Math.max(5, plugin.getConfig().getInt("placement.reach-distance", 40));
+        RayTraceResult result = player.getWorld().rayTraceBlocks(
+                player.getEyeLocation(), player.getEyeLocation().getDirection(),
+                reach, FluidCollisionMode.NEVER, true);
+        if (result != null && result.getHitBlock() != null) {
+            Block hit = result.getHitBlock();
+            BlockFace face = result.getHitBlockFace();
+            if (face != null) {
+                Block adjacent = hit.getRelative(face);
+                if (adjacent.isEmpty()) {
+                    return adjacent.getLocation();
+                }
+            }
+            return hit.getLocation();
+        }
+        if (picked != null) {
+            return picked.getLocation();
+        }
+        Location end = player.getEyeLocation().add(
+                player.getEyeLocation().getDirection().multiply(reach));
+        return end.getBlock().getLocation();
     }
 
     private void setupCollisionBoard(Player player) {
