@@ -5,7 +5,9 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /** 已经放到世界里的一个机关。 */
@@ -21,7 +23,9 @@ public final class MechanismInstance {
     private final BlockFace facing;
     private final List<PlacedBlock> blocks = new ArrayList<>();
     private final List<Entity> entities = new ArrayList<>();
+    private final Set<Location> brokenBlocks = new HashSet<>();
     private int cooldown;
+    private boolean hidden;
     private boolean removed;
 
     public MechanismInstance(MechanismDef def, MechanismDef.Variant variant, UUID owner,
@@ -91,6 +95,28 @@ public final class MechanismInstance {
 
     public void setRemoved(boolean removed) {
         this.removed = removed;
+    }
+
+    /** 易碎方块本回合是否已被踩碎。 */
+    public boolean isBroken(Location location) {
+        return brokenBlocks.contains(location);
+    }
+
+    public void markBroken(Location location) {
+        brokenBlocks.add(location.clone());
+    }
+
+    public void clearBroken() {
+        brokenBlocks.clear();
+    }
+
+    /** 间歇方块当前是否处于消失状态。 */
+    public boolean hidden() {
+        return hidden;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
     }
 
     /** 机关是否占据某个方块。 */

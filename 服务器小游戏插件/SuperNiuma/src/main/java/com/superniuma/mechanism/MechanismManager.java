@@ -115,6 +115,59 @@ public final class MechanismManager {
                     spawnBlockGhost(session, cell, data);
                 }
             }
+            case "spring" -> {
+                BlockData iron = Material.IRON_BLOCK.createBlockData();
+                BlockData glass = Material.BLUE_STAINED_GLASS.createBlockData();
+                int height = (int) Math.floor(def.height());
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, iron);
+                    for (int dy = 1; dy <= height; dy++) {
+                        spawnBlockGhost(session, cell.clone().add(0, dy, 0), glass);
+                    }
+                }
+            }
+            case "stairs" -> {
+                BlockData data = Material.OAK_STAIRS.createBlockData();
+                if (data instanceof Directional directional) {
+                    directional.setFacing(facing);
+                }
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "mine" -> {
+                BlockData data = Material.RED_CARPET.createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "ladder" -> {
+                BlockData data = Material.LADDER.createBlockData();
+                if (data instanceof Directional directional) {
+                    directional.setFacing(facing);
+                }
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "fragile" -> {
+                BlockData data = Material.CRACKED_STONE_BRICKS.createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "intermittent" -> {
+                BlockData data = Material.LODESTONE.createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "ice" -> {
+                BlockData data = Material.ICE.createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
             case "coin" -> spawnCoinGhost(session);
             case "bomb" -> {
                 Location anchor = session.anchor();
@@ -219,7 +272,7 @@ public final class MechanismManager {
         }
         session.setAnchor(anchor);
         session.setLocked(true);
-        if ("dispenser".equals(session.choice().def().id())) {
+        if (usesBaseYaw(session.choice().def())) {
             int base = baseYawSteps(session.player().getFacing());
             session.setBaseYawSteps(base);
             session.setYawSteps(base);
@@ -237,10 +290,13 @@ public final class MechanismManager {
         if (rule.supportsHorizontal()) {
             session.setYawSteps(session.yawSteps() + 1);
             Msg.actionBar(session.player(), "&e水平旋转 90°（" + shownYaw(session) + "°）");
-        } else {
+        } else if (rule.supportsVertical()) {
             session.setPitchSteps(session.pitchSteps() + 2);
             Msg.actionBar(session.player(), "&e竖直翻转 180°（"
                     + (session.pitchSteps() == 2 ? "下" : "上") + "）");
+        } else {
+            Msg.actionBar(session.player(), "&c该机关无法旋转");
+            return;
         }
         session.setGhostCells(List.of());
     }
@@ -250,6 +306,10 @@ public final class MechanismManager {
             return;
         }
         RotationRule rule = session.choice().def().rotation();
+        if (!rule.supportsVertical()) {
+            Msg.actionBar(session.player(), "&c该机关无法竖直翻转");
+            return;
+        }
         int step = rule.verticalStepIsHalfTurn() ? 2 : 1;
         session.setPitchSteps(session.pitchSteps() + step);
         Msg.actionBar(session.player(), "&e竖直翻转 " + (step * 90) + "°（当前 "
@@ -303,7 +363,7 @@ public final class MechanismManager {
         }
         session.setAnchor(anchor.clone());
         if (!session.locked()) {
-            if ("dispenser".equals(session.choice().def().id())) {
+            if (usesBaseYaw(session.choice().def())) {
                 int base = baseYawSteps(session.player().getFacing());
                 session.setBaseYawSteps(base);
                 session.setYawSteps(base);
@@ -337,7 +397,7 @@ public final class MechanismManager {
             }
             session.setAnchor(anchor);
             session.setLocked(true);
-            if ("dispenser".equals(def.id())) {
+            if (usesBaseYaw(def)) {
                 int base = baseYawSteps(session.player().getFacing());
                 session.setBaseYawSteps(base);
                 session.setYawSteps(base);
@@ -367,6 +427,19 @@ public final class MechanismManager {
             }
         }
 
+        if ("mine".equals(def.id())
+                && !anchor.getBlock().getRelative(BlockFace.DOWN).getType().isSolid()) {
+            return PlaceResult.fail("地雷需要放在方块上。");
+        }
+        if ("ladder".equals(def.id())) {
+            BlockFace supportFace = facingFor(def, yawSteps, pitchSteps).getOppositeFace();
+            for (Location cell : cells) {
+                if (!cell.getBlock().getRelative(supportFace).getType().isSolid()) {
+                    return PlaceResult.fail("梯子需要贴在方块上。");
+                }
+            }
+        }
+
         MechanismInstance instance = new MechanismInstance(def, choice.variant(), session.owner(),
                 anchor, yawSteps, pitchSteps,
                 facingFor(def, yawSteps, pitchSteps));
@@ -375,6 +448,14 @@ public final class MechanismManager {
             case "spike" -> placeSpike(instance, choice, anchor, yawSteps, pitchSteps);
             case "dispenser" -> placeDispenser(instance, cells);
             case "coin" -> placeCoin(instance);
+            case "spring" -> placeMaterial(instance, cells, Material.IRON_BLOCK.createBlockData());
+            case "stairs" -> placeDirectional(instance, cells, Material.OAK_STAIRS, instance.facing());
+            case "mine" -> placeMaterial(instance, cells, Material.RED_CARPET.createBlockData());
+            case "ladder" -> placeDirectional(instance, cells, Material.LADDER, instance.facing());
+            case "fragile" -> placeMaterial(instance, cells,
+                    Material.CRACKED_STONE_BRICKS.createBlockData());
+            case "intermittent" -> placeMaterial(instance, cells, Material.LODESTONE.createBlockData());
+            case "ice" -> placeMaterial(instance, cells, Material.ICE.createBlockData());
             default -> placePlatform(room, instance, cells);
         }
         room.addMechanism(instance);
@@ -385,6 +466,23 @@ public final class MechanismManager {
     private void placePlatform(GameRoom room, MechanismInstance instance, List<Location> cells) {
         Material wool = room.woolFor(instance.owner());
         BlockData data = wool.createBlockData();
+        for (Location cell : cells) {
+            setBlock(instance, cell, data);
+        }
+    }
+
+    private void placeMaterial(MechanismInstance instance, List<Location> cells, BlockData data) {
+        for (Location cell : cells) {
+            setBlock(instance, cell, data);
+        }
+    }
+
+    private void placeDirectional(MechanismInstance instance, List<Location> cells,
+                                  Material material, BlockFace facing) {
+        BlockData data = material.createBlockData();
+        if (data instanceof Directional directional) {
+            directional.setFacing(facing);
+        }
         for (Location cell : cells) {
             setBlock(instance, cell, data);
         }
@@ -463,7 +561,8 @@ public final class MechanismManager {
 
     private void setBlock(MechanismInstance instance, Location location, BlockData data) {
         Block block = location.getBlock();
-        instance.blocks().add(new PlacedBlock(location.clone(), block.getBlockData().clone()));
+        instance.blocks().add(new PlacedBlock(location.clone(),
+                block.getBlockData().clone(), data.clone()));
         block.setBlockData(data, false);
     }
 
@@ -478,6 +577,10 @@ public final class MechanismManager {
                 case "coin" -> tickCoin(room, instance);
                 case "spike" -> tickSpike(room, instance);
                 case "dispenser" -> tickDispenser(room, instance);
+                case "spring" -> tickSpring(room, instance);
+                case "mine" -> tickMine(room, instance);
+                case "fragile" -> tickFragile(room, instance);
+                case "intermittent" -> tickIntermittent(room, instance);
                 default -> {
                 }
             }
@@ -528,8 +631,127 @@ public final class MechanismManager {
         }
     }
 
-    private void tickDispenser(GameRoom room, MechanismInstance instance) {
+    private void tickSpring(GameRoom room, MechanismInstance instance) {
         if (!room.isRunning()) {
+            return;
+        }
+        for (Player player : room.activePlayers()) {
+            Vector velocity = player.getVelocity();
+            if (velocity.getY() > 0.05) {
+                continue;
+            }
+            Location location = player.getLocation();
+            for (PlacedBlock block : instance.blocks()) {
+                Location base = block.location();
+                double top = base.getBlockY() + 1.0;
+                if (location.getBlockX() == base.getBlockX()
+                        && location.getBlockZ() == base.getBlockZ()
+                        && Math.abs(location.getY() - top) < 0.35) {
+                    double launch = Math.sqrt(2.0 * 0.08 * Math.max(0.0, instance.def().height()));
+                    player.setVelocity(new Vector(velocity.getX(),
+                            Math.max(launch, velocity.getY()), velocity.getZ()));
+                    player.playSound(player.getLocation(),
+                            Sound.ENTITY_SLIME_JUMP, 1.0f, 1.2f);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void tickMine(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        Location center = instance.anchor();
+        BoundingBox trigger = new BoundingBox(
+                center.getBlockX(), center.getBlockY(), center.getBlockZ(),
+                center.getBlockX() + 1.0, center.getBlockY() + 1.0, center.getBlockZ() + 1.0);
+        for (Player player : room.activePlayers()) {
+            if (!player.getBoundingBox().overlaps(trigger)) {
+                continue;
+            }
+            int radius = Math.max(1, instance.def().bombRadius());
+            for (Player victim : new ArrayList<>(room.activePlayers())) {
+                Location loc = victim.getLocation();
+                if (Math.abs(loc.getBlockX() - center.getBlockX()) <= radius
+                        && Math.abs(loc.getBlockY() - center.getBlockY()) <= radius
+                        && Math.abs(loc.getBlockZ() - center.getBlockZ()) <= radius) {
+                    room.onPlayerFailed(victim, instance.owner(), "踩到地雷");
+                }
+            }
+            center.getWorld().spawnParticle(Particle.EXPLOSION,
+                    center.clone().add(0.5, 0.5, 0.5), 2);
+            center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
+            remove(room, instance);
+            return;
+        }
+    }
+
+    private void tickFragile(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        for (PlacedBlock block : instance.blocks()) {
+            Location loc = block.location();
+            if (instance.isBroken(loc)) {
+                continue;
+            }
+            for (Player player : room.activePlayers()) {
+                Location p = player.getLocation();
+                if (p.getBlockX() == loc.getBlockX()
+                        && p.getBlockZ() == loc.getBlockZ()
+                        && p.getBlockY() == loc.getBlockY() + 1) {
+                    instance.markBroken(loc);
+                    loc.getBlock().setType(Material.AIR, false);
+                    loc.getWorld().playSound(loc, Sound.BLOCK_STONE_BREAK, 0.8f, 1.0f);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void tickIntermittent(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        instance.setCooldown(instance.cooldown() - 1);
+        if (instance.cooldown() > 0) {
+            return;
+        }
+        instance.setCooldown(instance.def().intervalTicks());
+        boolean hide = !instance.hidden();
+        instance.setHidden(hide);
+        for (PlacedBlock block : instance.blocks()) {
+            if (hide) {
+                block.location().getBlock().setType(Material.AIR, false);
+            } else {
+                block.location().getBlock().setBlockData(block.placed(), false);
+            }
+        }
+    }
+
+    /** 回合开始时恢复易碎方块、重置间歇方块的状态。 */
+    public void resetRound(GameRoom room) {
+        for (MechanismInstance instance : room.mechanisms()) {
+            if (instance.removed()) {
+                continue;
+            }
+            if ("fragile".equals(instance.def().id())) {
+                instance.clearBroken();
+                for (PlacedBlock block : instance.blocks()) {
+                    block.location().getBlock().setBlockData(block.placed(), false);
+                }
+            } else if ("intermittent".equals(instance.def().id())) {
+                instance.setHidden(false);
+                instance.setCooldown(instance.def().intervalTicks());
+                for (PlacedBlock block : instance.blocks()) {
+                    block.location().getBlock().setBlockData(block.placed(), false);
+                }
+            }
+        }
+    }
+
+    private void tickDispenser(GameRoom room, MechanismInstance instance) {        if (!room.isRunning()) {
             return;
         }
         instance.setCooldown(instance.cooldown() - 1);
@@ -671,15 +893,20 @@ public final class MechanismManager {
                     }
                 }
             }
-            case "platform" -> {
-                int sizeX = choice.variant().sizeX();
-                int sizeZ = choice.variant().sizeZ();
-                for (int x = 0; x < sizeX; x++) {
-                    for (int z = 0; z < sizeZ; z++) {
-                        out.add(rotated(anchor, x - sizeX / 2, 0, z - sizeZ / 2, yawSteps, pitchSteps));
-                    }
+            case "platform", "spring", "fragile", "ice" -> planarCells(choice, anchor, yawSteps, pitchSteps, out);
+            case "stairs" -> {
+                int height = choice.variant().sizeY();
+                for (int i = 0; i < height; i++) {
+                    out.add(rotated(anchor, 0, i, i, yawSteps, pitchSteps));
                 }
             }
+            case "ladder" -> {
+                int height = choice.variant().sizeY();
+                for (int i = 0; i < height; i++) {
+                    out.add(rotated(anchor, 0, i, 0, yawSteps, pitchSteps));
+                }
+            }
+            case "mine", "intermittent" -> out.add(anchor.clone());
             case "bomb" -> {
                 int radius = def.bombRadius();
                 for (int x = -radius; x <= radius; x++) {
@@ -693,6 +920,18 @@ public final class MechanismManager {
             default -> out.add(anchor.clone());
         }
         return out;
+    }
+
+    private void planarCells(MechanismChoice choice, Location anchor, int yawSteps,
+                             int pitchSteps, List<Location> out) {
+        int sizeX = choice.variant().sizeX();
+        int sizeZ = choice.variant().sizeZ();
+        for (int x = 0; x < sizeX; x++) {
+            for (int z = 0; z < sizeZ; z++) {
+                out.add(rotated(anchor, x - sizeX / 2, 0, z - sizeZ / 2,
+                        yawSteps, pitchSteps));
+            }
+        }
     }
 
     /** 先把相对偏移绕 X 轴竖直翻转（机关局部），再绕世界 Y 轴水平旋转。 */
@@ -770,7 +1009,21 @@ public final class MechanismManager {
                 && a.getBlockZ() == b.getBlockZ();
     }
 
+    /** 锁定位置时是否以玩家朝向作为基准 yaw。 */
+    private boolean usesBaseYaw(MechanismDef def) {
+        return "dispenser".equals(def.id())
+                || "stairs".equals(def.id())
+                || "ladder".equals(def.id());
+    }
+
     private BlockFace facingFor(MechanismDef def, int yawSteps, int pitchSteps) {
+        if ("stairs".equals(def.id()) || "ladder".equals(def.id())) {
+            BlockFace face = BlockFace.SOUTH;
+            for (int i = 0; i < (yawSteps & 3); i++) {
+                face = rotateY(face);
+            }
+            return face;
+        }
         if (!"dispenser".equals(def.id())) {
             return BlockFace.SOUTH;
         }

@@ -114,3 +114,155 @@ mechanisms:
     low-clear-rate: 0.05    # 本回合通关率低于该值时触发保底
     low-clear-weight: 40    # 触发保底时炸弹使用的权重
     low-clear-min-count: 1  # 保底至少出现几个炸弹
+
+  spring:
+    enabled: true
+    weight: 10
+    icon: IRON_BLOCK
+    name: '&b弹簧方块'
+    lore:
+      - '&7站在上方会被弹起'
+      - '&7保留当前水平速度'
+      - '&7无法旋转'
+    rotation: none
+    height: 5.0             # 弹射高度（格）；预览玻璃柱向下取整
+    variants:
+      small:
+        name: '1x1'
+        weight: 60
+        size: [1, 1]
+      large:
+        name: '2x2'
+        weight: 40
+        size: [2, 2]
+
+  stairs:
+    enabled: true
+    weight: 12
+    icon: OAK_STAIRS
+    name: '&6楼梯方块'
+    lore:
+      - '&7摆放一条橡木楼梯'
+      - '&7高度 3~6 格，宽度 1 格'
+      - '&7左键水平旋转'
+    rotation: horizontal-only
+    variants:
+      h3:
+        name: '3格高'
+        weight: 25
+        size: [1, 3, 3]
+      h4:
+        name: '4格高'
+        weight: 25
+        size: [1, 4, 4]
+      h5:
+        name: '5格高'
+        weight: 25
+        size: [1, 5, 5]
+      h6:
+        name: '6格高'
+        weight: 25
+        size: [1, 6, 6]
+
+  mine:
+    enabled: true
+    weight: 10
+    icon: RED_CARPET
+    name: '&c地雷'
+    lore:
+      - '&7踩到后 3x3x3 范围内玩家全部失败'
+      - '&7需要放在方块上'
+      - '&7无法旋转，触发后消失'
+    rotation: none
+    radius: 1
+
+  ladder:
+    enabled: true
+    weight: 12
+    icon: LADDER
+    name: '&e梯子'
+    lore:
+      - '&7放置一条竖直梯子'
+      - '&7需要贴在方块上'
+      - '&7只能水平旋转'
+    rotation: horizontal-only
+    variants:
+      short:
+        name: '1x2'
+        weight: 50
+        size: [1, 2, 1]
+      tall:
+        name: '1x3'
+        weight: 50
+        size: [1, 3, 1]
+
+  fragile:
+    enabled: true
+    weight: 12
+    icon: CRACKED_STONE_BRICKS
+    name: '&7易碎方块'
+    lore:
+      - '&7玩家经过上方后破碎'
+      - '&7只在当前回合生效，下回合恢复'
+    rotation: horizontal-only
+    variants:
+      v1x1:
+        name: '1x1'
+        weight: 20
+        size: [1, 1]
+      v1x2:
+        name: '1x2'
+        weight: 20
+        size: [1, 2]
+      v2x2:
+        name: '2x2'
+        weight: 20
+        size: [2, 2]
+      v2x3:
+        name: '2x3'
+        weight: 20
+        size: [2, 3]
+      v1x3:
+        name: '1x3'
+        weight: 20
+        size: [1, 3]
+
+  intermittent:
+    enabled: true
+    weight: 8
+    icon: LODESTONE
+    name: '&8间歇方块'
+    lore:
+      - '&7周期性出现和消失'
+      - '&7间隔可在配置中调整'
+      - '&7无法旋转'
+    rotation: none
+    interval-ticks: 60      # 出现/消失的切换间隔（tick）
+    variants:
+      default:
+        name: '1x1'
+        weight: 1
+        size: [1, 1]
+
+  ice:
+    enabled: true
+    weight: 12
+    icon: ICE
+    name: '&b冰平台'
+    lore:
+      - '&7会打滑的平台'
+      - '&7可水平/竖直旋转'
+    rotation: four-way
+    variants:
+      i1x2:
+        name: '1x2'
+        weight: 40
+        size: [1, 2]
+      i2x2:
+        name: '2x2'
+        weight: 30
+        size: [2, 2]
+      i3x3:
+        name: '3x3'
+        weight: 30
+        size: [3, 3]

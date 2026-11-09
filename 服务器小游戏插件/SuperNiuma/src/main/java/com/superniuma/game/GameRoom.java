@@ -404,8 +404,9 @@ public final class GameRoom {
         for (Participant participant : participants) {
             participant.resetRound();
         }
-        // 上一回合被吃掉的金币重新出现；其余机关跨回合保留。
+        // 上一回合被吃掉的金币重新出现；易碎/间歇机关恢复回合状态。
         plugin.mechanismManager().respawnCoins(this);
+        plugin.mechanismManager().resetRound(this);
         buildSelectionPool();
 
         phase = Phase.SELECTING;

@@ -106,6 +106,13 @@
 | `dispenser` 发射器 | 定时朝朝向发射箭；支持 1x1/1x3/2x3（宽度×高度，深度固定 1）；多格一起发射；预览显示真实发射器，出口始终朝外 | `variants.*.size`、`interval-ticks`、`arrow-range`、`arrow-speed` |
 | `coin` 金币 | 缩小的金块展示实体，无碰撞；玩家碰撞箱碰到即拾取并记分；场上同时存在数量受 `max-on-field` 限制 | `points`、`scale`、`max-on-field` |
 | `bomb` 炸弹 | 放置时炸掉范围内所有机关（含金币），不破坏地图方块 | `radius`、`low-clear-*` |
+| `spring` 弹簧方块 | 铁块 1x1/2x2；站上去保留水平速度弹起；蓝色玻璃柱预览最高点 | `height` |
+| `stairs` 楼梯方块 | 橡木楼梯 3~6 格高、宽度 1；只能水平旋转 | `variants.*.size` |
+| `mine` 地雷 | 红色地毯；踩到后 3x3x3 内玩家全部失败；需放在方块上；触发后消失 | `radius` |
+| `ladder` 梯子 | 竖直 1x2/1x3；需贴墙；只能水平旋转 | `variants.*.size` |
+| `fragile` 易碎方块 | 裂纹石砖 1x1/1x2/2x2/2x3/1x3；玩家经过上方破碎，下回合恢复 | `variants.*.size` |
+| `intermittent` 间歇方块 | 磁石；周期性出现/消失 | `interval-ticks` |
+| `ice` 冰平台 | 冰 1x2/2x2/3x3；可水平/竖直旋转 | `variants.*.size` |
 
 炸弹保底：若上一回合通关率低于 `low-clear-rate`，下一回合按 `low-clear-weight` 提高权重，并保证至少 `low-clear-min-count` 个。
 

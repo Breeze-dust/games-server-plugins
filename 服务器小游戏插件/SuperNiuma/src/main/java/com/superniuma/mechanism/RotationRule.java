@@ -13,14 +13,21 @@ public enum RotationRule {
     VERTICAL,
 
     /** 左键水平转 90°，右键上下翻 180°（尖刺这类）。 */
-    HORIZONTAL_FLIP;
+    HORIZONTAL_FLIP,
+
+    /** 只能水平旋转 90°，右键无效。 */
+    HORIZONTAL_ONLY,
+
+    /** 完全无法旋转。 */
+    NONE;
 
     public boolean supportsHorizontal() {
-        return this != VERTICAL;
+        return this == FOUR_WAY || this == SIX_WAY
+                || this == HORIZONTAL_FLIP || this == HORIZONTAL_ONLY;
     }
 
     public boolean supportsVertical() {
-        return true;
+        return this != HORIZONTAL_ONLY && this != NONE;
     }
 
     /** 右键一次是否翻 180°（否则是 90°）。 */

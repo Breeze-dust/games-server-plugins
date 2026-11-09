@@ -68,6 +68,7 @@ public final class MechanismRegistry {
         int lowMin = sec.getInt("low-clear-min-count", 1);
         double scale = sec.getDouble("scale", 0.5);
         int maxOnField = sec.getInt("max-on-field", 3);
+        double height = sec.getDouble("height", 5.0);
 
         List<MechanismDef.Variant> variants = new ArrayList<>();
         ConfigurationSection variantRoot = sec.getConfigurationSection("variants");
@@ -85,6 +86,10 @@ public final class MechanismRegistry {
                     // 发射器：size = [宽度, 高度]，深度固定 1 格，保证出口不被自己挡住。
                     sy = size.size() > 1 ? Math.max(1, size.get(1)) : 1;
                     sz = 1;
+                } else if (size.size() >= 3) {
+                    // 三段尺寸：[x, y, z]，用于楼梯/梯子这类需要高度的机关。
+                    sy = Math.max(1, size.get(1));
+                    sz = Math.max(1, size.get(2));
                 } else {
                     sz = size.size() > 1 ? Math.max(1, size.get(1)) : sx;
                 }
@@ -98,7 +103,7 @@ public final class MechanismRegistry {
 
         return new MechanismDef(id, enabled, weight, icon, name, lore, rotation, points,
                 interval, range, arrowSpeed, radius, lowRate, lowWeight, lowMin, scale,
-                maxOnField, variants);
+                maxOnField, height, variants);
     }
 
     private RotationRule parseRotation(String raw) {
