@@ -81,7 +81,7 @@ public final class MechanismManager {
         Material material = ghostMaterial(session.choice().def());
         for (Location cell : cells) {
             BlockDisplay display = cell.getWorld().spawn(
-                    cell.clone().add(0.5, 0.0, 0.5), BlockDisplay.class, d -> {
+                    cell.clone(), BlockDisplay.class, d -> {
                         d.setBlock(material.createBlockData());
                         d.setPersistent(false);
                         d.setGravity(false);
@@ -189,11 +189,20 @@ public final class MechanismManager {
             return;
         }
         Vector direction = horizontalFacing(session.player());
-        if (!forward) {
-            direction.multiply(-1);
+        int stepX;
+        int stepZ;
+        if (Math.abs(direction.getX()) >= Math.abs(direction.getZ())) {
+            stepX = direction.getX() >= 0 ? 1 : -1;
+            stepZ = 0;
+        } else {
+            stepX = 0;
+            stepZ = direction.getZ() >= 0 ? 1 : -1;
         }
-        Location next = anchor.clone().add(direction.getX(), 0, direction.getZ());
-        session.setAnchor(next.getBlock().getLocation());
+        if (!forward) {
+            stepX = -stepX;
+            stepZ = -stepZ;
+        }
+        session.setAnchor(anchor.clone().add(stepX, 0, stepZ));
         session.setGhostCells(List.of());
         Msg.actionBar(session.player(), forward ? "&e向前移动 1 格" : "&e向后移动 1 格");
     }

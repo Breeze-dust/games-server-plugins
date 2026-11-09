@@ -10,6 +10,7 @@ room:
 
 selection:
   duration-seconds: 20     # 选择机关环节时长
+  auto-close-seconds: 2    # 所有人都选好后，再过几秒自动关闭界面并进入摆放
 
 placement:
   duration-seconds: 90     # 摆放机关环节时长

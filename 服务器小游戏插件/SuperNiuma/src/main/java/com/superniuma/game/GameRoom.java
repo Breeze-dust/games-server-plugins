@@ -76,6 +76,7 @@ public final class GameRoom {
 
     private Phase phase = Phase.WAITING;
     private int phaseTicks;
+    private int autoCloseTicks = -1;
     private int round;
     private RoundData roundData = new RoundData();
     private double lastClearRate = 1.0;
@@ -357,6 +358,7 @@ public final class GameRoom {
     private void startRound() {
         round++;
         roundData = new RoundData();
+        autoCloseTicks = -1;
         optionOwners.clear();
         selectionPool.clear();
         selectionSlots.clear();
@@ -739,6 +741,19 @@ public final class GameRoom {
                 continue;
             }
             if (Bukkit.getPlayer(participant.uuid()) != null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 所有在线玩家都已经选好机关。 */
+    private boolean allChosen() {
+        for (Participant participant : participants) {
+            if (Bukkit.getPlayer(participant.uuid()) == null) {
+                continue;
+            }
+            if (participant.choice() == null) {
                 return false;
             }
         }
@@ -1156,6 +1171,25 @@ public final class GameRoom {
         switch (phase) {
             case SELECTING -> {
                 phaseTicks--;
+                if (allChosen()) {
+                    if (autoCloseTicks < 0) {
+                        int seconds = Math.max(0, plugin.getConfig()
+                                .getInt("selection.auto-close-seconds", 2));
+                        autoCloseTicks = seconds * 20;
+                        if (autoCloseTicks == 0) {
+                            finishSelection();
+                            return;
+                        }
+                        broadcast("&a所有人都选好了，" + seconds + " 秒后开始摆放机关。");
+                    }
+                    autoCloseTicks--;
+                    if (autoCloseTicks <= 0) {
+                        finishSelection();
+                        return;
+                    }
+                } else {
+                    autoCloseTicks = -1;
+                }
                 if (phaseTicks <= 0) {
                     finishSelection();
                 }
