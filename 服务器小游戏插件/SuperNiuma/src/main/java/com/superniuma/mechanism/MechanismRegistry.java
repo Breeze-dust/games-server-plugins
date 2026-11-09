@@ -69,6 +69,7 @@ public final class MechanismRegistry {
         double scale = sec.getDouble("scale", 0.5);
         int maxOnField = sec.getInt("max-on-field", 3);
         double height = sec.getDouble("height", 5.0);
+        double distance = sec.getDouble("distance", 5.0);
 
         List<MechanismDef.Variant> variants = new ArrayList<>();
         ConfigurationSection variantRoot = sec.getConfigurationSection("variants");
@@ -103,7 +104,7 @@ public final class MechanismRegistry {
 
         return new MechanismDef(id, enabled, weight, icon, name, lore, rotation, points,
                 interval, range, arrowSpeed, radius, lowRate, lowWeight, lowMin, scale,
-                maxOnField, height, variants);
+                maxOnField, height, distance, variants);
     }
 
     private RotationRule parseRotation(String raw) {

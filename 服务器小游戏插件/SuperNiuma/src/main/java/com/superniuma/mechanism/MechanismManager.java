@@ -115,6 +115,15 @@ public final class MechanismManager {
                     spawnBlockGhost(session, cell, data);
                 }
             }
+            case "piston" -> {
+                BlockData data = Material.PISTON.createBlockData();
+                if (data instanceof Directional directional) {
+                    directional.setFacing(facing);
+                }
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
             case "spring" -> {
                 BlockData iron = Material.IRON_BLOCK.createBlockData();
                 BlockData glass = Material.BLUE_STAINED_GLASS.createBlockData();
@@ -447,6 +456,7 @@ public final class MechanismManager {
         switch (def.id()) {
             case "spike" -> placeSpike(instance, choice, anchor, yawSteps, pitchSteps);
             case "dispenser" -> placeDispenser(instance, cells);
+            case "piston" -> placeDirectional(instance, cells, Material.PISTON, instance.facing());
             case "coin" -> placeCoin(instance);
             case "spring" -> placeMaterial(instance, cells, Material.IRON_BLOCK.createBlockData());
             case "stairs" -> placeDirectional(instance, cells, Material.OAK_STAIRS, instance.facing());
@@ -577,6 +587,7 @@ public final class MechanismManager {
                 case "coin" -> tickCoin(room, instance);
                 case "spike" -> tickSpike(room, instance);
                 case "dispenser" -> tickDispenser(room, instance);
+                case "piston" -> tickPiston(room, instance);
                 case "spring" -> tickSpring(room, instance);
                 case "mine" -> tickMine(room, instance);
                 case "fragile" -> tickFragile(room, instance);
@@ -655,6 +666,41 @@ public final class MechanismManager {
                     break;
                 }
             }
+        }
+    }
+
+    private void tickPiston(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        BlockFace face = instance.facing();
+        Location front = instance.anchor().clone()
+                .add(face.getModX(), face.getModY(), face.getModZ());
+        BoundingBox zone = new BoundingBox(
+                front.getBlockX(), front.getBlockY(), front.getBlockZ(),
+                front.getBlockX() + 1.0, front.getBlockY() + 1.0, front.getBlockZ() + 1.0);
+        Vector direction = face.getDirection();
+        double distance = instance.def().distance();
+        for (Player player : room.activePlayers()) {
+            if (!player.getBoundingBox().overlaps(zone)) {
+                continue;
+            }
+            Vector velocity = player.getVelocity();
+            if (velocity.dot(direction) > 0.25) {
+                continue; // 已经在朝这个方向移动，避免每 tick 重复加速
+            }
+            if (Math.abs(direction.getY()) > 0.5) {
+                double speed = Math.sqrt(2.0 * 0.08 * Math.max(0.5, distance));
+                double y = direction.getY() > 0 ? speed : -speed;
+                player.setVelocity(new Vector(velocity.getX(), y, velocity.getZ()));
+            } else {
+                double speed = Math.max(0.4, distance * 0.12);
+                Vector horizontal = new Vector(direction.getX(), 0, direction.getZ())
+                        .normalize().multiply(speed);
+                player.setVelocity(new Vector(horizontal.getX(),
+                        Math.max(velocity.getY(), 0.15), horizontal.getZ()));
+            }
+            player.playSound(player.getLocation(), Sound.BLOCK_PISTON_EXTEND, 1.0f, 1.0f);
         }
     }
 
@@ -1013,6 +1059,7 @@ public final class MechanismManager {
     /** 锁定位置时是否以玩家朝向作为基准 yaw。 */
     private boolean usesBaseYaw(MechanismDef def) {
         return "dispenser".equals(def.id())
+                || "piston".equals(def.id())
                 || "stairs".equals(def.id())
                 || "ladder".equals(def.id());
     }
@@ -1025,7 +1072,7 @@ public final class MechanismManager {
             }
             return face;
         }
-        if (!"dispenser".equals(def.id())) {
+        if (!"dispenser".equals(def.id()) && !"piston".equals(def.id())) {
             return BlockFace.SOUTH;
         }
         int pitch = pitchSteps & 3;

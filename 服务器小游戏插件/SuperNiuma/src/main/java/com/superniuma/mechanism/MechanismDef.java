@@ -25,13 +25,14 @@ public final class MechanismDef {
     private final double scale;
     private final int maxOnField;
     private final double height;
+    private final double distance;
     private final List<Variant> variants;
 
     public MechanismDef(String id, boolean enabled, double weight, Material icon, String displayName,
                         List<String> lore, RotationRule rotation, double points, int intervalTicks,
                         int arrowRange, double arrowSpeed, int bombRadius, double lowClearRate,
                         double lowClearWeight, int lowClearMinCount, double scale, int maxOnField,
-                        double height, List<Variant> variants) {
+                        double height, double distance, List<Variant> variants) {
         this.id = id;
         this.enabled = enabled;
         this.weight = Math.max(0.0, weight);
@@ -50,6 +51,7 @@ public final class MechanismDef {
         this.scale = scale;
         this.maxOnField = Math.max(0, maxOnField);
         this.height = Math.max(0.0, height);
+        this.distance = Math.max(0.0, distance);
         this.variants = List.copyOf(variants);
     }
 
@@ -125,6 +127,11 @@ public final class MechanismDef {
     /** 弹簧的弹射高度（格）。 */
     public double height() {
         return height;
+    }
+
+    /** 活塞的击飞距离（格）。 */
+    public double distance() {
+        return distance;
     }
 
     public List<Variant> variants() {

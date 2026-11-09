@@ -278,3 +278,15 @@ mechanisms:
         name: '3x3'
         weight: 30
         size: [3, 3]
+
+  piston:
+    enabled: true
+    weight: 10
+    icon: PISTON
+    name: '&7活塞'
+    lore:
+      - '&7把正前方的玩家沿朝向击飞'
+      - '&7可以水平或垂直'
+      - '&7击飞距离可配置'
+    rotation: six-way
+    distance: 5.0           # 击飞距离（格）

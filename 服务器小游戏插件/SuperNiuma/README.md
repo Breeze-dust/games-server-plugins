@@ -114,6 +114,7 @@
 | `fragile` 易碎方块 | 裂纹石砖 1x1/1x2/2x2/2x3/1x3；玩家经过上方破碎，下回合恢复 | `variants.*.size` |
 | `intermittent` 间歇方块 | 磁石 1x1/1x2/1x3/2x2；周期性出现/消失；整片一起显隐 | `interval-ticks`、`variants.*.size` |
 | `ice` 冰平台 | 冰 1x2/2x2/3x3；可水平/竖直旋转 | `variants.*.size` |
+| `piston` 活塞 | 六向朝向；检测正前方一格内的玩家，按朝向水平/垂直击飞，距离可配置 | `distance` |
 
 炸弹保底：若上一回合通关率低于 `low-clear-rate`，下一回合按 `low-clear-weight` 提高权重，并保证至少 `low-clear-min-count` 个。
 
