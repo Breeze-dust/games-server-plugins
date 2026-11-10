@@ -15,11 +15,14 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * 主城插件：大厅、中央菜单、统一 tab、小游戏插件发现。
@@ -241,11 +244,71 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
                     sender.sendMessage(LEGACY.deserialize(" &7- &f" + g.displayName() + " &7(" + g.id() + "&7)"));
                 }
             }
+            case "players" -> playersCommand(sender, args);
             case "arena" -> arenaCommand(sender, args);
             default -> sender.sendMessage(LEGACY.deserialize(
-                    "&c用法：/hub [menu|set|reload|lock|item|games|arena] &7，菜单编辑见 &f/hub menu help"));
+                    "&c用法：/hub [menu|set|reload|lock|item|games|players|arena] &7，菜单编辑见 &f/hub menu help"));
         }
         return true;
+    }
+
+    // ---------- /hub players [页码]：列出所有进过服的玩家 ----------
+
+    /** 聊天一页放多少行，留出表头和翻页提示的空间。 */
+    private static final int PLAYERS_PER_PAGE = 15;
+
+    private void playersCommand(CommandSender sender, String[] args) {
+        if (!isAdmin(sender)) {
+            sender.sendMessage(LEGACY.deserialize("&c只有 OP 或拥有 hub.admin 权限的玩家可以查看玩家名单。"));
+            return;
+        }
+        int page = 1;
+        if (args.length > 1) {
+            if (!isNumber(args[1])) {
+                sender.sendMessage(LEGACY.deserialize("&c用法：/hub players [页码]"));
+                return;
+            }
+            page = Math.max(1, Integer.parseInt(args[1]));
+        }
+        // getOfflinePlayers = 主世界 playerdata 里的所有存档（进过服的人）+ 在线玩家；
+        // getName() 在 usercache 找不到时会读存档里的 lastKnownName。
+        // 同一个名字可能对应多个 UUID（正版/离线记录并存），按名字去重后只显示一条。
+        Map<String, OfflinePlayer> byName = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (OfflinePlayer offline : Bukkit.getOfflinePlayers()) {
+            String name = playerName(offline);
+            OfflinePlayer old = byName.get(name);
+            if (old == null || (!old.isOnline() && offline.isOnline())) {
+                byName.put(name, offline);
+            }
+        }
+        List<OfflinePlayer> players = new ArrayList<>(byName.values());
+        if (players.isEmpty()) {
+            sender.sendMessage(LEGACY.deserialize("&7还没有玩家进过服务器。"));
+            return;
+        }
+        int pages = (players.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
+        page = Math.min(page, pages);
+        sender.sendMessage(LEGACY.deserialize("&6===== 进过服的玩家 &7(" + players.size() + " 人) &6===== &7第 &f"
+                + page + "&7/&f" + pages + " &7页"));
+        int start = (page - 1) * PLAYERS_PER_PAGE;
+        for (int i = start; i < Math.min(start + PLAYERS_PER_PAGE, players.size()); i++) {
+            OfflinePlayer offline = players.get(i);
+            sender.sendMessage(LEGACY.deserialize(" &7- &f" + playerName(offline)
+                    + (offline.isOnline() ? " &a(在线)" : "")));
+        }
+        if (page > 1) {
+            sender.sendMessage(LEGACY.deserialize("&7上一页：&f/hub players " + (page - 1)));
+        }
+        if (page < pages) {
+            sender.sendMessage(LEGACY.deserialize("&7下一页：&f/hub players " + (page + 1)));
+        }
+    }
+
+    private static String playerName(OfflinePlayer offline) {
+        String name = offline.getName();
+        return (name == null || name.isBlank())
+                ? "未知玩家(" + offline.getUniqueId().toString().substring(0, 8) + ")"
+                : name;
     }
 
     // ---------- /hub arena：场地介绍（选场地菜单里那块羊毛的 lore） ----------
@@ -480,7 +543,7 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return startsWith(Arrays.asList("menu", "set", "reload", "lock", "item", "games", "arena"), args[0]);
+            return startsWith(Arrays.asList("menu", "set", "reload", "lock", "item", "games", "players", "arena"), args[0]);
         }
         if (args[0].equalsIgnoreCase("arena")) {
             if (args.length == 2) {

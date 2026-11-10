@@ -6,7 +6,7 @@
 - **入口**：`HubCore/src/main/java/com/hub/HubCorePlugin.java#onEnable` —— `saveDefaultConfig()` → 建 `HubManager` / `GameRegistry`（`registry.rescan()`）/ `MenuLayout` / `MenuEditor` → `HubAPI.register(manager)`（`HubManager implements HubService`，onDisable 里 `unregister`）→ 注册 `HubListener` + `MenuEditor` 两个监听器 → 主城规则 `applyHubWorldRules(world)`（`DO_DAYLIGHT_CYCLE=false`、`DO_WEATHER_CYCLE=false`、`DO_MOB_SPAWNING=false`、时间固定 1000、清雨清雷）+ 每 5 秒 `enforceHubWorldRules()` 兜底（规则/时间/天气被改回去就自动恢复）→ 把 `hub` 命令的 executor/tabCompleter 指向自己 → `runTaskTimer(manager::refreshTab, 20L, 20L)`。
 - **命令**：入口是 `/hub`（`plugin.yml` 里的别名 `lobby` / `spawn`；管理权限只有 `hub.admin`，`default: op`，判定 = `isOp() || hasPermission("hub.admin")`，控制台算管理员）
   - 玩家：`/hub`（回大厅：先广播 lobby handler 清游戏状态，再传送 + 清背包发菜单道具）、`/hub menu`（开中央菜单）。
-  - OP：`/hub set`（把当前位置设为大厅）、`/hub reload`（`reloadConfig()` + `registry.rescan()` + `refreshTab()`）、`/hub item [玩家]`（发 CLOCK 回主城道具，带 PDC 标记）、`/hub lock`（切换 `lock-inventory` 并保存；**菜单道具的禁丢/禁挪位不受它影响**）、`/hub games`（权威游戏名单）、`/hub arena desc <游戏> <场地> <介绍…>`（`|` 分行、`clear` 清除；只给到场地=查看，`info` 同义）。
+  - OP：`/hub set`（把当前位置设为大厅）、`/hub reload`（`reloadConfig()` + `registry.rescan()` + `refreshTab()`）、`/hub item [玩家]`（发 CLOCK 回主城道具，带 PDC 标记）、`/hub lock`（切换 `lock-inventory` 并保存；**菜单道具的禁丢/禁挪位不受它影响**）、`/hub games`（权威游戏名单）、`/hub players [页码]`（分页列出所有进过服的玩家名字，每页 15 人）、`/hub arena desc <游戏> <场地> <介绍…>`（`|` 分行、`clear` 清除；只给到场地=查看，`info` 同义）。
   - OP 菜单：`/hub menu edit [游戏]` / `cancel` / `set [游戏] <槽位> [材质] [动作] [显示名]` / `move` / `name` / `lore` / `action [游戏] <槽位> <动作…>` / `del`（`delete` 同义）/ `rows [游戏] <1-6>` / `title [游戏] <标题>` / `reset [游戏]` / `help`；不带游戏名=主菜单，带游戏名=该游戏的场地子菜单，`<槽位>` 省略时用当前打开的格子。
   - 动作 6 种（**空格分隔**；`cmd:gtb join` 这种类型尾部带一个冒号的也认）：`game <游戏>`（该游戏只有 1 个场地就直接进，≥2 个场地或还没上报就开子菜单）、`open <游戏>`（总是开子菜单）、`arena <游戏> <场地>`（直接加入指定场地）、`cmd <命令>`（以玩家身份执行）、`spectate`（打开观战列表）、`none`（纯装饰）。
 - **OP 专属物品**：`menu.items.<槽位>` 支持 `op-only: true`，非 OP 打开菜单时该格不渲染、也点不到。装了 ArcadeParty 时，启动会自动在主菜单找一个空槽放「派对设置」（COMPASS，`action: cmd:arcade menu`，`op-only: true`），已有 `cmd:arcade menu` 条目则只补 `op-only`，不重复添加。装了 LobbyToys 时，`ensureToysMenuEntry()` 会在主菜单**第一个空槽**放「小玩具」（PLAYER_HEAD，`action: cmd:lobbytoys menu`，所有人可见），已有 `cmd:lobbytoys menu` 条目则不重复添加。
@@ -147,7 +147,7 @@
 ## 其他命令
 
 `/hub`（回大厅）、`/hub menu`（玩家开菜单）、`/hub set`（把当前位置设为大厅）、
-`/hub item [玩家]`（发回主城道具）、`/hub lock`、`/hub games`、`/hub arena desc`、`/hub reload`。
+`/hub item [玩家]`（发回主城道具）、`/hub lock`、`/hub games`、`/hub players [页码]`、`/hub arena desc`、`/hub reload`。
 
 ## 实现备忘（改代码前先看）
 
