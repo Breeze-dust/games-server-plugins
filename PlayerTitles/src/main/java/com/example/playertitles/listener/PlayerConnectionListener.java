@@ -1,6 +1,7 @@
 package com.example.playertitles.listener;
 
 import com.example.playertitles.PlayerTitlesPlugin;
+import com.example.playertitles.gui.DonorAnvilMenu;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -39,6 +40,7 @@ public final class PlayerConnectionListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         plugin.getTitleManager().removeFromTeams(event.getPlayer());
         plugin.getChatInput().cancel(event.getPlayer());
+        DonorAnvilMenu.endSession(event.getPlayer().getUniqueId());
     }
 
     /**

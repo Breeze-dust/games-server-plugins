@@ -8,7 +8,7 @@ import org.bukkit.inventory.InventoryHolder;
 public final class MenuHolder implements InventoryHolder {
 
     public enum Type {
-        TITLES, ADMIN, EDIT, COLOR
+        TITLES, ADMIN, DONOR_TITLES, EDIT, COLOR
     }
 
     private final Type type;

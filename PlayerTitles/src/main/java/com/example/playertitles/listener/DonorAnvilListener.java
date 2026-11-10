@@ -2,7 +2,6 @@ package com.example.playertitles.listener;
 
 import com.example.playertitles.PlayerTitlesPlugin;
 import com.example.playertitles.TitleManager;
-import com.example.playertitles.gui.DonorAnvilHolder;
 import com.example.playertitles.gui.DonorAnvilMenu;
 import com.example.playertitles.util.Text;
 import java.time.Instant;
@@ -18,6 +17,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.view.AnvilView;
 
 public final class DonorAnvilListener implements Listener {
 
@@ -32,46 +32,59 @@ public final class DonorAnvilListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPrepare(PrepareAnvilEvent event) {
-        if (!(event.getInventory().getHolder() instanceof DonorAnvilHolder holder)) {
+        AnvilView view = event.getView();
+        DonorAnvilMenu.Session session = DonorAnvilMenu.session(view.getPlayer().getUniqueId());
+        if (session == null) {
             return;
         }
         AnvilInventory inventory = event.getInventory();
-        // 改名不消耗经验：价格归零，点击产物也由下面的事件全部拦截。
+        // 改名不消耗经验：真实铁砧的等级费用归零；产物点击仍由下面的事件拦截。
+        view.setRepairCost(0);
+        view.setRepairItemCountCost(0);
         inventory.setRepairCost(0);
         inventory.setRepairCostAmount(0);
-        String text = clean(inventory.getRenameText());
-        event.setResult(text.isEmpty() || text.equals(holder.getOriginalName())
+
+        String text = clean(view.getRenameText());
+        if (session.getConfirmText() != null && !session.getConfirmText().equals(text)) {
+            session.setConfirmText(null);
+        }
+        event.setResult(text.isEmpty() || text.equals(session.getOriginalName())
                 ? null
-                : DonorAnvilMenu.resultItem(holder, text));
+                : DonorAnvilMenu.resultItem(session, text));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        DonorAnvilMenu.Session session = DonorAnvilMenu.session(player.getUniqueId());
+        if (session == null) {
+            return;
+        }
         Inventory top = event.getView().getTopInventory();
-        if (!(top.getHolder() instanceof DonorAnvilHolder holder)) {
+        if (!(top instanceof AnvilInventory anvil) || !(event.getView() instanceof AnvilView view)) {
             return;
         }
         // 命名牌只用于展示，任何格子都不允许拿走或放入。
         event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player player)
-                || event.getRawSlot() != 2
-                || !(top instanceof AnvilInventory anvil)) {
+        if (event.getRawSlot() != 2) {
             return;
         }
-        String text = clean(anvil.getRenameText());
+        String text = clean(view.getRenameText());
         if (text.isEmpty()) {
             return;
         }
-        if (text.equals(holder.getConfirmText())) {
-            commit(player, holder, text);
+        if (text.equals(session.getConfirmText())) {
+            commit(player, session, text);
             return;
         }
-        holder.setConfirmText(text);
-        anvil.setItem(2, DonorAnvilMenu.resultItem(holder, text));
+        session.setConfirmText(text);
+        anvil.setItem(2, DonorAnvilMenu.resultItem(session, text));
     }
 
-    private void commit(Player player, DonorAnvilHolder holder, String text) {
-        if (text.equals(holder.getOriginalName())) {
+    private void commit(Player player, DonorAnvilMenu.Session session, String text) {
+        if (text.equals(session.getOriginalName())) {
             player.sendMessage(Text.parse("&7称号名称没有变化，未消耗冷却"));
             return;
         }
@@ -101,15 +114,24 @@ public final class DonorAnvilListener implements Listener {
 
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
-        if (event.getInventory().getHolder() instanceof DonorAnvilHolder) {
+        if (event.getWhoClicked() instanceof Player player
+                && DonorAnvilMenu.session(player.getUniqueId()) != null
+                && event.getView().getTopInventory() instanceof AnvilInventory) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
-        if (event.getInventory().getHolder() instanceof DonorAnvilHolder) {
-            event.getInventory().clear();
+        if (!(event.getPlayer() instanceof Player player)) {
+            return;
+        }
+        if (DonorAnvilMenu.session(player.getUniqueId()) == null) {
+            return;
+        }
+        DonorAnvilMenu.endSession(player.getUniqueId());
+        if (event.getInventory() instanceof AnvilInventory anvil) {
+            DonorAnvilMenu.clear(anvil);
         }
     }
 

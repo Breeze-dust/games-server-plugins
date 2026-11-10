@@ -315,6 +315,41 @@ public final class TitleManager {
         return List.copyOf(donors.values());
     }
 
+    /** 这个头衔是否是感谢名单玩家的专属头衔。 */
+    public synchronized boolean isDonorTitle(String titleId) {
+        if (titleId == null) {
+            return false;
+        }
+        for (Donor donor : donors.values()) {
+            if (donor.titleId().equals(titleId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 感谢名单玩家的专属头衔（只含仍存在的头衔定义）。 */
+    public synchronized List<Title> getDonorTitles() {
+        List<Title> result = new ArrayList<>();
+        for (Donor donor : donors.values()) {
+            Title title = titles.get(donor.titleId());
+            if (title != null) {
+                result.add(title);
+            }
+        }
+        return result;
+    }
+
+    /** 专属头衔对应的玩家名；找不到返回「未知」。 */
+    public synchronized String donorNameOf(String titleId) {
+        for (Donor donor : donors.values()) {
+            if (donor.titleId().equals(titleId)) {
+                return donor.playerName();
+            }
+        }
+        return "未知";
+    }
+
     /** 按玩家名在感谢名单中查找；找不到返回 null。 */
     public synchronized UUID findDonor(String playerName) {
         if (playerName == null) {

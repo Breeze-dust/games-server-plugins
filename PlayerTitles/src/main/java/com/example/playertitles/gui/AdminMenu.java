@@ -18,7 +18,14 @@ public final class AdminMenu {
     }
 
     public static void open(PlayerTitlesPlugin plugin, Player player, int page) {
-        List<Title> titles = plugin.getTitleManager().getTitles();
+        List<Title> titles = new ArrayList<>();
+        for (Title title : plugin.getTitleManager().getTitles()) {
+            // 感谢名单玩家的专属头衔收进单独的子菜单，避免混在常规头衔里。
+            if (!plugin.getTitleManager().isDonorTitle(title.id())) {
+                titles.add(title);
+            }
+        }
+        int donorCount = plugin.getTitleManager().getDonorTitles().size();
         int pages = Math.max(1, (titles.size() + TitleMenu.PER_PAGE - 1) / TitleMenu.PER_PAGE);
         int current = Math.max(0, Math.min(page, pages - 1));
 
@@ -61,6 +68,8 @@ public final class AdminMenu {
         inventory.setItem(48, GuiItems.icon(Material.BARRIER, "&c关闭菜单", List.of("&7关闭当前界面")));
         inventory.setItem(49, GuiItems.icon(Material.EMERALD, "&a新建头衔",
                 List.of("&7点击后在聊天栏输入 ID 与名称", "&7创建后可继续设置颜色和描述")));
+        inventory.setItem(47, GuiItems.icon(Material.NAME_TAG, "&6募捐者自定义头衔",
+                List.of("&7共 " + donorCount + " 个", "&7点击查看并管理")));
         if (current < pages - 1) {
             inventory.setItem(53, GuiItems.icon(Material.ARROW, "&e下一页",
                     List.of("&7前往第 " + (current + 2) + " 页")));

@@ -35,6 +35,7 @@ public final class MenuListener implements Listener {
         switch (holder.getType()) {
             case TITLES -> handleTitles(player, holder, slot);
             case ADMIN -> handleAdmin(player, holder, slot);
+            case DONOR_TITLES -> handleDonorTitles(player, holder, slot);
             case EDIT -> handleEdit(player, holder, slot, event.isShiftClick());
             case COLOR -> handleColor(player, holder, slot);
         }
@@ -95,9 +96,27 @@ public final class MenuListener implements Listener {
         }
         switch (slot) {
             case 45 -> AdminMenu.open(plugin, player, holder.getPage() - 1);
+            case 47 -> DonorTitlesMenu.open(plugin, player, 0);
             case 48 -> player.closeInventory();
             case 49 -> AdminMenu.promptCreate(plugin, player);
             case 53 -> AdminMenu.open(plugin, player, holder.getPage() + 1);
+            default -> {
+            }
+        }
+    }
+
+    private void handleDonorTitles(Player player, MenuHolder holder, int slot) {
+        if (slot >= 0 && slot < TitleMenu.PER_PAGE) {
+            if (slot < holder.getEntryIds().size()) {
+                TitleEditMenu.open(plugin, player, holder.getEntryIds().get(slot));
+            }
+            return;
+        }
+        switch (slot) {
+            case 45 -> DonorTitlesMenu.open(plugin, player, holder.getPage() - 1);
+            case 48 -> player.closeInventory();
+            case 49 -> AdminMenu.open(plugin, player, 0);
+            case 53 -> DonorTitlesMenu.open(plugin, player, holder.getPage() + 1);
             default -> {
             }
         }
