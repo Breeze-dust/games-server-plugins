@@ -79,6 +79,7 @@ public final class MenuListener implements Listener {
                 player.sendMessage(Component.text("已清除当前头衔", NamedTextColor.YELLOW));
                 TitleMenu.open(plugin, player, holder.getPage());
             }
+            case 50 -> DonorAnvilMenu.open(plugin, player);
             case 53 -> TitleMenu.open(plugin, player, holder.getPage() + 1);
             default -> {
             }

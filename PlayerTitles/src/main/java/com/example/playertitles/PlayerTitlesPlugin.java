@@ -5,6 +5,7 @@ import com.example.playertitles.command.TitlesCommand;
 import com.example.playertitles.gui.MenuListener;
 import com.example.playertitles.input.ChatInput;
 import com.example.playertitles.listener.ChatListener;
+import com.example.playertitles.listener.DonorAnvilListener;
 import com.example.playertitles.listener.MenuItemListener;
 import com.example.playertitles.listener.PlayerConnectionListener;
 import java.util.UUID;
@@ -32,6 +33,7 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
         getServer().getServicesManager().register(TitleProvider.class, this, this, ServicePriority.Normal);
 
         getServer().getPluginManager().registerEvents(new ChatListener(this), this);
+        getServer().getPluginManager().registerEvents(new DonorAnvilListener(this), this);
         getServer().getPluginManager().registerEvents(new MenuItemListener(this), this);
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this), this);
         getServer().getPluginManager().registerEvents(new MenuListener(this), this);

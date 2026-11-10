@@ -76,6 +76,15 @@ public final class TitleMenu {
         }
         inventory.setItem(49, GuiItems.icon(Material.BARRIER, "&c清除头衔",
                 List.of("&7点击取消当前头衔", "&7头顶与聊天将不再显示头衔")));
+        if (plugin.getTitleManager().isDonor(uuid)) {
+            long remaining = plugin.getTitleManager().donorCooldownRemaining(uuid);
+            List<String> donorLore = new ArrayList<>();
+            donorLore.add("&7点击打开铁砧改你自己的称号");
+            donorLore.add(remaining > 0L
+                    ? "&c冷却中，还需 " + DonorAnvilMenu.formatRemaining(remaining)
+                    : "&a现在可以修改");
+            inventory.setItem(50, GuiItems.icon(Material.NAME_TAG, "&6自定义称号", donorLore));
+        }
         if (current < pages - 1) {
             inventory.setItem(53, GuiItems.icon(Material.ARROW, "&e下一页",
                     List.of("&7前往第 " + (current + 2) + " 页")));

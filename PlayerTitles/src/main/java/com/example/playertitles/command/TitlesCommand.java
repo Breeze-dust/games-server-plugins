@@ -2,7 +2,9 @@ package com.example.playertitles.command;
 
 import com.example.playertitles.PlayerTitlesPlugin;
 import com.example.playertitles.Title;
+import com.example.playertitles.TitleManager;
 import com.example.playertitles.gui.AdminMenu;
+import com.example.playertitles.gui.DonorAnvilMenu;
 import com.example.playertitles.gui.TitleMenu;
 import com.example.playertitles.util.Text;
 import java.util.ArrayList;
@@ -22,7 +24,7 @@ import org.jetbrains.annotations.NotNull;
 public final class TitlesCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
-            "menu", "help", "give", "giveall", "take", "revoke", "create", "delete",
+            "menu", "help", "custom", "donor", "give", "giveall", "take", "revoke", "create", "delete",
             "setname", "setcolor", "setdesc", "setvisible", "list", "admin", "reload");
 
     private final PlayerTitlesPlugin plugin;
@@ -42,6 +44,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "menu" -> openMenu(sender);
             case "help" -> help(sender);
+            case "custom" -> custom(sender);
+            case "donor" -> donor(sender, args);
             case "give" -> give(sender, args);
             case "giveall" -> giveAll(sender, args);
             case "take" -> take(sender, args);
@@ -72,6 +76,119 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             return;
         }
         TitleMenu.open(plugin, player, 0);
+    }
+
+    private void custom(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            msg(sender, "&c只有玩家可以自定义称号");
+            return;
+        }
+        DonorAnvilMenu.open(plugin, player);
+    }
+
+    private void donor(CommandSender sender, String[] args) {
+        if (!requireAdmin(sender)) {
+            return;
+        }
+        if (args.length < 2) {
+            msg(sender, "&c用法: /titles donor <add|remove|list|reset> ...");
+            return;
+        }
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "add" -> donorAdd(sender, args);
+            case "remove" -> donorRemove(sender, args);
+            case "list" -> donorList(sender);
+            case "reset" -> donorReset(sender, args);
+            default -> msg(sender, "&c用法: /titles donor <add|remove|list|reset> ...");
+        }
+    }
+
+    private void donorAdd(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            msg(sender, "&c用法: /titles donor add <玩家>");
+            return;
+        }
+        Player online = Bukkit.getPlayerExact(args[2]);
+        UUID uuid;
+        String name;
+        if (online != null) {
+            uuid = online.getUniqueId();
+            name = online.getName();
+        } else {
+            org.bukkit.OfflinePlayer cached = Bukkit.getOfflinePlayerIfCached(args[2]);
+            if (cached == null) {
+                msg(sender, "&c找不到玩家 &f" + args[2] + " &c（需至少上线过一次）");
+                return;
+            }
+            uuid = cached.getUniqueId();
+            name = cached.getName() == null ? args[2] : cached.getName();
+        }
+        String titleId = plugin.getTitleManager().addDonor(uuid, name);
+        plugin.getTitleManager().setPlayerTitle(uuid, titleId);
+        if (online != null) {
+            online.sendMessage(Text.parse("&a你已获得募捐者专属称号，可用 &f/titles custom &a或头衔菜单里编辑"));
+        }
+        msg(sender, "&a已把 &f" + name + " &a加入募捐感谢名单，专属头衔 ID: &f" + titleId);
+        msg(sender, "&7该头衔默认仅本人可见，玩家可自行修改名称");
+    }
+
+    private void donorRemove(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            msg(sender, "&c用法: /titles donor remove <玩家>");
+            return;
+        }
+        TitleManager manager = plugin.getTitleManager();
+        Player online = Bukkit.getPlayerExact(args[2]);
+        UUID uuid = online != null ? online.getUniqueId() : manager.findDonor(args[2]);
+        if (uuid == null) {
+            msg(sender, "&c感谢名单中没有: " + args[2]);
+            return;
+        }
+        TitleManager.Donor donor = manager.getDonor(uuid);
+        String name = donor == null ? args[2] : donor.playerName();
+        manager.removeDonor(uuid);
+        if (online != null) {
+            online.sendMessage(Text.parse("&e你已被移出募捐感谢名单，专属称号已收回"));
+        }
+        msg(sender, "&a已把 &f" + name + " &a移出募捐感谢名单");
+    }
+
+    private void donorList(CommandSender sender) {
+        List<TitleManager.Donor> donors = plugin.getTitleManager().getDonors();
+        if (donors.isEmpty()) {
+            msg(sender, "&7募捐感谢名单为空");
+            return;
+        }
+        msg(sender, "&7募捐感谢名单共 &f" + donors.size() + " &7人:");
+        for (TitleManager.Donor donor : donors) {
+            long remaining = plugin.getTitleManager().donorCooldownRemaining(donor.uuid());
+            String status = remaining > 0L
+                    ? "&c冷却 " + DonorAnvilMenu.formatRemaining(remaining)
+                    : "&a可修改";
+            sender.sendMessage(Text.parse("&7 - &f" + donor.playerName()
+                    + " &8(" + donor.titleId() + ") " + status));
+        }
+    }
+
+    private void donorReset(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            msg(sender, "&c用法: /titles donor reset <玩家>");
+            return;
+        }
+        TitleManager manager = plugin.getTitleManager();
+        Player online = Bukkit.getPlayerExact(args[2]);
+        UUID uuid = online != null ? online.getUniqueId() : manager.findDonor(args[2]);
+        if (uuid == null || !manager.isDonor(uuid)) {
+            msg(sender, "&c感谢名单中没有: " + args[2]);
+            return;
+        }
+        TitleManager.Donor donor = manager.getDonor(uuid);
+        manager.resetDonorCooldown(uuid);
+        String name = donor == null ? args[2] : donor.playerName();
+        if (online != null) {
+            online.sendMessage(Text.parse("&a你的称号修改冷却已被管理员重置"));
+        }
+        msg(sender, "&a已重置 &f" + name + " &a的称号修改冷却");
     }
 
     private void admin(CommandSender sender) {
@@ -380,8 +497,13 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
     private void help(CommandSender sender) {
         msg(sender, "&6头衔插件指令:");
         msg(sender, "&f/titles &7- 打开头衔菜单");
+        msg(sender, "&f/titles custom &7- 编辑你的募捐专属称号（仅感谢名单玩家）");
         if (sender.hasPermission("playertitles.admin")) {
             msg(sender, "&f/titles admin &7- 打开管理面板");
+            msg(sender, "&f/titles donor add <玩家> &7- 加入募捐感谢名单并发放专属称号");
+            msg(sender, "&f/titles donor remove <玩家> &7- 移出感谢名单并收回称号");
+            msg(sender, "&f/titles donor list &7- 查看感谢名单与改名冷却");
+            msg(sender, "&f/titles donor reset <玩家> &7- 重置该玩家的改名冷却");
             msg(sender, "&f/titles give <玩家> <ID> [keep] &7- 授予并装备；加 keep 只授予不装备");
             msg(sender, "&f/titles giveall <ID> [all] &7- 给全服玩家授予头衔（不自动装备）");
             msg(sender, "&f/titles take <玩家> [ID] &7- 收回指定头衔；不写 ID 则收回当前/全部");
@@ -428,7 +550,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             List<String> options = new ArrayList<>();
             boolean isAdmin = sender.hasPermission("playertitles.admin");
             for (String option : SUBCOMMANDS) {
-                if (isAdmin || option.equals("menu") || option.equals("help")) {
+                if (isAdmin || option.equals("menu") || option.equals("help")
+                        || option.equals("custom")) {
                     options.add(option);
                 }
             }
@@ -438,11 +561,20 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2) {
             return switch (sub) {
                 case "give", "take", "revoke" -> filter(onlinePlayerNames(), args[1]);
+                case "donor" -> filter(List.of("add", "remove", "list", "reset"), args[1]);
                 case "giveall", "delete", "setname", "setcolor", "setdesc", "setvisible" -> filter(titleIds(), args[1]);
                 default -> List.of();
             };
         }
         if (args.length == 3) {
+            if (sub.equals("donor")) {
+                String action = args[1].toLowerCase(Locale.ROOT);
+                return switch (action) {
+                    case "add" -> filter(onlinePlayerNames(), args[2]);
+                    case "remove", "reset" -> filter(donorNames(), args[2]);
+                    default -> List.of();
+                };
+            }
             return switch (sub) {
                 case "give", "take", "revoke" -> filter(titleIds(), args[2]);
                 case "giveall" -> filter(List.of("all"), args[2]);
@@ -471,6 +603,14 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
         List<String> names = new ArrayList<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
             names.add(player.getName());
+        }
+        return names;
+    }
+
+    private List<String> donorNames() {
+        List<String> names = new ArrayList<>();
+        for (TitleManager.Donor donor : plugin.getTitleManager().getDonors()) {
+            names.add(donor.playerName());
         }
         return names;
     }

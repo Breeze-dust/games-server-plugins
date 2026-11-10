@@ -30,6 +30,11 @@ public final class TitleManager {
     private final Map<UUID, String> assigned = new ConcurrentHashMap<>();
     /** 玩家拥有的头衔（可多个）；与"当前装备"分开存。 */
     private final Map<UUID, Set<String>> owned = new ConcurrentHashMap<>();
+    /** 募捐感谢名单：每人绑定一个仅自己可见的专属头衔。 */
+    private final Map<UUID, Donor> donors = new LinkedHashMap<>();
+
+    public record Donor(UUID uuid, String playerName, String titleId, long lastChangedAt) {
+    }
 
     public TitleManager(PlayerTitlesPlugin plugin) {
         this.plugin = plugin;
@@ -40,6 +45,7 @@ public final class TitleManager {
         titles.clear();
         assigned.clear();
         owned.clear();
+        donors.clear();
 
         boolean firstLoad = !file.exists();
         YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
@@ -98,6 +104,32 @@ public final class TitleManager {
             }
         }
 
+        ConfigurationSection donorSection = data.getConfigurationSection("donors");
+        if (donorSection != null) {
+            for (String key : donorSection.getKeys(false)) {
+                UUID uuid;
+                try {
+                    uuid = UUID.fromString(key);
+                } catch (IllegalArgumentException ignored) {
+                    continue;
+                }
+                String playerName = donorSection.getString(key + ".name", "玩家");
+                String titleId = donorSection.getString(key + ".title-id", donorTitleId(uuid));
+                if (titleId == null || titleId.isBlank()) {
+                    titleId = donorTitleId(uuid);
+                }
+                long lastChangedAt = donorSection.getLong(key + ".last-changed", 0L);
+                if (!titles.containsKey(titleId)) {
+                    titles.put(titleId, new Title(titleId, playerName, "&6", "&7募捐者专属称号", false));
+                    migrated = true;
+                }
+                donors.put(uuid, new Donor(uuid, playerName, titleId, lastChangedAt));
+                if (owned.computeIfAbsent(uuid, mapKey -> new HashSet<>()).add(titleId)) {
+                    migrated = true;
+                }
+            }
+        }
+
         if (firstLoad && titles.isEmpty()) {
             titles.put("xinshou", new Title("xinshou", "新手", "&a", "&7刚刚加入服务器的新玩家"));
             save();
@@ -130,6 +162,12 @@ public final class TitleManager {
             if (!entry.getValue().isEmpty()) {
                 data.set("owned." + entry.getKey(), new ArrayList<>(entry.getValue()));
             }
+        }
+        for (Donor donor : donors.values()) {
+            String path = "donors." + donor.uuid();
+            data.set(path + ".name", donor.playerName());
+            data.set(path + ".title-id", donor.titleId());
+            data.set(path + ".last-changed", donor.lastChangedAt());
         }
         try {
             File folder = plugin.getDataFolder();
@@ -263,6 +301,149 @@ public final class TitleManager {
             }
         }
         return count;
+    }
+
+    public synchronized boolean isDonor(UUID uuid) {
+        return donors.containsKey(uuid);
+    }
+
+    public synchronized Donor getDonor(UUID uuid) {
+        return donors.get(uuid);
+    }
+
+    public synchronized List<Donor> getDonors() {
+        return List.copyOf(donors.values());
+    }
+
+    /** 按玩家名在感谢名单中查找；找不到返回 null。 */
+    public synchronized UUID findDonor(String playerName) {
+        if (playerName == null) {
+            return null;
+        }
+        for (Donor donor : donors.values()) {
+            if (donor.playerName().equalsIgnoreCase(playerName)) {
+                return donor.uuid();
+            }
+        }
+        return null;
+    }
+
+    /** 加入感谢名单，并确保专属头衔存在；返回该头衔 ID。 */
+    public synchronized String addDonor(UUID uuid, String playerName) {
+        Donor existing = donors.get(uuid);
+        if (existing != null) {
+            ensureDonorTitle(uuid);
+            return existing.titleId();
+        }
+        String titleId = donorTitleId(uuid);
+        int suffix = 2;
+        while (titles.containsKey(titleId)) {
+            titleId = donorTitleId(uuid) + "_" + suffix++;
+        }
+        titles.put(titleId, new Title(titleId, playerName, "&6", "&7募捐者专属称号", false));
+        owned.computeIfAbsent(uuid, key -> new HashSet<>()).add(titleId);
+        donors.put(uuid, new Donor(uuid, playerName, titleId, 0L));
+        save();
+        return titleId;
+    }
+
+    /** 确保感谢名单玩家的专属头衔与拥有权都存在；不在名单中返回 null。 */
+    public synchronized String ensureDonorTitle(UUID uuid) {
+        Donor donor = donors.get(uuid);
+        if (donor == null) {
+            return null;
+        }
+        boolean changed = false;
+        if (!titles.containsKey(donor.titleId())) {
+            titles.put(donor.titleId(),
+                    new Title(donor.titleId(), donor.playerName(), "&6", "&7募捐者专属称号", false));
+            changed = true;
+        }
+        if (owned.computeIfAbsent(uuid, key -> new HashSet<>()).add(donor.titleId())) {
+            changed = true;
+        }
+        if (changed) {
+            save();
+        }
+        return donor.titleId();
+    }
+
+    /** 移出感谢名单并收回专属头衔；头衔定义保留，重新加入时沿用原来的名称。 */
+    public synchronized boolean removeDonor(UUID uuid) {
+        Donor donor = donors.remove(uuid);
+        if (donor == null) {
+            return false;
+        }
+        Set<String> ids = owned.get(uuid);
+        if (ids != null) {
+            ids.remove(donor.titleId());
+            if (ids.isEmpty()) {
+                owned.remove(uuid);
+            }
+        }
+        if (donor.titleId().equals(assigned.get(uuid))) {
+            assigned.remove(uuid);
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null) {
+                applyNametag(player);
+            }
+        }
+        save();
+        return true;
+    }
+
+    /** 两次修改之间需要等待的毫秒数；0 表示不限制。 */
+    public long donorCooldownMillis() {
+        long days = plugin.getConfig().getLong("donor.cooldown-days", 30L);
+        return days <= 0L ? 0L : days * 24L * 60L * 60L * 1000L;
+    }
+
+    public synchronized long donorCooldownRemaining(UUID uuid) {
+        Donor donor = donors.get(uuid);
+        if (donor == null) {
+            return 0L;
+        }
+        long cooldown = donorCooldownMillis();
+        if (cooldown <= 0L) {
+            return 0L;
+        }
+        long elapsed = System.currentTimeMillis() - donor.lastChangedAt();
+        return Math.max(0L, cooldown - elapsed);
+    }
+
+    /** 修改感谢名单玩家的专属头衔名称，并记录本次修改时间。 */
+    public synchronized boolean renameDonorTitle(UUID uuid, String name) {
+        Donor donor = donors.get(uuid);
+        if (donor == null || name == null || name.isBlank()) {
+            return false;
+        }
+        Title title = titles.get(donor.titleId());
+        if (title == null) {
+            return false;
+        }
+        titles.put(title.id(), new Title(title.id(), name, title.color(), title.description(), title.visible()));
+        donors.put(uuid, new Donor(uuid, donor.playerName(), donor.titleId(), System.currentTimeMillis()));
+        save();
+        Player player = Bukkit.getPlayer(uuid);
+        if (player != null) {
+            applyNametag(player);
+        }
+        return true;
+    }
+
+    /** 管理员清除某位募捐玩家的改名冷却。 */
+    public synchronized boolean resetDonorCooldown(UUID uuid) {
+        Donor donor = donors.get(uuid);
+        if (donor == null) {
+            return false;
+        }
+        donors.put(uuid, new Donor(uuid, donor.playerName(), donor.titleId(), 0L));
+        save();
+        return true;
+    }
+
+    private String donorTitleId(UUID uuid) {
+        return "donor_" + uuid.toString().replace("-", "").substring(0, 8);
     }
 
     public synchronized boolean create(String id, String name, String color, String description) {
