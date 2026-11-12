@@ -1152,7 +1152,7 @@ public final class MechanismManager {
     }
 
     private void tickMine(GameRoom room, MechanismInstance instance) {
-        if (!room.isRunning()) {
+        if (!room.isRunning() || instance.triggered()) {
             return;
         }
         Location center = instance.anchor();
@@ -1172,10 +1172,13 @@ public final class MechanismManager {
                     room.onPlayerFailed(victim, instance.owner(), "踩到地雷");
                 }
             }
+            instance.setTriggered(true);
+            for (PlacedBlock block : instance.blocks()) {
+                block.location().getBlock().setType(Material.AIR, false);
+            }
             center.getWorld().spawnParticle(Particle.EXPLOSION,
                     center.clone().add(0.5, 0.5, 0.5), 2);
             center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
-            remove(room, instance);
             return;
         }
     }
@@ -1184,21 +1187,38 @@ public final class MechanismManager {
         if (!room.isRunning()) {
             return;
         }
+        int delayTicks = Math.max(1, (int) Math.round(
+                instance.def().param("break-delay-seconds", 1.0) * 20.0));
         for (PlacedBlock block : instance.blocks()) {
             Location loc = block.location();
             if (instance.isBroken(loc)) {
                 continue;
             }
-            for (Player player : room.activePlayers()) {
-                Location p = player.getLocation();
-                if (p.getBlockX() == loc.getBlockX()
-                        && p.getBlockZ() == loc.getBlockZ()
-                        && p.getBlockY() == loc.getBlockY() + 1) {
-                    instance.markBroken(loc);
-                    loc.getBlock().setType(Material.AIR, false);
-                    loc.getWorld().playSound(loc, Sound.BLOCK_STONE_BREAK, 0.8f, 1.0f);
-                    break;
+            int pending = instance.fragileTimer(loc);
+            if (pending <= 0) {
+                boolean standing = false;
+                for (Player player : room.activePlayers()) {
+                    Location p = player.getLocation();
+                    if (p.getBlockX() == loc.getBlockX()
+                            && p.getBlockZ() == loc.getBlockZ()
+                            && p.getBlockY() == loc.getBlockY() + 1) {
+                        standing = true;
+                        break;
+                    }
                 }
+                if (!standing) {
+                    continue;
+                }
+                pending = delayTicks;
+            }
+            pending--;
+            if (pending <= 0) {
+                instance.clearFragileTimer(loc);
+                instance.markBroken(loc);
+                loc.getBlock().setType(Material.AIR, false);
+                loc.getWorld().playSound(loc, Sound.BLOCK_STONE_BREAK, 0.8f, 1.0f);
+            } else {
+                instance.setFragileTimer(loc, pending);
             }
         }
     }
@@ -1231,6 +1251,7 @@ public final class MechanismManager {
             }
             if ("fragile".equals(instance.def().id())) {
                 instance.clearBroken();
+                instance.clearFragileTimers();
                 for (PlacedBlock block : instance.blocks()) {
                     block.location().getBlock().setBlockData(block.placed(), false);
                 }
@@ -1244,6 +1265,11 @@ public final class MechanismManager {
                 instance.setLightState(0);
                 instance.setLightTicks(greenTicks(instance.def()));
                 updateLightFrame(instance);
+            } else if ("mine".equals(instance.def().id())) {
+                instance.setTriggered(false);
+                for (PlacedBlock block : instance.blocks()) {
+                    block.location().getBlock().setBlockData(block.placed(), false);
+                }
             }
         }
     }

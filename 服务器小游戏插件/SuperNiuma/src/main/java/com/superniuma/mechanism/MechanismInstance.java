@@ -5,8 +5,10 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,6 +26,7 @@ public final class MechanismInstance {
     private final List<PlacedBlock> blocks = new ArrayList<>();
     private final List<Entity> entities = new ArrayList<>();
     private final Set<Location> brokenBlocks = new HashSet<>();
+    private final Map<Location, Integer> fragileTimers = new HashMap<>();
     private int cooldown;
     private boolean hidden;
     private boolean removed;
@@ -31,6 +34,7 @@ public final class MechanismInstance {
     private BlockFace secondFacing;
     private int lightState;
     private int lightTicks;
+    private boolean triggered;
 
     public MechanismInstance(MechanismDef def, MechanismDef.Variant variant, UUID owner,
                              Location anchor, int yawSteps, int pitchSteps, BlockFace facing) {
@@ -114,6 +118,23 @@ public final class MechanismInstance {
         brokenBlocks.clear();
     }
 
+    /** 易碎方块已触发的破碎倒计时（0 = 尚未触发）。 */
+    public int fragileTimer(Location location) {
+        return fragileTimers.getOrDefault(location, 0);
+    }
+
+    public void setFragileTimer(Location location, int ticks) {
+        fragileTimers.put(location.clone(), ticks);
+    }
+
+    public void clearFragileTimer(Location location) {
+        fragileTimers.remove(location);
+    }
+
+    public void clearFragileTimers() {
+        fragileTimers.clear();
+    }
+
     /** 间歇方块当前是否处于消失状态。 */
     public boolean hidden() {
         return hidden;
@@ -153,6 +174,15 @@ public final class MechanismInstance {
 
     public void setLightTicks(int lightTicks) {
         this.lightTicks = lightTicks;
+    }
+
+    /** 地雷本回合是否已经触发（触发后隐藏，下回合重置）。 */
+    public boolean triggered() {
+        return triggered;
+    }
+
+    public void setTriggered(boolean triggered) {
+        this.triggered = triggered;
     }
 
     /** 机关是否占据某个方块。 */

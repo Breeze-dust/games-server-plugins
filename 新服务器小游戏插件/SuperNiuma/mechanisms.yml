@@ -202,9 +202,10 @@ mechanisms:
     icon: CRACKED_STONE_BRICKS
     name: '&7易碎方块'
     lore:
-      - '&7玩家经过上方后破碎'
+      - '&7玩家踩上后延迟破碎'
       - '&7只在当前回合生效，下回合恢复'
     rotation: horizontal-only
+    break-delay-seconds: 1.0   # 踩上后多久破碎（秒）
     variants:
       v1x1:
         name: '1x1'
