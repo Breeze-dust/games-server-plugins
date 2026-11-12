@@ -290,3 +290,94 @@ mechanisms:
       - '&7击飞距离可配置'
     rotation: six-way
     distance: 5.0           # 击飞距离（格）
+
+  portal:
+    enabled: true
+    weight: 6
+    icon: ENDER_EYE
+    name: '&5传送门'
+    lore:
+      - '&7先放第一个，再放第二个'
+      - '&7第二个只能在第一个周围 7x7x7 内'
+      - '&7蓝色玻璃表示出口朝向'
+    rotation: horizontal-only
+    range: 7                # 第二个传送门的可放置范围（奇数边长）
+
+  blind:
+    enabled: true
+    weight: 8
+    icon: BLACK_WOOL
+    name: '&0致盲平台'
+    lore:
+      - '&7站上去会失明'
+      - '&7离开后恢复'
+    rotation: four-way
+    variants:
+      v1x1:
+        name: '1x1'
+        weight: 20
+        size: [1, 1]
+      v2x2:
+        name: '2x2'
+        weight: 20
+        size: [2, 2]
+      v3x3:
+        name: '3x3'
+        weight: 20
+        size: [3, 3]
+      v2x3:
+        name: '2x3'
+        weight: 20
+        size: [2, 3]
+      v1x3:
+        name: '1x3'
+        weight: 20
+        size: [1, 3]
+
+  speed:
+    enabled: true
+    weight: 8
+    icon: BLUE_WOOL
+    name: '&9加速带'
+    lore:
+      - '&7站上去获得速度提升'
+      - '&7离开后保留加速惯性'
+      - '&7落到普通地面后恢复'
+    rotation: four-way
+    amplifier: 1            # Speed 药水等级（0 = I 级）
+    variants:
+      v1x2:
+        name: '1x2'
+        weight: 25
+        size: [1, 2]
+      v1x3:
+        name: '1x3'
+        weight: 25
+        size: [1, 3]
+      v1x4:
+        name: '1x4'
+        weight: 25
+        size: [1, 4]
+      v1x5:
+        name: '1x5'
+        weight: 25
+        size: [1, 5]
+
+  traffic:
+    enabled: true
+    weight: 7
+    icon: WHITE_WOOL
+    name: '&f红绿灯'
+    lore:
+      - '&7绿 → 黄 → 红 循环'
+      - '&7红灯时影响范围内禁止移动'
+      - '&7绿/红持续时间为随机区间'
+    rotation: horizontal-only
+    yellow-seconds: 3       # 黄灯固定时长
+    green-min-seconds: 3
+    green-max-seconds: 8
+    red-min-seconds: 3
+    red-max-seconds: 8
+    range-width: 7          # 影响区域宽（7x7 面的宽）
+    range-depth: 3          # 影响区域向前长度
+    range-height: 7         # 影响区域高

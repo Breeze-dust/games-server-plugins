@@ -1,6 +1,7 @@
 package com.superniuma.mechanism;
 
 import org.bukkit.Location;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
@@ -22,7 +23,9 @@ public final class PlacementSession {
     private List<Location> ghostCells = List.of();
     private boolean confirmed;
     private boolean locked;
-    private boolean pendingConfirm;
+    private boolean portalSecondStage;
+    private Location portalFirstAnchor;
+    private BlockFace portalFirstFacing;
 
     private boolean rendered;
     private int renderedYawSteps;
@@ -117,13 +120,28 @@ public final class PlacementSession {
         this.locked = locked;
     }
 
-    /** 已按过一次 Q，等待第二次确认；期间忽略调整操作。 */
-    public boolean pendingConfirm() {
-        return pendingConfirm;
+    public boolean portalSecondStage() {
+        return portalSecondStage;
     }
 
-    public void setPendingConfirm(boolean pendingConfirm) {
-        this.pendingConfirm = pendingConfirm;
+    public void setPortalSecondStage(boolean portalSecondStage) {
+        this.portalSecondStage = portalSecondStage;
+    }
+
+    public Location portalFirstAnchor() {
+        return portalFirstAnchor == null ? null : portalFirstAnchor.clone();
+    }
+
+    public void setPortalFirstAnchor(Location anchor) {
+        this.portalFirstAnchor = anchor == null ? null : anchor.clone();
+    }
+
+    public BlockFace portalFirstFacing() {
+        return portalFirstFacing;
+    }
+
+    public void setPortalFirstFacing(BlockFace facing) {
+        this.portalFirstFacing = facing;
     }
 
     /** 记录最后一次真正渲染出来的预览形态，放置时以它为准。 */

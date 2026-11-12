@@ -4,6 +4,7 @@ import com.superniuma.Msg;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
 import com.superniuma.game.GameRoom;
+import org.bukkit.Axis;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -13,6 +14,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.Orientable;
 import org.bukkit.block.data.type.PointedDripstone;
 import org.bukkit.block.data.type.Speleothem;
 import org.bukkit.entity.AbstractArrow;
@@ -20,9 +22,12 @@ import org.bukkit.entity.Arrow;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
@@ -31,9 +36,12 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /** 机关预览、放置、运行与还原。 */
@@ -41,18 +49,27 @@ public final class MechanismManager {
 
     private final SuperNiumaPlugin plugin;
     private final Map<UUID, ArrowShot> arrows = new HashMap<>();
+    private final Map<UUID, Long> portalCooldown = new HashMap<>();
+    private final Set<UUID> blinded = new HashSet<>();
+    private final Set<UUID> boosted = new HashSet<>();
+    private final Random random = new Random();
 
     public MechanismManager(SuperNiumaPlugin plugin) {
         this.plugin = plugin;
     }
 
-    public record PlaceResult(boolean success, MechanismInstance instance, String error) {
+    public record PlaceResult(boolean success, MechanismInstance instance, String error,
+                              boolean stageAdvanced) {
         public static PlaceResult ok(MechanismInstance instance) {
-            return new PlaceResult(true, instance, null);
+            return new PlaceResult(true, instance, null, false);
+        }
+
+        public static PlaceResult advance() {
+            return new PlaceResult(true, null, null, true);
         }
 
         public static PlaceResult fail(String error) {
-            return new PlaceResult(false, null, error);
+            return new PlaceResult(false, null, error, false);
         }
     }
 
@@ -71,6 +88,8 @@ public final class MechanismManager {
         if (anchor == null) {
             return;
         }
+        anchor = clampPortalAnchor(session, anchor);
+        session.setAnchor(anchor);
         List<Location> cells = cells(session.choice(), anchor, session.yawSteps(), session.pitchSteps());
         if (sameCells(cells, session.ghostCells())) {
             return;
@@ -86,6 +105,7 @@ public final class MechanismManager {
         MechanismChoice choice = session.choice();
         MechanismDef def = choice.def();
         BlockFace facing = facingFor(def, session.yawSteps(), session.pitchSteps());
+        Location anchor = session.anchor();
         switch (def.id()) {
             case "platform" -> {
                 BlockData wool = room.woolFor(session.owner()).createBlockData();
@@ -177,9 +197,30 @@ public final class MechanismManager {
                     spawnBlockGhost(session, cell, data);
                 }
             }
+            case "blind" -> {
+                BlockData data = Material.BLACK_WOOL.createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "speed" -> {
+                BlockData data = Material.BLUE_WOOL.createBlockData();
+                for (Location cell : cells) {
+                    spawnBlockGhost(session, cell, data);
+                }
+            }
+            case "portal" -> {
+                Location first = session.portalFirstAnchor();
+                if (first != null && session.portalSecondStage()) {
+                    spawnPortalGhost(session, first, session.portalFirstFacing());
+                    spawnPortalGhost(session, anchor, facing);
+                } else {
+                    spawnPortalGhost(session, anchor, facing);
+                }
+            }
+            case "traffic" -> spawnTrafficGhosts(session, anchor, facing);
             case "coin" -> spawnCoinGhost(session);
             case "bomb" -> {
-                Location anchor = session.anchor();
                 BlockData glass = Material.RED_STAINED_GLASS.createBlockData();
                 for (Location cell : cells) {
                     if (sameBlock(cell, anchor)) {
@@ -230,6 +271,122 @@ public final class MechanismManager {
                 other.hideEntity(plugin, entity);
             }
         }
+    }
+
+    private Location clampPortalAnchor(PlacementSession session, Location anchor) {
+        if (!session.portalSecondStage()) {
+            return anchor;
+        }
+        Location first = session.portalFirstAnchor();
+        if (first == null) {
+            return anchor;
+        }
+        int range = Math.max(1, session.choice().def().paramInt("range", 7));
+        int half = (range - 1) / 2;
+        Location out = anchor.clone();
+        out.setX(Math.min(first.getBlockX() + half,
+                Math.max(first.getBlockX() - half, anchor.getBlockX())));
+        out.setY(Math.min(first.getBlockY() + half,
+                Math.max(first.getBlockY() - half, anchor.getBlockY())));
+        out.setZ(Math.min(first.getBlockZ() + half,
+                Math.max(first.getBlockZ() - half, anchor.getBlockZ())));
+        return out;
+    }
+
+    private void spawnPortalGhost(PlacementSession session, Location anchor, BlockFace facing) {
+        BlockData data = Material.NETHER_PORTAL.createBlockData();
+        if (data instanceof Orientable orientable) {
+            orientable.setAxis(axisFor(facing));
+        }
+        spawnBlockGhost(session, anchor, data);
+        spawnBlockGhost(session, anchor.clone().add(0, 1, 0), data);
+        BlockData glass = Material.BLUE_STAINED_GLASS.createBlockData();
+        Location front = anchor.clone().add(facing.getModX(), 0, facing.getModZ());
+        spawnBlockGhost(session, front, glass);
+        spawnBlockGhost(session, front.clone().add(0, 1, 0), glass);
+    }
+
+    private Axis axisFor(BlockFace facing) {
+        return facing == BlockFace.EAST || facing == BlockFace.WEST ? Axis.Z : Axis.X;
+    }
+
+    private void spawnTrafficGhosts(PlacementSession session, Location anchor, BlockFace facing) {
+        spawnBlockGhost(session, anchor, Material.OAK_FENCE.createBlockData());
+        spawnBlockGhost(session, anchor.clone().add(0, 1, 0), Material.WHITE_WOOL.createBlockData());
+        BlockData glass = Material.BLUE_STAINED_GLASS.createBlockData();
+        for (Location loc : trafficOutline(anchor, facing, session.choice().def())) {
+            spawnBlockGhost(session, loc, glass);
+        }
+    }
+
+    private int[] trafficBounds(Location anchor, BlockFace facing, MechanismDef def) {
+        int width = Math.max(1, def.paramInt("range-width", 7));
+        int depth = Math.max(1, def.paramInt("range-depth", 3));
+        int height = Math.max(1, def.paramInt("range-height", 7));
+        int halfWidth = (width - 1) / 2;
+        int halfHeight = (height - 1) / 2;
+        int wx = anchor.getBlockX();
+        int wy = anchor.getBlockY() + 1;
+        int wz = anchor.getBlockZ();
+        int fx = facing.getModX();
+        int fz = facing.getModZ();
+        int rx = -fz;
+        int rz = fx;
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (int d = 1; d <= depth; d++) {
+            for (int w = -halfWidth; w <= halfWidth; w++) {
+                for (int h = -halfHeight; h <= halfHeight; h++) {
+                    int x = wx + fx * d + rx * w;
+                    int y = wy + h;
+                    int z = wz + fz * d + rz * w;
+                    minX = Math.min(minX, x);
+                    maxX = Math.max(maxX, x);
+                    minY = Math.min(minY, y);
+                    maxY = Math.max(maxY, y);
+                    minZ = Math.min(minZ, z);
+                    maxZ = Math.max(maxZ, z);
+                }
+            }
+        }
+        return new int[]{minX, minY, minZ, maxX, maxY, maxZ};
+    }
+
+    private List<Location> trafficOutline(Location anchor, BlockFace facing, MechanismDef def) {
+        int[] b = trafficBounds(anchor, facing, def);
+        List<Location> out = new ArrayList<>();
+        for (int x = b[0]; x <= b[3]; x++) {
+            for (int y = b[1]; y <= b[4]; y++) {
+                for (int z = b[2]; z <= b[5]; z++) {
+                    int extremes = 0;
+                    if (x == b[0] || x == b[3]) {
+                        extremes++;
+                    }
+                    if (y == b[1] || y == b[4]) {
+                        extremes++;
+                    }
+                    if (z == b[2] || z == b[5]) {
+                        extremes++;
+                    }
+                    if (extremes >= 2) {
+                        out.add(new Location(anchor.getWorld(), x, y, z));
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private boolean inTrafficArea(MechanismInstance instance, Location loc) {
+        int[] b = trafficBounds(instance.anchor(), instance.facing(), instance.def());
+        int x = loc.getBlockX();
+        int y = loc.getBlockY();
+        int z = loc.getBlockZ();
+        return x >= b[0] && x <= b[3] && y >= b[1] && y <= b[4] && z >= b[2] && z <= b[5];
     }
 
     public void clearPreview(PlacementSession session) {
@@ -415,6 +572,10 @@ public final class MechanismManager {
         }
         Arena arena = room.arena();
 
+        if ("portal".equals(def.id())) {
+            return placePortal(room, session, def, arena, anchor, yawSteps, pitchSteps);
+        }
+
         if ("bomb".equals(def.id())) {
             if (!arena.inBuildBounds(anchor)) {
                 return PlaceResult.fail("炸弹只能放在可建造范围内。");
@@ -448,6 +609,12 @@ public final class MechanismManager {
                 }
             }
         }
+        if ("traffic".equals(def.id())) {
+            BlockFace face = facingFor(def, yawSteps, pitchSteps);
+            if (!cells.get(1).getBlock().getRelative(face).isEmpty()) {
+                return PlaceResult.fail("物品展示框的位置被方块挡住了。");
+            }
+        }
 
         MechanismInstance instance = new MechanismInstance(def, choice.variant(), session.owner(),
                 anchor, yawSteps, pitchSteps,
@@ -466,6 +633,9 @@ public final class MechanismManager {
                     Material.CRACKED_STONE_BRICKS.createBlockData());
             case "intermittent" -> placeMaterial(instance, cells, Material.LODESTONE.createBlockData());
             case "ice" -> placeMaterial(instance, cells, Material.ICE.createBlockData());
+            case "blind" -> placeMaterial(instance, cells, Material.BLACK_WOOL.createBlockData());
+            case "speed" -> placeMaterial(instance, cells, Material.BLUE_WOOL.createBlockData());
+            case "traffic" -> placeTraffic(instance, cells, facingFor(def, yawSteps, pitchSteps));
             default -> placePlatform(room, instance, cells);
         }
         room.addMechanism(instance);
@@ -496,6 +666,279 @@ public final class MechanismManager {
         for (Location cell : cells) {
             setBlock(instance, cell, data);
         }
+    }
+
+    private PlaceResult placePortal(GameRoom room, PlacementSession session, MechanismDef def,
+                                    Arena arena, Location anchor, int yawSteps, int pitchSteps) {
+        BlockFace facing = facingFor(def, yawSteps, pitchSteps);
+        if (!session.portalSecondStage()) {
+            String error = validateCells(room, arena, portalCells(anchor));
+            if (error != null) {
+                return PlaceResult.fail(error);
+            }
+            session.setPortalFirstAnchor(anchor);
+            session.setPortalFirstFacing(facing);
+            session.setPortalSecondStage(true);
+            session.setGhostCells(List.of());
+            return PlaceResult.advance();
+        }
+        Location firstAnchor = session.portalFirstAnchor();
+        BlockFace firstFacing = session.portalFirstFacing();
+        if (firstAnchor == null || firstFacing == null) {
+            return PlaceResult.fail("第一个传送门数据丢失，请重新放置。");
+        }
+        Location secondAnchor = clampPortalAnchor(session, anchor);
+        BlockFace secondFacing = facingFor(def, yawSteps, pitchSteps);
+        List<Location> cells = new ArrayList<>();
+        cells.addAll(portalCells(firstAnchor));
+        cells.addAll(portalCells(secondAnchor));
+        String error = validateCells(room, arena, cells);
+        if (error != null) {
+            return PlaceResult.fail(error);
+        }
+        MechanismInstance instance = new MechanismInstance(def, session.choice().variant(),
+                session.owner(), firstAnchor, yawSteps, pitchSteps, firstFacing);
+        instance.setSecondAnchor(secondAnchor);
+        instance.setSecondFacing(secondFacing);
+        placePortalBlocks(instance, firstAnchor, firstFacing);
+        placePortalBlocks(instance, secondAnchor, secondFacing);
+        room.addMechanism(instance);
+        room.applyMechanismCollision(instance);
+        return PlaceResult.ok(instance);
+    }
+
+    private List<Location> portalCells(Location anchor) {
+        List<Location> out = new ArrayList<>();
+        out.add(anchor.clone());
+        out.add(anchor.clone().add(0, 1, 0));
+        return out;
+    }
+
+    private String validateCells(GameRoom room, Arena arena, List<Location> cells) {
+        for (Location cell : cells) {
+            if (!arena.inBuildBounds(cell)) {
+                return "机关超出了可建造范围。";
+            }
+            if (!cell.getBlock().isEmpty()) {
+                return "目标位置被方块挡住了。";
+            }
+            if (room.occupiedByMechanism(cell)) {
+                return "这里已经有别的机关了。";
+            }
+        }
+        return null;
+    }
+
+    private void placePortalBlocks(MechanismInstance instance, Location anchor, BlockFace facing) {
+        BlockData data = Material.NETHER_PORTAL.createBlockData();
+        if (data instanceof Orientable orientable) {
+            orientable.setAxis(axisFor(facing));
+        }
+        setBlock(instance, anchor, data);
+        setBlock(instance, anchor.clone().add(0, 1, 0), data);
+    }
+
+    private void placeTraffic(MechanismInstance instance, List<Location> cells, BlockFace facing) {
+        setBlock(instance, cells.get(0), Material.OAK_FENCE.createBlockData());
+        setBlock(instance, cells.get(1), Material.WHITE_WOOL.createBlockData());
+        Location frameBlock = cells.get(1).getBlock().getRelative(facing).getLocation();
+        Location spawn = frameBlock.clone().add(0.5, 0.5, 0.5);
+        ItemFrame frame = spawn.getWorld().spawn(spawn, ItemFrame.class, entity -> {
+            entity.setFacingDirection(facing, true);
+            entity.setItem(new ItemStack(Material.GREEN_WOOL));
+            entity.setFixed(true);
+            entity.setInvulnerable(true);
+        });
+        instance.entities().add(frame);
+        instance.setLightState(0);
+        instance.setLightTicks(greenTicks(instance.def()));
+    }
+
+    private int greenTicks(MechanismDef def) {
+        return randomSeconds(def, "green-min-seconds", "green-max-seconds", 3, 8);
+    }
+
+    private int redTicks(MechanismDef def) {
+        return randomSeconds(def, "red-min-seconds", "red-max-seconds", 3, 8);
+    }
+
+    private int randomSeconds(MechanismDef def, String minKey, String maxKey, int defMin, int defMax) {
+        int min = Math.max(1, def.paramInt(minKey, defMin));
+        int max = Math.max(min, def.paramInt(maxKey, defMax));
+        return (min + random.nextInt(max - min + 1)) * 20;
+    }
+
+    private void updateLightFrame(MechanismInstance instance) {
+        Material material = switch (instance.lightState()) {
+            case 1 -> Material.YELLOW_WOOL;
+            case 2 -> Material.RED_WOOL;
+            default -> Material.GREEN_WOOL;
+        };
+        for (Entity entity : instance.entities()) {
+            if (entity instanceof ItemFrame frame) {
+                frame.setItem(new ItemStack(material));
+            }
+        }
+    }
+
+    private void tickPortal(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        Location first = instance.anchor();
+        Location second = instance.secondAnchor();
+        if (second == null) {
+            return;
+        }
+        for (Player player : room.activePlayers()) {
+            Location target;
+            BlockFace exit;
+            if (overlapsPortal(player, first)) {
+                target = second;
+                exit = instance.secondFacing();
+            } else if (overlapsPortal(player, second)) {
+                target = first;
+                exit = instance.facing();
+            } else {
+                continue;
+            }
+            long now = System.currentTimeMillis();
+            Long last = portalCooldown.get(player.getUniqueId());
+            if (last != null && now - last < 1000L) {
+                continue;
+            }
+            portalCooldown.put(player.getUniqueId(), now);
+            Vector velocity = player.getVelocity();
+            Location dest = target.clone().add(0.5, 0.0, 0.5);
+            dest.setYaw(yawFor(exit));
+            dest.setPitch(0.0f);
+            player.teleport(dest);
+            player.setVelocity(velocity);
+        }
+    }
+
+    private boolean overlapsPortal(Player player, Location anchor) {
+        BoundingBox box = player.getBoundingBox();
+        for (Location cell : portalCells(anchor)) {
+            BoundingBox cube = new BoundingBox(
+                    cell.getBlockX(), cell.getBlockY(), cell.getBlockZ(),
+                    cell.getBlockX() + 1.0, cell.getBlockY() + 1.0, cell.getBlockZ() + 1.0);
+            if (box.overlaps(cube)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private float yawFor(BlockFace facing) {
+        return switch (facing) {
+            case EAST -> -90.0f;
+            case WEST -> 90.0f;
+            case NORTH -> 180.0f;
+            default -> 0.0f;
+        };
+    }
+
+    private void tickBlind(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        for (Player player : room.activePlayers()) {
+            if (standingOn(player, instance)) {
+                blinded.add(player.getUniqueId());
+                player.addPotionEffect(new PotionEffect(
+                        PotionEffectType.BLINDNESS, 60, 0, true, false, false));
+            } else if (blinded.contains(player.getUniqueId())
+                    && !onAny(room, player, "blind")) {
+                player.removePotionEffect(PotionEffectType.BLINDNESS);
+                blinded.remove(player.getUniqueId());
+            }
+        }
+    }
+
+    private void tickSpeed(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        int amplifier = instance.def().paramInt("amplifier", 1);
+        for (Player player : room.activePlayers()) {
+            if (standingOn(player, instance)) {
+                boosted.add(player.getUniqueId());
+                player.addPotionEffect(new PotionEffect(
+                        PotionEffectType.SPEED, 60, amplifier, true, false, false));
+            } else if (boosted.contains(player.getUniqueId())
+                    && player.isOnGround()
+                    && !onAny(room, player, "speed")) {
+                player.removePotionEffect(PotionEffectType.SPEED);
+                boosted.remove(player.getUniqueId());
+            }
+        }
+    }
+
+    private boolean onAny(GameRoom room, Player player, String id) {
+        for (MechanismInstance other : room.mechanisms()) {
+            if (id.equals(other.def().id()) && standingOn(player, other)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean standingOn(Player player, MechanismInstance instance) {
+        Location loc = player.getLocation();
+        for (PlacedBlock block : instance.blocks()) {
+            Location base = block.location();
+            if (loc.getBlockX() == base.getBlockX()
+                    && loc.getBlockZ() == base.getBlockZ()
+                    && loc.getBlockY() == base.getBlockY() + 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void tickTraffic(GameRoom room, MechanismInstance instance) {
+        if (!room.isRunning()) {
+            return;
+        }
+        instance.setLightTicks(instance.lightTicks() - 1);
+        if (instance.lightTicks() <= 0) {
+            int next = (instance.lightState() + 1) % 3;
+            instance.setLightState(next);
+            instance.setLightTicks(next == 1
+                    ? Math.max(1, instance.def().paramInt("yellow-seconds", 3)) * 20
+                    : (next == 2 ? redTicks(instance.def()) : greenTicks(instance.def())));
+            updateLightFrame(instance);
+        }
+        if (instance.lightTicks() % 10 == 0) {
+            for (Location point : trafficOutline(instance.anchor(), instance.facing(), instance.def())) {
+                point.getWorld().spawnParticle(Particle.END_ROD,
+                        point.clone().add(0.5, 0.5, 0.5), 1, 0, 0, 0, 0);
+            }
+        }
+    }
+
+    /** 红灯区域内禁止移动。 */
+    public boolean isTrafficRed(GameRoom room, Player player) {
+        for (MechanismInstance instance : room.mechanisms()) {
+            if (!"traffic".equals(instance.def().id()) || instance.lightState() != 2) {
+                continue;
+            }
+            if (inTrafficArea(instance, player.getLocation())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void clearPlayerEffects(Player player) {
+        if (blinded.remove(player.getUniqueId())) {
+            player.removePotionEffect(PotionEffectType.BLINDNESS);
+        }
+        if (boosted.remove(player.getUniqueId())) {
+            player.removePotionEffect(PotionEffectType.SPEED);
+        }
+        portalCooldown.remove(player.getUniqueId());
     }
 
     private void placeSpike(MechanismInstance instance, MechanismChoice choice,
@@ -592,6 +1035,10 @@ public final class MechanismManager {
                 case "mine" -> tickMine(room, instance);
                 case "fragile" -> tickFragile(room, instance);
                 case "intermittent" -> tickIntermittent(room, instance);
+                case "portal" -> tickPortal(room, instance);
+                case "blind" -> tickBlind(room, instance);
+                case "speed" -> tickSpeed(room, instance);
+                case "traffic" -> tickTraffic(room, instance);
                 default -> {
                 }
             }
@@ -793,6 +1240,10 @@ public final class MechanismManager {
                 for (PlacedBlock block : instance.blocks()) {
                     block.location().getBlock().setBlockData(block.placed(), false);
                 }
+            } else if ("traffic".equals(instance.def().id())) {
+                instance.setLightState(0);
+                instance.setLightTicks(greenTicks(instance.def()));
+                updateLightFrame(instance);
             }
         }
     }
@@ -954,6 +1405,16 @@ public final class MechanismManager {
             }
             case "mine" -> out.add(anchor.clone());
             case "intermittent" -> planarCells(choice, anchor, yawSteps, pitchSteps, out);
+            case "blind" -> planarCells(choice, anchor, yawSteps, pitchSteps, out);
+            case "speed" -> planarCells(choice, anchor, yawSteps, pitchSteps, out);
+            case "portal" -> {
+                out.add(anchor.clone());
+                out.add(anchor.clone().add(0, 1, 0));
+            }
+            case "traffic" -> {
+                out.add(anchor.clone());
+                out.add(anchor.clone().add(0, 1, 0));
+            }
             case "bomb" -> {
                 int radius = def.bombRadius();
                 for (int x = -radius; x <= radius; x++) {

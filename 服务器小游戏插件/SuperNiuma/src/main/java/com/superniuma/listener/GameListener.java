@@ -18,6 +18,8 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -149,8 +151,21 @@ public final class GameListener implements Listener {
     }
 
     @EventHandler
-    public void onDrop(PlayerDropItemEvent event) {
-        Player player = event.getPlayer();
+    public void onBucketEmpty(PlayerBucketEmptyEvent event) {
+        if (plugin.rooms().roomOf(event.getPlayer()) != null) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onBucketFill(PlayerBucketFillEvent event) {
+        if (plugin.rooms().roomOf(event.getPlayer()) != null) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onDrop(PlayerDropItemEvent event) {        Player player = event.getPlayer();
         GameRoom room = plugin.rooms().roomOf(player);
         if (room == null) {
             return;
@@ -177,6 +192,16 @@ public final class GameListener implements Listener {
         }
         if (room.phase() == GameRoom.Phase.STARTING) {
             // 跑酷倒计时期间锁住位置，只允许转头。
+            Location from = event.getFrom();
+            Location to = event.getTo();
+            if (to != null) {
+                event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(),
+                        to.getYaw(), to.getPitch()));
+            }
+            return;
+        }
+        if (room.phase() == GameRoom.Phase.RUNNING
+                && plugin.mechanismManager().isTrafficRed(room, event.getPlayer())) {
             Location from = event.getFrom();
             Location to = event.getTo();
             if (to != null) {

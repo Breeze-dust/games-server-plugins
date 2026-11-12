@@ -115,6 +115,10 @@
 | `intermittent` 间歇方块 | 磁石 1x1/1x2/1x3/2x2；周期性出现/消失；整片一起显隐 | `interval-ticks`、`variants.*.size` |
 | `ice` 冰平台 | 冰 1x2/2x2/3x3；可水平/竖直旋转 | `variants.*.size` |
 | `piston` 活塞 | 六向朝向；检测正前方一格内的玩家，按朝向水平/垂直击飞，距离可配置 | `distance` |
+| `portal` 传送门 | 一对 1x2 地狱门；进入即传到另一扇，保留速度；第二个只能在第一个周围 `range` 立方内；炸掉一扇会同时移除两扇 | `range` |
+| `blind` 致盲平台 | 黑色羊毛 1x1/2x2/3x3/2x3/1x3；站在上面失明，离开恢复 | `variants.*.size` |
+| `speed` 加速带 | 蓝色羊毛 1x2/1x3/1x4/1x5；站在上面加速，离开后保留惯性，落到普通地面恢复 | `amplifier`、`variants.*.size` |
+| `traffic` 红绿灯 | 木栅栏+白羊毛+物品展示框；绿→黄→红循环，红灯时 7x3x7 范围内禁止移动 | `yellow-seconds`、`green-*`、`red-*`、`range-*` |
 
 炸弹保底：若上一回合通关率低于 `low-clear-rate`，下一回合按 `low-clear-weight` 提高权重，并保证至少 `low-clear-min-count` 个。
 

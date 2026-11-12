@@ -27,6 +27,10 @@ public final class MechanismInstance {
     private int cooldown;
     private boolean hidden;
     private boolean removed;
+    private Location secondAnchor;
+    private BlockFace secondFacing;
+    private int lightState;
+    private int lightTicks;
 
     public MechanismInstance(MechanismDef def, MechanismDef.Variant variant, UUID owner,
                              Location anchor, int yawSteps, int pitchSteps, BlockFace facing) {
@@ -117,6 +121,38 @@ public final class MechanismInstance {
 
     public void setHidden(boolean hidden) {
         this.hidden = hidden;
+    }
+
+    public Location secondAnchor() {
+        return secondAnchor == null ? null : secondAnchor.clone();
+    }
+
+    public void setSecondAnchor(Location secondAnchor) {
+        this.secondAnchor = secondAnchor == null ? null : secondAnchor.clone();
+    }
+
+    public BlockFace secondFacing() {
+        return secondFacing;
+    }
+
+    public void setSecondFacing(BlockFace secondFacing) {
+        this.secondFacing = secondFacing;
+    }
+
+    public int lightState() {
+        return lightState;
+    }
+
+    public void setLightState(int lightState) {
+        this.lightState = lightState;
+    }
+
+    public int lightTicks() {
+        return lightTicks;
+    }
+
+    public void setLightTicks(int lightTicks) {
+        this.lightTicks = lightTicks;
     }
 
     /** 机关是否占据某个方块。 */

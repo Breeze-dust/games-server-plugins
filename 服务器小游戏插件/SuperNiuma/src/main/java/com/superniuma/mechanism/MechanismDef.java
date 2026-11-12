@@ -1,6 +1,7 @@
 package com.superniuma.mechanism;
 
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.List;
 
@@ -26,13 +27,15 @@ public final class MechanismDef {
     private final int maxOnField;
     private final double height;
     private final double distance;
+    private final ConfigurationSection section;
     private final List<Variant> variants;
 
     public MechanismDef(String id, boolean enabled, double weight, Material icon, String displayName,
                         List<String> lore, RotationRule rotation, double points, int intervalTicks,
                         int arrowRange, double arrowSpeed, int bombRadius, double lowClearRate,
                         double lowClearWeight, int lowClearMinCount, double scale, int maxOnField,
-                        double height, double distance, List<Variant> variants) {
+                        double height, double distance, ConfigurationSection section,
+                        List<Variant> variants) {
         this.id = id;
         this.enabled = enabled;
         this.weight = Math.max(0.0, weight);
@@ -52,6 +55,7 @@ public final class MechanismDef {
         this.maxOnField = Math.max(0, maxOnField);
         this.height = Math.max(0.0, height);
         this.distance = Math.max(0.0, distance);
+        this.section = section;
         this.variants = List.copyOf(variants);
     }
 
@@ -132,6 +136,20 @@ public final class MechanismDef {
     /** 活塞的击飞距离（格）。 */
     public double distance() {
         return distance;
+    }
+
+    /** 原始配置段，供各机关读取自己的专属参数。 */
+    public ConfigurationSection section() {
+        return section;
+    }
+
+    /** 读取本机关专属参数（缺省返回 def）。 */
+    public double param(String path, double def) {
+        return section == null ? def : section.getDouble(path, def);
+    }
+
+    public int paramInt(String path, int def) {
+        return section == null ? def : section.getInt(path, def);
     }
 
     public List<Variant> variants() {

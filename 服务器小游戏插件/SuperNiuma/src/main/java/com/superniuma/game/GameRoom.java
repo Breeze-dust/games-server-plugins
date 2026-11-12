@@ -305,6 +305,7 @@ public final class GameRoom {
             }
         }
         if (player.isOnline()) {
+            plugin.mechanismManager().clearPlayerEffects(player);
             restore(player);
         }
         HubAPI.clearGame(player.getUniqueId());
@@ -634,7 +635,7 @@ public final class GameRoom {
                 continue;
             }
             player.teleport(arena.getSpawn());
-            player.setGameMode(org.bukkit.GameMode.CREATIVE);
+            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
             player.setAllowFlight(true);
             player.setFlying(true);
             enableReach(player);
@@ -728,10 +729,6 @@ public final class GameRoom {
     public void rotateLeft(Player player) {
         PlacementSession session = session(player);
         if (phase == Phase.PLACING && session != null && !session.confirmed()) {
-            if (session.pendingConfirm()) {
-                Msg.actionBar(player, "&e已按 Q，再按一次确认放置");
-                return;
-            }
             plugin.mechanismManager().rotateLeft(session);
         }
     }
@@ -739,10 +736,6 @@ public final class GameRoom {
     public void rotateRight(Player player) {
         PlacementSession session = session(player);
         if (phase == Phase.PLACING && session != null && !session.confirmed()) {
-            if (session.pendingConfirm()) {
-                Msg.actionBar(player, "&e已按 Q，再按一次确认放置");
-                return;
-            }
             plugin.mechanismManager().rotateRight(session);
         }
     }
@@ -750,10 +743,6 @@ public final class GameRoom {
     public void scroll(Player player, boolean forward) {
         PlacementSession session = session(player);
         if (phase == Phase.PLACING && session != null && !session.confirmed()) {
-            if (session.pendingConfirm()) {
-                Msg.actionBar(player, "&e已按 Q，再按一次确认放置");
-                return;
-            }
             plugin.mechanismManager().scroll(session, forward);
         }
     }
@@ -764,8 +753,11 @@ public final class GameRoom {
             return;
         }
         MechanismManager.PlaceResult result = plugin.mechanismManager().place(this, session);
+        if (result.stageAdvanced()) {
+            Msg.send(player, "&d第一个传送门已记录，请放置第二个（在第一个周围的范围内）。");
+            return;
+        }
         if (!result.success()) {
-            session.setPendingConfirm(false);
             Msg.send(player, "&c" + result.error());
             return;
         }
@@ -802,9 +794,6 @@ public final class GameRoom {
         long now = System.currentTimeMillis();
         long last = lastDropMillis.getOrDefault(player.getUniqueId(), 0L);
         boolean fresh = now - last > 3000L;
-        if (fresh) {
-            session.setPendingConfirm(false);
-        }
         int count = fresh ? 0 : dropCounts.getOrDefault(player.getUniqueId(), 0);
         count++;
         lastDropMillis.put(player.getUniqueId(), now);
@@ -813,8 +802,7 @@ public final class GameRoom {
             dropCounts.remove(player.getUniqueId());
             confirmPlacement(player);
         } else {
-            session.setPendingConfirm(true);
-            Msg.send(player, "&e再按一次 Q 确认放置。");
+            Msg.send(player, "&e再按一次 Q 确认放置（期间仍可调整）。");
         }
     }
 

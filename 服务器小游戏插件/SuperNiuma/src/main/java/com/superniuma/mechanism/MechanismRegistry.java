@@ -104,7 +104,7 @@ public final class MechanismRegistry {
 
         return new MechanismDef(id, enabled, weight, icon, name, lore, rotation, points,
                 interval, range, arrowSpeed, radius, lowRate, lowWeight, lowMin, scale,
-                maxOnField, height, distance, variants);
+                maxOnField, height, distance, sec, variants);
     }
 
     private RotationRule parseRotation(String raw) {
