@@ -93,6 +93,7 @@ mechanisms:
     enabled: true
     weight: 25
     icon: GOLD_BLOCK
+    rotation: none
     name: '&6金币'
     lore:
       - '&7没有碰撞箱的缩小金块'
@@ -106,6 +107,7 @@ mechanisms:
     enabled: true
     weight: 10
     icon: TNT
+    rotation: none
     name: '&c炸弹'
     lore:
       - '&7炸掉范围内的所有机关'
