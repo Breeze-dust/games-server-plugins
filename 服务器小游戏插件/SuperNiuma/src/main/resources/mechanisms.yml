@@ -185,7 +185,7 @@ mechanisms:
     name: '&e梯子'
     lore:
       - '&7放置一条竖直梯子'
-      - '&7需要贴在方块上'
+      - '&7可以凭空放置'
       - '&7只能水平旋转'
     rotation: horizontal-only
     variants:

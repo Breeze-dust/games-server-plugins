@@ -5,6 +5,7 @@ import com.superniuma.game.GameRoom;
 import com.superniuma.mechanism.PlacementSession;
 import io.papermc.paper.event.player.PlayerPickBlockEvent;
 import io.papermc.paper.event.player.PlayerPickEntityEvent;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
@@ -31,10 +32,19 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 /** 对局内的玩家交互与机关运行事件。 */
 public final class GameListener implements Listener {
 
+    private record RotationRequest(int tick, boolean left) {
+    }
+
     private final SuperNiumaPlugin plugin;
+    private final Map<UUID, RotationRequest> pendingRotation = new HashMap<>();
+    private final Map<UUID, Integer> dropTick = new HashMap<>();
 
     public GameListener(SuperNiumaPlugin plugin) {
         this.plugin = plugin;
@@ -64,11 +74,36 @@ public final class GameListener implements Listener {
         Action action = event.getAction();
         if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
             event.setCancelled(true);
-            room.rotateLeft(player);
+            queueRotation(player, true);
         } else if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
             event.setCancelled(true);
-            room.rotateRight(player);
+            queueRotation(player, false);
         }
+    }
+
+    /** 丢弃物品（Q）时客户端会顺带发一次挥手，服务端会收到 LEFT_CLICK_AIR；延后一 tick 并去重。 */
+    private void queueRotation(Player player, boolean left) {
+        UUID id = player.getUniqueId();
+        RotationRequest request = new RotationRequest(Bukkit.getCurrentTick(), left);
+        pendingRotation.put(id, request);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (pendingRotation.get(id) != request) {
+                return;
+            }
+            pendingRotation.remove(id);
+            if (dropTick.getOrDefault(id, -100) == request.tick()) {
+                return;
+            }
+            GameRoom room = plugin.rooms().roomOf(player);
+            if (room == null || room.phase() != GameRoom.Phase.PLACING) {
+                return;
+            }
+            if (left) {
+                room.rotateLeft(player);
+            } else {
+                room.rotateRight(player);
+            }
+        });
     }
 
     /** 等待阶段：右键「开始游戏」/「退出房间」。 */
@@ -167,7 +202,9 @@ public final class GameListener implements Listener {
     }
 
     @EventHandler
-    public void onDrop(PlayerDropItemEvent event) {        Player player = event.getPlayer();
+    public void onDrop(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+        dropTick.put(player.getUniqueId(), Bukkit.getCurrentTick());
         GameRoom room = plugin.rooms().roomOf(player);
         if (room == null) {
             return;

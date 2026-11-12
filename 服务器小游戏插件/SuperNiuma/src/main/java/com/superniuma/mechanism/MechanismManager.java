@@ -610,14 +610,6 @@ public final class MechanismManager {
                 && !anchor.getBlock().getRelative(BlockFace.DOWN).getType().isSolid()) {
             return PlaceResult.fail("地雷需要放在方块上。");
         }
-        if ("ladder".equals(def.id())) {
-            BlockFace supportFace = facingFor(def, yawSteps, pitchSteps).getOppositeFace();
-            for (Location cell : cells) {
-                if (!cell.getBlock().getRelative(supportFace).getType().isSolid()) {
-                    return PlaceResult.fail("梯子需要贴在方块上。");
-                }
-            }
-        }
         if ("traffic".equals(def.id())) {
             BlockFace face = facingFor(def, yawSteps, pitchSteps);
             if (!cells.get(1).getBlock().getRelative(face).isEmpty()) {
@@ -1194,11 +1186,12 @@ public final class MechanismManager {
                 double y = direction.getY() > 0 ? speed : -speed;
                 player.setVelocity(new Vector(velocity.getX(), y, velocity.getZ()));
             } else {
-                double speed = Math.max(0.4, distance * 0.12);
+                // 水平击飞：distance 约等于想弹出去的格数，地面摩擦会吃掉大部分速度。
+                double speed = Math.max(0.5, distance * 0.25);
                 Vector horizontal = new Vector(direction.getX(), 0, direction.getZ())
                         .normalize().multiply(speed);
                 player.setVelocity(new Vector(horizontal.getX(),
-                        Math.max(velocity.getY(), 0.15), horizontal.getZ()));
+                        Math.max(velocity.getY(), 0.2), horizontal.getZ()));
             }
             player.playSound(player.getLocation(), Sound.BLOCK_PISTON_EXTEND, 1.0f, 1.0f);
         }
@@ -1601,7 +1594,9 @@ public final class MechanismManager {
         return "dispenser".equals(def.id())
                 || "piston".equals(def.id())
                 || "stairs".equals(def.id())
-                || "ladder".equals(def.id());
+                || "ladder".equals(def.id())
+                || "portal".equals(def.id())
+                || "traffic".equals(def.id());
     }
 
     private BlockFace facingFor(MechanismDef def, int yawSteps, int pitchSteps) {
