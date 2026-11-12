@@ -112,7 +112,7 @@
 | `mine` 地雷 | 红色地毯；踩到后 3x3x3 内玩家全部失败；需放在方块上；触发后本回合消失，下回合重置 | `radius` |
 | `ladder` 梯子 | 竖直 1x2/1x3；需贴墙；只能水平旋转 | `variants.*.size` |
 | `fragile` 易碎方块 | 裂纹石砖 1x1/1x2/2x2/2x3/1x3；踩上后延迟破碎，一旦触发必定破碎，下回合恢复 | `break-delay-seconds`、`variants.*.size` |
-| `intermittent` 间歇方块 | 磁石 1x1/1x2/1x3/2x2；周期性出现/消失；整片一起显隐 | `interval-ticks`、`variants.*.size` |
+| `intermittent` 间歇方块 | 磁石 1x1/1x2/1x3/2x2；周期性出现/消失；整片一起显隐；可水平/竖直旋转 | `interval-ticks`、`variants.*.size` |
 | `ice` 冰平台 | 冰 1x2/2x2/3x3；可水平/竖直旋转 | `variants.*.size` |
 | `piston` 活塞 | 六向朝向；检测正前方一格内的玩家，按朝向水平/垂直击飞，距离可配置 | `distance` |
 | `portal` 传送门 | 一对 1x2 地狱门；进入即传到另一扇并保留速度，出口在门框正前方；必须先完全离开传送门范围才会再次触发（不会来回弹）；不会触发原版下界传送；第二个只能在第一个周围 `range` 立方内；炸掉一扇会同时移除两扇 | `range` |

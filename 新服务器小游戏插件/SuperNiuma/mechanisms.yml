@@ -238,8 +238,8 @@ mechanisms:
     lore:
       - '&7周期性出现和消失'
       - '&7间隔可在配置中调整'
-      - '&7无法旋转'
-    rotation: none
+      - '&7左键水平旋转，右键竖直翻转'
+    rotation: four-way
     interval-ticks: 60      # 出现/消失的切换间隔（tick）
     variants:
       v1x1:
