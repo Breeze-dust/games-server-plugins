@@ -25,6 +25,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -224,6 +225,14 @@ public final class GameListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         plugin.rooms().leave(event.getPlayer(), false);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPortal(PlayerPortalEvent event) {
+        // 机关传送门是真实的地狱门方块，禁止原版把玩家送去下界；跨门由机关逻辑处理。
+        if (plugin.rooms().roomOf(event.getPlayer()) != null) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler

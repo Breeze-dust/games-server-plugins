@@ -49,7 +49,7 @@ public final class MechanismManager {
 
     private final SuperNiumaPlugin plugin;
     private final Map<UUID, ArrowShot> arrows = new HashMap<>();
-    private final Map<UUID, Long> portalCooldown = new HashMap<>();
+    private final Map<UUID, String> portalInside = new HashMap<>();
     private final Set<UUID> blinded = new HashSet<>();
     private final Set<UUID> boosted = new HashSet<>();
     private final Random random = new Random();
@@ -91,7 +91,12 @@ public final class MechanismManager {
         anchor = clampPortalAnchor(session, anchor);
         session.setAnchor(anchor);
         List<Location> cells = cells(session.choice(), anchor, session.yawSteps(), session.pitchSteps());
-        if (sameCells(cells, session.ghostCells())) {
+        // 朝向也会改变外观（传送门/发射器/活塞等），格子没变时同样需要重建预览。
+        boolean sameShape = sameCells(cells, session.ghostCells())
+                && session.rendered()
+                && session.renderedYawSteps() == (session.yawSteps() & 3)
+                && session.renderedPitchSteps() == (session.pitchSteps() & 3);
+        if (sameShape) {
             return;
         }
         clearGhosts(session);
@@ -791,25 +796,26 @@ public final class MechanismManager {
             return;
         }
         for (Player player : room.activePlayers()) {
-            Location target;
-            BlockFace exit;
-            if (overlapsPortal(player, first)) {
-                target = second;
-                exit = instance.secondFacing();
-            } else if (overlapsPortal(player, second)) {
-                target = first;
-                exit = instance.facing();
-            } else {
+            UUID uuid = player.getUniqueId();
+            boolean inFirst = overlapsPortal(player, first);
+            boolean inSecond = overlapsPortal(player, second);
+            if (!inFirst && !inSecond) {
+                if (instance.id().equals(portalInside.get(uuid))) {
+                    portalInside.remove(uuid);
+                }
                 continue;
             }
-            long now = System.currentTimeMillis();
-            Long last = portalCooldown.get(player.getUniqueId());
-            if (last != null && now - last < 1000L) {
+            // 玩家还没离开传送门范围时不再触发，避免两个门之间来回弹。
+            if (portalInside.containsKey(uuid)) {
                 continue;
             }
-            portalCooldown.put(player.getUniqueId(), now);
+            Location target = inFirst ? second : first;
+            BlockFace exit = inFirst ? instance.secondFacing() : instance.facing();
+            portalInside.put(uuid, instance.id());
             Vector velocity = player.getVelocity();
-            Location dest = target.clone().add(0.5, 0.0, 0.5);
+            // 出口放在门框正前方半格，避免镜头停留在传送门方块里（原版会扭曲画面）。
+            Location dest = target.clone().add(
+                    0.5 + exit.getModX() * 0.55, 0.0, 0.5 + exit.getModZ() * 0.55);
             dest.setYaw(yawFor(exit));
             dest.setPitch(0.0f);
             player.teleport(dest);
@@ -938,7 +944,7 @@ public final class MechanismManager {
         if (boosted.remove(player.getUniqueId())) {
             player.removePotionEffect(PotionEffectType.SPEED);
         }
-        portalCooldown.remove(player.getUniqueId());
+        portalInside.remove(player.getUniqueId());
     }
 
     private void placeSpike(MechanismInstance instance, MechanismChoice choice,
@@ -1552,12 +1558,9 @@ public final class MechanismManager {
     }
 
     private BlockFace facingFor(MechanismDef def, int yawSteps, int pitchSteps) {
-        if ("stairs".equals(def.id()) || "ladder".equals(def.id())) {
-            BlockFace face = BlockFace.SOUTH;
-            for (int i = 0; i < (yawSteps & 3); i++) {
-                face = rotateY(face);
-            }
-            return face;
+        if ("stairs".equals(def.id()) || "ladder".equals(def.id())
+                || "portal".equals(def.id()) || "traffic".equals(def.id())) {
+            return yawFacing(yawSteps);
         }
         if (!"dispenser".equals(def.id()) && !"piston".equals(def.id())) {
             return BlockFace.SOUTH;
@@ -1569,12 +1572,17 @@ public final class MechanismManager {
         if (pitch == 3) {
             return BlockFace.DOWN;
         }
+        BlockFace face = yawFacing(yawSteps);
+        if (pitch == 2) {
+            face = face.getOppositeFace();
+        }
+        return face;
+    }
+
+    private BlockFace yawFacing(int yawSteps) {
         BlockFace face = BlockFace.SOUTH;
         for (int i = 0; i < (yawSteps & 3); i++) {
             face = rotateY(face);
-        }
-        if (pitch == 2) {
-            face = face.getOppositeFace();
         }
         return face;
     }
