@@ -242,6 +242,10 @@ public final class GameListener implements Listener {
         }
         if (room.phase() == GameRoom.Phase.RUNNING
                 && plugin.mechanismManager().isTrafficRed(room, event.getPlayer())) {
+            // 被活塞/弹簧击飞的瞬间不锁位移，机关造成的移动照常生效。
+            if (plugin.mechanismManager().isLaunched(event.getPlayer())) {
+                return;
+            }
             // 红灯只拿走方向键和跳跃：站在地面时锁住水平位置、禁止起跳；
             // 已经在空中的玩家保留原有速度，照常受重力影响。
             Location from = event.getFrom();

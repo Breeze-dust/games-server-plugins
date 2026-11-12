@@ -53,6 +53,7 @@ public final class MechanismManager {
     private final Set<UUID> blinded = new HashSet<>();
     private final Set<UUID> boosted = new HashSet<>();
     private final Map<UUID, Float> trafficWalkSpeed = new HashMap<>();
+    private final Map<UUID, Integer> launched = new HashMap<>();
     private final Random random = new Random();
 
     public MechanismManager(SuperNiumaPlugin plugin) {
@@ -920,6 +921,16 @@ public final class MechanismManager {
         }
     }
 
+    /** 弹簧弹起/活塞击飞后的短暂窗口，红灯不再锁住位移。 */
+    public boolean isLaunched(Player player) {
+        Integer tick = launched.get(player.getUniqueId());
+        return tick != null && Bukkit.getCurrentTick() - tick <= 40;
+    }
+
+    private void markLaunched(Player player) {
+        launched.put(player.getUniqueId(), Bukkit.getCurrentTick());
+    }
+
     /** 红灯区域内禁止使用方向键/跳跃（只对正在跑的玩家生效）。 */
     public boolean isTrafficRed(GameRoom room, Player player) {
         if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
@@ -944,6 +955,7 @@ public final class MechanismManager {
             player.removePotionEffect(PotionEffectType.SPEED);
         }
         portalInside.remove(player.getUniqueId());
+        launched.remove(player.getUniqueId());
         Float speed = trafficWalkSpeed.remove(player.getUniqueId());
         if (speed != null) {
             player.setWalkSpeed(speed);
@@ -1153,6 +1165,7 @@ public final class MechanismManager {
                     double launch = Math.sqrt(2.0 * 0.08 * Math.max(0.0, instance.def().height()));
                     player.setVelocity(new Vector(velocity.getX(),
                             Math.max(launch, velocity.getY()), velocity.getZ()));
+                    markLaunched(player);
                     player.playSound(player.getLocation(),
                             Sound.ENTITY_SLIME_JUMP, 1.0f, 1.2f);
                     break;
@@ -1194,6 +1207,7 @@ public final class MechanismManager {
                         Math.max(velocity.getY(), 0.2), horizontal.getZ()));
             }
             player.playSound(player.getLocation(), Sound.BLOCK_PISTON_EXTEND, 1.0f, 1.0f);
+            markLaunched(player);
         }
     }
 
