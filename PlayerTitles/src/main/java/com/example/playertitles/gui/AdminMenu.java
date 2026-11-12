@@ -110,7 +110,9 @@ public final class AdminMenu {
                                     open(plugin, player, 0);
                                     return;
                                 }
-                                String display = name.length() > 32 ? name.substring(0, 32) : name;
+                                String display = name.length() > Title.MAX_NAME_LENGTH
+                                        ? name.substring(0, Title.MAX_NAME_LENGTH)
+                                        : name;
                                 plugin.getTitleManager().create(id, display, "&f", "&7暂无描述");
                                 player.sendMessage(Text.parse("&a已创建头衔 &f" + id
                                         + "&a，可继续在编辑面板中修改颜色与描述"));

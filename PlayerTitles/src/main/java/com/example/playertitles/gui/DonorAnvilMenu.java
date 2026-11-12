@@ -21,7 +21,7 @@ import org.bukkit.inventory.view.AnvilView;
 
 public final class DonorAnvilMenu {
 
-    public static final int MAX_LENGTH = 32;
+    public static final int MAX_LENGTH = Title.MAX_NAME_LENGTH;
 
     /** 每个打开中玩家的铁砧会话；真实铁砧菜单没有自定义 holder，只能按玩家关联。 */
     private static final Map<UUID, Session> SESSIONS = new ConcurrentHashMap<>();

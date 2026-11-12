@@ -80,7 +80,9 @@ public final class TitleEditMenu {
                 AdminMenu.open(plugin, player, 0);
                 return;
             }
-            String name = input.length() > 32 ? input.substring(0, 32) : input;
+            String name = input.length() > Title.MAX_NAME_LENGTH
+                    ? input.substring(0, Title.MAX_NAME_LENGTH)
+                    : input;
             plugin.getTitleManager().update(new Title(title.id(), name, title.color(),
                     title.description(), title.visible()));
             player.sendMessage(Text.parse("&a头衔名称已更新"));

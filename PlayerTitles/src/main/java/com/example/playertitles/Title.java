@@ -8,6 +8,9 @@ import net.kyori.adventure.text.event.HoverEvent;
 
 public record Title(String id, String name, String color, String description, boolean visible) {
 
+    /** 铁砧输入框的硬上限是 50 个字符，称号名称沿用同一个上限。 */
+    public static final int MAX_NAME_LENGTH = 50;
+
     public Title(String id, String name, String color, String description) {
         this(id, name, color, description, true);
     }
