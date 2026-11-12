@@ -6,6 +6,7 @@ import com.superniuma.mechanism.PlacementSession;
 import io.papermc.paper.event.player.PlayerPickBlockEvent;
 import io.papermc.paper.event.player.PlayerPickEntityEvent;
 import org.bukkit.Location;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -191,7 +192,8 @@ public final class GameListener implements Listener {
         if (room == null) {
             return;
         }
-        if (room.phase() == GameRoom.Phase.STARTING) {
+        if (room.phase() == GameRoom.Phase.STARTING
+                && event.getPlayer().getGameMode() != org.bukkit.GameMode.SPECTATOR) {
             // 跑酷倒计时期间锁住位置，只允许转头。
             Location from = event.getFrom();
             Location to = event.getTo();
@@ -203,10 +205,17 @@ public final class GameListener implements Listener {
         }
         if (room.phase() == GameRoom.Phase.RUNNING
                 && plugin.mechanismManager().isTrafficRed(room, event.getPlayer())) {
+            // 红灯只屏蔽方向键和跳跃：步行速度已由机关置零，这里只拦住起跳，
+            // 原有速度、下落和击飞照常生效。
             Location from = event.getFrom();
             Location to = event.getTo();
             if (to != null) {
-                event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(),
+                double y = to.getY();
+                boolean onGround = from.getBlock().getRelative(BlockFace.DOWN).getType().isSolid();
+                if (onGround && y > from.getY() + 1.0E-4) {
+                    y = from.getY();
+                }
+                event.setTo(new Location(from.getWorld(), to.getX(), y, to.getZ(),
                         to.getYaw(), to.getPitch()));
             }
             return;

@@ -987,6 +987,7 @@ public final class GameRoom {
     // ---------- 记分 ----------
 
     private void beginScoring() {
+        plugin.mechanismManager().releaseTrafficLocks();
         for (Participant participant : participants) {
             if (!participant.finished() && !participant.failed()) {
                 participant.setFailed(true);

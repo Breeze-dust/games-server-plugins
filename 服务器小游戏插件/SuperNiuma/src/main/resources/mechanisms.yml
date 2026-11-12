@@ -42,7 +42,7 @@ mechanisms:
   platform:
     enabled: true
     weight: 20
-    icon: WHITE_WOOL
+    icon: OAK_SHELF
     name: '&f平台'
     lore:
       - '&7可以站立的羊毛平台'
@@ -367,14 +367,14 @@ mechanisms:
   traffic:
     enabled: true
     weight: 7
-    icon: WHITE_WOOL
+    icon: OAK_SHELF
     name: '&f红绿灯'
     lore:
       - '&7绿 → 黄 → 红 循环'
-      - '&7红灯时影响范围内禁止移动'
+      - '&7红灯时无法使用方向键和跳跃'
       - '&7绿/红持续时间为随机区间'
     rotation: horizontal-only
-    yellow-seconds: 3       # 黄灯固定时长
+    yellow-seconds: 1       # 黄灯固定时长
     green-min-seconds: 3
     green-max-seconds: 8
     red-min-seconds: 3

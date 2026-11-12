@@ -52,6 +52,7 @@ public final class MechanismManager {
     private final Map<UUID, String> portalInside = new HashMap<>();
     private final Set<UUID> blinded = new HashSet<>();
     private final Set<UUID> boosted = new HashSet<>();
+    private final Map<UUID, Float> trafficWalkSpeed = new HashMap<>();
     private final Random random = new Random();
 
     public MechanismManager(SuperNiumaPlugin plugin) {
@@ -322,6 +323,9 @@ public final class MechanismManager {
         for (Location loc : trafficOutline(anchor, facing, session.choice().def())) {
             spawnBlockGhost(session, loc, glass);
         }
+        // 物品展示框将来所在的一面，用绿色玻璃标出来，方便确认朝向。
+        spawnBlockGhost(session, anchor.clone().add(0, 1, 0)
+                .add(facing.getModX(), 0, facing.getModZ()), Material.GREEN_STAINED_GLASS.createBlockData());
     }
 
     private int[] trafficBounds(Location anchor, BlockFace facing, MechanismDef def) {
@@ -924,8 +928,11 @@ public final class MechanismManager {
         }
     }
 
-    /** 红灯区域内禁止移动。 */
+    /** 红灯区域内禁止使用方向键/跳跃（只对正在跑的玩家生效）。 */
     public boolean isTrafficRed(GameRoom room, Player player) {
+        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            return false;
+        }
         for (MechanismInstance instance : room.mechanisms()) {
             if (!"traffic".equals(instance.def().id()) || instance.lightState() != 2) {
                 continue;
@@ -945,6 +952,10 @@ public final class MechanismManager {
             player.removePotionEffect(PotionEffectType.SPEED);
         }
         portalInside.remove(player.getUniqueId());
+        Float speed = trafficWalkSpeed.remove(player.getUniqueId());
+        if (speed != null) {
+            player.setWalkSpeed(speed);
+        }
     }
 
     private void placeSpike(MechanismInstance instance, MechanismChoice choice,
@@ -1049,7 +1060,43 @@ public final class MechanismManager {
                 }
             }
         }
+        syncTrafficLocks(room);
         tickArrows();
+    }
+
+    /**
+     * 红灯不冻结玩家，只是拿走方向键和跳跃键：步行速度归零，原有速度和重力照常作用。
+     * 只有还在跑的玩家会被锁定，旁观者不受影响。
+     */
+    private void syncTrafficLocks(GameRoom room) {
+        Set<UUID> active = new HashSet<>();
+        for (Player player : room.activePlayers()) {
+            active.add(player.getUniqueId());
+        }
+        for (Player player : room.onlinePlayers()) {
+            UUID id = player.getUniqueId();
+            boolean red = active.contains(id) && isTrafficRed(room, player);
+            if (red && !trafficWalkSpeed.containsKey(id)) {
+                trafficWalkSpeed.put(id, player.getWalkSpeed());
+                player.setWalkSpeed(0f);
+            } else if (!red) {
+                Float speed = trafficWalkSpeed.remove(id);
+                if (speed != null) {
+                    player.setWalkSpeed(speed);
+                }
+            }
+        }
+    }
+
+    /** 回合结束等场景下恢复所有被红灯锁住的玩家的步行速度。 */
+    public void releaseTrafficLocks() {
+        for (Map.Entry<UUID, Float> entry : trafficWalkSpeed.entrySet()) {
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player != null) {
+                player.setWalkSpeed(entry.getValue());
+            }
+        }
+        trafficWalkSpeed.clear();
     }
 
     private void tickCoin(GameRoom room, MechanismInstance instance) {
