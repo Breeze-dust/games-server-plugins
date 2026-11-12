@@ -205,18 +205,20 @@ public final class GameListener implements Listener {
         }
         if (room.phase() == GameRoom.Phase.RUNNING
                 && plugin.mechanismManager().isTrafficRed(room, event.getPlayer())) {
-            // 红灯只屏蔽方向键和跳跃：步行速度已由机关置零，这里只拦住起跳，
-            // 原有速度、下落和击飞照常生效。
+            // 红灯只拿走方向键和跳跃：站在地面时锁住水平位置、禁止起跳；
+            // 已经在空中的玩家保留原有速度，照常受重力影响。
             Location from = event.getFrom();
             Location to = event.getTo();
             if (to != null) {
+                org.bukkit.block.Block below = from.getBlock().getRelative(BlockFace.DOWN);
+                boolean grounded = !below.isPassable() && !below.isLiquid();
+                double x = grounded ? from.getX() : to.getX();
+                double z = grounded ? from.getZ() : to.getZ();
                 double y = to.getY();
-                boolean onGround = from.getBlock().getRelative(BlockFace.DOWN).getType().isSolid();
-                if (onGround && y > from.getY() + 1.0E-4) {
+                if (grounded && y > from.getY()) {
                     y = from.getY();
                 }
-                event.setTo(new Location(from.getWorld(), to.getX(), y, to.getZ(),
-                        to.getYaw(), to.getPitch()));
+                event.setTo(new Location(from.getWorld(), x, y, z, to.getYaw(), to.getPitch()));
             }
             return;
         }
