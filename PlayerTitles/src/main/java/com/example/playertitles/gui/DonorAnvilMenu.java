@@ -11,7 +11,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.AnvilInventory;
@@ -32,11 +31,13 @@ public final class DonorAnvilMenu {
     public static final class Session {
         private final String titleId;
         private final String originalName;
+        private final String color;
         private String confirmText;
 
-        private Session(String titleId, String originalName) {
+        private Session(String titleId, String originalName, String color) {
             this.titleId = titleId;
             this.originalName = originalName;
+            this.color = color;
         }
 
         public String getTitleId() {
@@ -45,6 +46,10 @@ public final class DonorAnvilMenu {
 
         public String getOriginalName() {
             return originalName;
+        }
+
+        public String getColor() {
+            return color;
         }
 
         public String getConfirmText() {
@@ -90,7 +95,7 @@ public final class DonorAnvilMenu {
             player.sendMessage(Text.parse("&c无法打开铁砧界面，请联系管理员"));
             return false;
         }
-        SESSIONS.put(uuid, new Session(titleId, plain(title.name())));
+        SESSIONS.put(uuid, new Session(titleId, plain(title.name()), title.color()));
         view.getTopInventory().setItem(0, inputItem(title));
         return true;
     }
@@ -102,6 +107,8 @@ public final class DonorAnvilMenu {
         List<Component> lore = new ArrayList<>();
         lore.add(Text.parse("&7在上方输入栏填写新的称号").decoration(TextDecoration.ITALIC, false));
         lore.add(Text.parse("&7然后点击右侧命名牌两次确认").decoration(TextDecoration.ITALIC, false));
+        lore.add(Text.parse("&8渐变写法 &7{FF0000>00FF00}称号 &8可多段")
+                .decoration(TextDecoration.ITALIC, false));
         lore.add(Text.parse("&8最多 " + MAX_LENGTH + " 个字符，支持 &颜色代码")
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
@@ -112,7 +119,7 @@ public final class DonorAnvilMenu {
     public static ItemStack resultItem(Session session, String text) {
         ItemStack item = new ItemStack(Material.NAME_TAG);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Text.parse(text).decoration(TextDecoration.ITALIC, false));
+        meta.displayName(Text.titleName(session.getColor(), text).decoration(TextDecoration.ITALIC, false));
         List<Component> lore = new ArrayList<>();
         boolean confirming = session.getConfirmText() != null && session.getConfirmText().equals(text);
         if (confirming) {
@@ -135,7 +142,7 @@ public final class DonorAnvilMenu {
     }
 
     public static String plain(String text) {
-        return PlainTextComponentSerializer.plainText().serialize(Text.parse(text)).trim();
+        return Text.titlePlain(text);
     }
 
     public static String formatRemaining(long millis) {

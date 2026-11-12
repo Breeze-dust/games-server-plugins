@@ -84,6 +84,10 @@ public final class DonorAnvilListener implements Listener {
     }
 
     private void commit(Player player, DonorAnvilMenu.Session session, String text) {
+        if (Text.looksLikeGradient(text) && Text.parseGradient(text) == null) {
+            player.sendMessage(Text.parse("&c渐变格式不正确，示例：&f{FF0000>00FF00}称号"));
+            return;
+        }
         if (text.equals(session.getOriginalName())) {
             player.sendMessage(Text.parse("&7称号名称没有变化，未消耗冷却"));
             return;

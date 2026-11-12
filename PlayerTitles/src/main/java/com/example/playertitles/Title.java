@@ -16,7 +16,7 @@ public record Title(String id, String name, String color, String description, bo
     }
 
     public Component nameComponent() {
-        return Text.parse(color + name);
+        return Text.titleName(color, name);
     }
 
     public Component bracketedComponent() {

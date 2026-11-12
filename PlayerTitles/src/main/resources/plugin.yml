@@ -1,5 +1,5 @@
 name: PlayerTitles
-version: '1.4.2'
+version: '1.4.3'
 main: com.example.playertitles.PlayerTitlesPlugin
 api-version: '26.2'
 description: 玩家头衔系统（头顶/聊天显示、头衔菜单、管理员编辑）

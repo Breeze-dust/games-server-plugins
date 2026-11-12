@@ -45,7 +45,7 @@ public final class AdminMenu {
             lore.add(Component.text("ID: ", NamedTextColor.GRAY)
                     .append(Component.text(entry.id(), NamedTextColor.WHITE)));
             lore.add(Component.text("颜色: ", NamedTextColor.GRAY)
-                    .append(Text.parse(entry.color() + entry.name())));
+                    .append(entry.nameComponent()));
             lore.add(Component.text("未拥有者可见: ", NamedTextColor.GRAY)
                     .append(Component.text(entry.visible() ? "是" : "否",
                             entry.visible() ? NamedTextColor.GREEN : NamedTextColor.RED)));
