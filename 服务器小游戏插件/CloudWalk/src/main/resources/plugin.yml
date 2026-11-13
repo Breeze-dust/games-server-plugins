@@ -1,0 +1,19 @@
+name: CloudWalk
+version: '1.0.0'
+main: com.cloudwalk.CloudWalkPlugin
+api-version: '1.21'
+description: 云中漫步：主城随时可玩的无尽跑酷
+depend: [MiniGameLib]
+commands:
+  cloudwalk:
+    description: 云中漫步跑酷
+    usage: /cloudwalk help
+    aliases: [parkour, 云中漫步]
+    permission: cloudwalk.use
+permissions:
+  cloudwalk.use:
+    description: 参与云中漫步
+    default: true
+  cloudwalk.admin:
+    description: 管理云中漫步（区域、起点、记录）
+    default: op

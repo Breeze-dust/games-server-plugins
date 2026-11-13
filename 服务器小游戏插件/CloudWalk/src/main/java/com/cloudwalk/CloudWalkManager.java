@@ -1,0 +1,635 @@
+package com.cloudwalk;
+
+import com.hub.api.HubAPI;
+import com.hub.data.PlayerStats;
+import com.hub.util.Chat;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * 云中漫步核心：通道分配、真实方块路径、落地判定、结算、最高分记录。
+ *
+ * <p>每名玩家一份区域副本：沿 X（或 Z）并排、逐层抬高，互不重叠。
+ * 所有方块读写都在主线程（2 tick 一次的循环里完成）。
+ */
+public class CloudWalkManager {
+
+    private static final String NAMESPACE = "cloudwalk";
+    private static final int TICK_PERIOD = 2;
+
+    private final CloudWalkPlugin plugin;
+    private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
+
+    private CloudWalkSettings settings;
+    private LaneBox baseBox;
+    private BlockPos baseStart;
+    private PathGenerator generator;
+    private YamlConfiguration data;
+
+    private BukkitTask tickTask;
+    private boolean[] lanesUsed = new boolean[0];
+    private int actionBarTick;
+
+    public CloudWalkManager(CloudWalkPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    // ---------- 加载 / 保存 ----------
+
+    public void load() {
+        settings = CloudWalkSettings.load(plugin.getConfig());
+        baseBox = buildBaseBox(settings);
+        baseStart = buildBaseStart(settings);
+        generator = new PathGenerator(settings.distances, settings.allow4JumpUp);
+        ensureLaneArray();
+
+        if (data == null) {
+            data = PlayerStats.load(NAMESPACE, new File(plugin.getDataFolder(), "data.yml"));
+        }
+        if (tickTask == null) {
+            tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, TICK_PERIOD);
+        }
+
+        plugin.getLogger().info("云中漫步已加载：区域" + (baseBox == null ? "未配置" : "已配置")
+                + "，起点" + (baseStart == null ? "未配置" : "已配置")
+                + "，通道上限 " + settings.maxLanes
+                + "，最高分记录 " + recordCount() + " 人。");
+    }
+
+    public void onDisable() {
+        for (ParkourSession s : new ArrayList<>(sessions.values())) {
+            finish(null, s, "服务器关闭", false, false);
+        }
+    }
+
+    public void reload() {
+        for (ParkourSession s : new ArrayList<>(sessions.values())) {
+            Player p = Bukkit.getPlayer(s.playerId);
+            finish(p, s, "重载", true, true);
+        }
+        plugin.reloadConfig();
+        load();
+    }
+
+    private LaneBox buildBaseBox(CloudWalkSettings s) {
+        if (s.regionWorld == null || s.regionWorld.isEmpty()) {
+            return null;
+        }
+        World world = Bukkit.getWorld(s.regionWorld);
+        if (world == null) {
+            return null;
+        }
+        return new LaneBox(world,
+                Math.min(s.x1, s.x2), Math.max(s.x1, s.x2),
+                Math.min(s.y1, s.y2), Math.max(s.y1, s.y2),
+                Math.min(s.z1, s.z2), Math.max(s.z1, s.z2));
+    }
+
+    private BlockPos buildBaseStart(CloudWalkSettings s) {
+        if (s.startWorld == null || s.startWorld.isEmpty() || baseBox == null) {
+            return null;
+        }
+        if (!baseBox.world().getName().equals(s.startWorld)) {
+            return null;
+        }
+        return new BlockPos(s.startX, s.startY, s.startZ);
+    }
+
+    private void ensureLaneArray() {
+        if (lanesUsed.length == settings.maxLanes) {
+            return;
+        }
+        boolean[] next = new boolean[settings.maxLanes];
+        for (ParkourSession s : sessions.values()) {
+            if (s.lane >= 0 && s.lane < next.length) {
+                next[s.lane] = true;
+            }
+        }
+        lanesUsed = next;
+    }
+
+    private void applyAndSave() {
+        baseBox = buildBaseBox(settings);
+        baseStart = buildBaseStart(settings);
+        ensureLaneArray();
+        saveSettingsToConfig();
+    }
+
+    private void saveSettingsToConfig() {
+        FileConfiguration cfg = plugin.getConfig();
+        cfg.set("region.world", settings.regionWorld);
+        cfg.set("region.x1", settings.x1);
+        cfg.set("region.y1", settings.y1);
+        cfg.set("region.z1", settings.z1);
+        cfg.set("region.x2", settings.x2);
+        cfg.set("region.y2", settings.y2);
+        cfg.set("region.z2", settings.z2);
+
+        cfg.set("start.world", settings.startWorld);
+        cfg.set("start.x", settings.startX);
+        cfg.set("start.y", settings.startY);
+        cfg.set("start.z", settings.startZ);
+
+        if (settings.lobby != null && settings.lobby.getWorld() != null) {
+            cfg.set("lobby.world", settings.lobby.getWorld().getName());
+            cfg.set("lobby.x", settings.lobby.getX());
+            cfg.set("lobby.y", settings.lobby.getY());
+            cfg.set("lobby.z", settings.lobby.getZ());
+            cfg.set("lobby.yaw", (double) settings.lobby.getYaw());
+            cfg.set("lobby.pitch", (double) settings.lobby.getPitch());
+        }
+        plugin.saveConfig();
+    }
+
+    // ---------- 管理命令用的设置 ----------
+
+    public boolean isConfigured() {
+        return baseBox != null && baseStart != null && baseBox.contains(baseStart);
+    }
+
+    public void setPos1(Player p) {
+        Location loc = p.getLocation();
+        settings.regionWorld = loc.getWorld().getName();
+        settings.x1 = loc.getBlockX();
+        settings.y1 = loc.getBlockY();
+        settings.z1 = loc.getBlockZ();
+        applyAndSave();
+        Chat.send(p, "&a区域角点 1：&f" + settings.regionWorld + " "
+                + settings.x1 + ", " + settings.y1 + ", " + settings.z1);
+    }
+
+    public void setPos2(Player p) {
+        Location loc = p.getLocation();
+        settings.regionWorld = loc.getWorld().getName();
+        settings.x2 = loc.getBlockX();
+        settings.y2 = loc.getBlockY();
+        settings.z2 = loc.getBlockZ();
+        applyAndSave();
+        Chat.send(p, "&a区域角点 2：&f" + settings.regionWorld + " "
+                + settings.x2 + ", " + settings.y2 + ", " + settings.z2);
+    }
+
+    public void setStart(Player p) {
+        Location loc = p.getLocation();
+        settings.startWorld = loc.getWorld().getName();
+        settings.startX = loc.getBlockX();
+        settings.startY = loc.getBlockY() - 1;
+        settings.startZ = loc.getBlockZ();
+        applyAndSave();
+        Chat.send(p, "&a起点方块：&f" + settings.startWorld + " "
+                + settings.startX + ", " + settings.startY + ", " + settings.startZ
+                + " &7（玩家会站在它上面）");
+        if (baseBox != null && baseStart != null && !baseBox.contains(baseStart)) {
+            Chat.send(p, "&e注意：这个起点不在跑酷区域内，生成会失败。");
+        }
+    }
+
+    public void setLobby(Player p) {
+        settings.lobby = p.getLocation().clone();
+        saveSettingsToConfig();
+        Chat.send(p, "&a回大厅位置已保存。");
+    }
+
+    public List<String> regionInfo() {
+        List<String> out = new ArrayList<>();
+        if (baseBox == null) {
+            out.add("&c跑酷区域未配置（/cloudwalk pos1、pos2）。");
+        } else {
+            out.add("&b区域：&f" + baseBox.world().getName()
+                    + " &7(" + baseBox.minX() + "," + baseBox.minY() + "," + baseBox.minZ() + ")"
+                    + " ~ (" + baseBox.maxX() + "," + baseBox.maxY() + "," + baseBox.maxZ() + ")");
+        }
+        if (baseStart == null) {
+            out.add("&c起点未配置（/cloudwalk setstart）。");
+        } else {
+            boolean inside = baseBox != null && baseBox.contains(baseStart);
+            out.add("&b起点：&f" + baseStart.x() + "," + baseStart.y() + "," + baseStart.z()
+                    + (inside ? "" : " &c(不在区域内)"));
+        }
+        out.add("&b通道：&f" + settings.axis + " 轴并排，间隔 " + settings.laneGap
+                + " 格，每层抬高 " + settings.heightStep + " 格，上限 " + settings.maxLanes
+                + " 条，当前 &b" + sessions.size() + " &f人在跑。");
+        out.add("&b生成：&f距离 " + java.util.Arrays.toString(settings.distances)
+                + "，预生成 " + settings.queueLength + " 块，4格+上升 "
+                + (settings.allow4JumpUp ? "允许" : "禁止"));
+        return out;
+    }
+
+    // ---------- 加入 / 退出 ----------
+
+    public void join(Player p) {
+        UUID id = p.getUniqueId();
+        if (sessions.containsKey(id)) {
+            Chat.send(p, "&e你已经在跑酷中，用 &f/cloudwalk leave &e退出。");
+            return;
+        }
+        if (!isConfigured()) {
+            Chat.send(p, "&c跑酷区域还没配置，请联系管理员。");
+            return;
+        }
+        if (HubAPI.gameOf(id) != null) {
+            Chat.send(p, "&c你正在其它游戏中，先退出再来。");
+            return;
+        }
+        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            Chat.send(p, "&c旁观模式不能跑酷。");
+            return;
+        }
+
+        int lane = allocateLane();
+        if (lane < 0) {
+            Chat.send(p, "&c跑道已满（上限 " + settings.maxLanes + " 人），稍后再来。");
+            return;
+        }
+
+        LaneBox box = laneBox(lane);
+        BlockPos start = translatedStart(lane);
+        if (!box.contains(start)) {
+            freeLane(lane);
+            Chat.send(p, "&c起点不在跑酷区域内，请联系管理员。");
+            return;
+        }
+
+        float yaw = p.getLocation().getYaw();
+        Direction heading = Direction.fromYaw(yaw);
+        List<BlockPos> path = new ArrayList<>();
+        path.add(start);
+        Direction cursor = heading;
+        for (int i = 0; i < settings.queueLength; i++) {
+            BlockPos tail = path.get(path.size() - 1);
+            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box);
+            if (next == null) {
+                freeLane(lane);
+                Chat.send(p, "&c这块区域放不下起始路径，请检查区域大小。");
+                return;
+            }
+            cursor = Direction.between(tail, next);
+            if (cursor == null) {
+                cursor = heading;
+            }
+            path.add(next);
+        }
+
+        if (p.isInsideVehicle()) {
+            p.leaveVehicle();
+        }
+        p.removePotionEffect(PotionEffectType.JUMP_BOOST);
+        p.removePotionEffect(PotionEffectType.LEVITATION);
+        p.removePotionEffect(PotionEffectType.SLOW_FALLING);
+        p.setFlying(false);
+
+        Location spawn = new Location(box.world(),
+                start.x() + 0.5, start.y() + 1.0, start.z() + 0.5, yaw, 0f);
+        if (!p.teleport(spawn)) {
+            freeLane(lane);
+            Chat.send(p, "&c传送到起点失败，请稍后再试。");
+            return;
+        }
+        p.setFallDistance(0f);
+        p.setVelocity(new Vector(0, 0, 0));
+
+        for (BlockPos pos : path) {
+            place(box.world(), pos);
+        }
+
+        ParkourSession session = new ParkourSession(id, p.getName(), lane, box);
+        session.path.addAll(path);
+        session.heading = cursor;
+        session.lastProgressAt = System.currentTimeMillis();
+        sessions.put(id, session);
+
+        Chat.send(p, "&b&l云中漫步 &7· &f跳到前方方块，每块 +1 分；掉下去本局结束。");
+        Chat.actionBar(p, actionBarText(session));
+    }
+
+    public void leave(Player p) {
+        stop(p, "主动退出", true, true);
+    }
+
+    public void exitForLobby(Player p) {
+        stop(p, "回主城", true, false);
+    }
+
+    public void stop(Player p, String reason, boolean record, boolean teleport) {
+        ParkourSession session = sessions.get(p.getUniqueId());
+        if (session != null) {
+            finish(p, session, reason, record, teleport);
+        }
+    }
+
+    public boolean isPlaying(UUID id) {
+        return sessions.containsKey(id);
+    }
+
+    public boolean isPathBlock(Block block) {
+        for (ParkourSession s : sessions.values()) {
+            if (!s.box.world().equals(block.getWorld())) {
+                continue;
+            }
+            for (BlockPos pos : s.path) {
+                if (pos.x() == block.getX() && pos.y() == block.getY() && pos.z() == block.getZ()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // ---------- 每 2 tick ----------
+
+    private void tick() {
+        if (sessions.isEmpty()) {
+            return;
+        }
+        actionBarTick++;
+        boolean showBar = actionBarTick % 5 == 0;
+        long now = System.currentTimeMillis();
+        long afkMillis = settings.afkEndSeconds * 1000L;
+
+        for (ParkourSession s : new ArrayList<>(sessions.values())) {
+            if (s.finished) {
+                continue;
+            }
+            Player p = Bukkit.getPlayer(s.playerId);
+            if (p == null || !p.isOnline()) {
+                finish(null, s, "下线", true, false);
+                continue;
+            }
+            if (!p.getWorld().equals(s.box.world())) {
+                finish(p, s, "离开区域", true, false);
+                continue;
+            }
+
+            Location loc = p.getLocation();
+            if (s.path.size() > 1) {
+                BlockPos target = s.path.get(1);
+                double dx = loc.getX() - (target.x() + 0.5);
+                double dz = loc.getZ() - (target.z() + 0.5);
+                double feetY = loc.getY();
+                // 落在目标方块顶面附近：水平 0.8 格内、脚部 Y 在顶面 +0.0~+0.5、不在上升途中。
+                // 不用 Player#isOnGround（已弃用，且依赖客户端上报）。
+                if (dx * dx + dz * dz <= 0.8 * 0.8
+                        && feetY >= target.y() + 1.0
+                        && feetY < target.y() + 1.5
+                        && p.getVelocity().getY() <= 0.05) {
+                    score(p, s, target);
+                    if (s.finished) {
+                        continue;
+                    }
+                }
+            }
+
+            if (loc.getY() < s.current().y() - 3 || !s.box.containsXZ(loc)) {
+                finish(p, s, "掉落", true, true);
+                continue;
+            }
+            if (p.isFlying() || p.isGliding()) {
+                finish(p, s, "使用了飞行", true, true);
+                continue;
+            }
+            if (now - s.lastProgressAt > afkMillis) {
+                finish(p, s, "长时间没有前进", true, true);
+                continue;
+            }
+            if (showBar) {
+                Chat.actionBar(p, actionBarText(s));
+            }
+        }
+    }
+
+    private void score(Player p, ParkourSession s, BlockPos landed) {
+        s.score++;
+        s.lastProgressAt = System.currentTimeMillis();
+
+        if (settings.sound) {
+            float pitch = Math.min(2.0f, 1.0f + s.score * 0.02f);
+            p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, pitch);
+        }
+        if (settings.particle) {
+            p.getWorld().spawnParticle(Particle.END_ROD,
+                    landed.x() + 0.5, landed.y() + 1.0, landed.z() + 0.5,
+                    10, 0.3, 0.15, 0.3, 0.01);
+        }
+
+        BlockPos old = s.path.remove(0);
+        setAir(s.box.world(), old);
+
+        BlockPos tail = s.path.get(s.path.size() - 1);
+        BlockPos next = generator.next(tail, s.heading, new HashSet<>(s.path), s.box);
+        if (next == null) {
+            finish(p, s, "没有可落脚的方块了", true, true);
+            return;
+        }
+        Direction direction = Direction.between(tail, next);
+        if (direction != null) {
+            s.heading = direction;
+        }
+        place(s.box.world(), next);
+        s.path.add(next);
+        Chat.actionBar(p, actionBarText(s));
+    }
+
+    private void finish(Player p, ParkourSession s, String reason, boolean record, boolean teleport) {
+        if (s.finished) {
+            return;
+        }
+        s.finished = true;
+        sessions.remove(s.playerId);
+        freeLane(s.lane);
+
+        for (BlockPos pos : s.path) {
+            setAir(s.box.world(), pos);
+        }
+        s.path.clear();
+
+        int bestBefore = bestScore(s.playerId);
+        boolean newBest = record && s.score > bestBefore;
+        if (record) {
+            recordScore(s.playerId, s.playerName, s.score);
+        }
+
+        if (p != null && p.isOnline()) {
+            StringBuilder msg = new StringBuilder("&8[&b云中漫步&8] &f本局 &b").append(s.score).append(" &7分");
+            if (newBest) {
+                msg.append(" &a· 新纪录！");
+            } else {
+                msg.append(" &7· 最高 &b").append(bestScore(s.playerId));
+            }
+            msg.append(" &8(").append(reason).append(")");
+            Chat.send(p, msg.toString());
+            if (teleport) {
+                returnToLobby(p);
+            }
+        }
+    }
+
+    private void returnToLobby(Player p) {
+        if (HubAPI.isReady()) {
+            HubAPI.teleportToLobby(p);
+            return;
+        }
+        Location target = settings.lobby != null ? settings.lobby : HubAPI.getLobby();
+        if (target != null) {
+            p.teleport(target);
+        }
+    }
+
+    private String actionBarText(ParkourSession s) {
+        return "&b本局 &e" + s.score + " &8· &6最高 &e" + bestScore(s.playerId);
+    }
+
+    // ---------- 通道 ----------
+
+    private int allocateLane() {
+        for (int i = 0; i < lanesUsed.length; i++) {
+            if (!lanesUsed[i]) {
+                lanesUsed[i] = true;
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void freeLane(int lane) {
+        if (lane >= 0 && lane < lanesUsed.length) {
+            lanesUsed[lane] = false;
+        }
+    }
+
+    private int[] laneOffset(int lane) {
+        int width = settings.axis.equals("z")
+                ? baseBox.maxZ() - baseBox.minZ() + 1
+                : baseBox.maxX() - baseBox.minX() + 1;
+        int distance = lane * (width + settings.laneGap);
+        int height = lane * settings.heightStep;
+        return settings.axis.equals("z")
+                ? new int[]{0, height, distance}
+                : new int[]{distance, height, 0};
+    }
+
+    private LaneBox laneBox(int lane) {
+        int[] offset = laneOffset(lane);
+        return baseBox.translate(offset[0], offset[1], offset[2]);
+    }
+
+    private BlockPos translatedStart(int lane) {
+        int[] offset = laneOffset(lane);
+        return baseStart.offset(offset[0], offset[1], offset[2]);
+    }
+
+    // ---------- 方块 ----------
+
+    private void place(World world, BlockPos pos) {
+        world.getBlockAt(pos.x(), pos.y(), pos.z()).setType(settings.block, false);
+    }
+
+    private void setAir(World world, BlockPos pos) {
+        world.getBlockAt(pos.x(), pos.y(), pos.z()).setType(Material.AIR, false);
+    }
+
+    // ---------- 记录 ----------
+
+    public int bestScore(UUID id) {
+        return data.getInt("best." + id, 0);
+    }
+
+    public int recordCount() {
+        ConfigurationSection best = data.getConfigurationSection("best");
+        return best == null ? 0 : best.getKeys(false).size();
+    }
+
+    public record TopEntry(String id, String name, int score, long at) {
+    }
+
+    private List<TopEntry> allEntries() {
+        List<TopEntry> list = new ArrayList<>();
+        ConfigurationSection best = data.getConfigurationSection("best");
+        if (best != null) {
+            for (String id : best.getKeys(false)) {
+                int score = best.getInt(id);
+                if (score <= 0) {
+                    continue;
+                }
+                long at = data.getLong("bestAt." + id, 0L);
+                String name = data.getString("names." + id, "未知玩家");
+                list.add(new TopEntry(id, name, score, at));
+            }
+        }
+        list.sort(Comparator.comparingInt(TopEntry::score).reversed()
+                .thenComparingLong(TopEntry::at));
+        return list;
+    }
+
+    public List<TopEntry> topEntries() {
+        List<TopEntry> all = allEntries();
+        if (all.size() > settings.topSize) {
+            return new ArrayList<>(all.subList(0, settings.topSize));
+        }
+        return all;
+    }
+
+    public int rankOf(UUID id) {
+        if (bestScore(id) <= 0) {
+            return 0;
+        }
+        int rank = 1;
+        for (TopEntry entry : allEntries()) {
+            if (entry.id().equals(id.toString())) {
+                return rank;
+            }
+            rank++;
+        }
+        return 0;
+    }
+
+    private void recordScore(UUID id, String name, int score) {
+        if (score <= 0) {
+            return;
+        }
+        int best = data.getInt("best." + id, 0);
+        if (score <= best) {
+            return;
+        }
+        data.set("best." + id, score);
+        data.set("bestAt." + id, System.currentTimeMillis());
+        data.set("names." + id, name);
+        saveData();
+    }
+
+    public void resetRecord(UUID id) {
+        data.set("best." + id, null);
+        data.set("bestAt." + id, null);
+        data.set("names." + id, null);
+        saveData();
+    }
+
+    private void saveData() {
+        try {
+            PlayerStats.save(NAMESPACE, data);
+        } catch (IOException ex) {
+            plugin.getLogger().warning("保存跑酷记录失败: " + ex.getMessage());
+        }
+    }
+}
