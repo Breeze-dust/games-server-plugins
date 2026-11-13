@@ -6,6 +6,7 @@ import com.hub.util.Chat;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
@@ -14,6 +15,10 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
@@ -21,11 +26,13 @@ import org.bukkit.util.Vector;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 
 /**
@@ -41,6 +48,10 @@ public class CloudWalkManager {
 
     private final CloudWalkPlugin plugin;
     private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
+    private final Map<UUID, List<Material>> playerBlocks = new LinkedHashMap<>();
+    private final Map<UUID, SavedInventory> inventories = new LinkedHashMap<>();
+    private final Random random = new Random();
+    private final NamespacedKey toolKey;
 
     private CloudWalkSettings settings;
     private LaneBox baseBox;
@@ -54,6 +65,7 @@ public class CloudWalkManager {
 
     public CloudWalkManager(CloudWalkPlugin plugin) {
         this.plugin = plugin;
+        this.toolKey = new NamespacedKey(plugin, "palette_tool");
     }
 
     // ---------- 加载 / 保存 ----------
@@ -62,7 +74,8 @@ public class CloudWalkManager {
         settings = CloudWalkSettings.load(plugin.getConfig());
         baseBox = buildBaseBox(settings);
         baseStart = buildBaseStart(settings);
-        generator = new PathGenerator(settings.distances, settings.allow4JumpUp);
+        generator = new PathGenerator(settings.distances, settings.heights, settings.allow4JumpUp);
+        playerBlocks.clear();
         ensureLaneArray();
 
         if (data == null) {
@@ -80,7 +93,8 @@ public class CloudWalkManager {
 
     public void onDisable() {
         for (ParkourSession s : new ArrayList<>(sessions.values())) {
-            finish(null, s, "服务器关闭", false, false);
+            Player p = Bukkit.getPlayer(s.playerId);
+            finish(p, s, "服务器关闭", false, false);
         }
     }
 
@@ -232,8 +246,10 @@ public class CloudWalkManager {
                 + " 格，每层抬高 " + settings.heightStep + " 格，上限 " + settings.maxLanes
                 + " 条，当前 &b" + sessions.size() + " &f人在跑。");
         out.add("&b生成：&f距离 " + java.util.Arrays.toString(settings.distances)
+                + "，高度 " + java.util.Arrays.toString(settings.heights)
                 + "，预生成 " + settings.queueLength + " 块，4格+上升 "
-                + (settings.allow4JumpUp ? "允许" : "禁止"));
+                + (settings.allow4JumpUp ? "允许" : "禁止")
+                + "，方块池 " + settings.palette.size() + " 种");
         return out;
     }
 
@@ -311,8 +327,12 @@ public class CloudWalkManager {
         p.setVelocity(new Vector(0, 0, 0));
 
         for (BlockPos pos : path) {
-            place(box.world(), pos);
+            place(box.world(), pos, pickMaterial(id));
         }
+
+        inventories.put(id, new SavedInventory(p));
+        p.getInventory().clear();
+        p.getInventory().setItem(0, createTool());
 
         ParkourSession session = new ParkourSession(id, p.getName(), lane, box);
         session.path.addAll(path);
@@ -453,7 +473,7 @@ public class CloudWalkManager {
         if (direction != null) {
             s.heading = direction;
         }
-        place(s.box.world(), next);
+        place(s.box.world(), next, pickMaterial(s.playerId));
         s.path.add(next);
         Chat.actionBar(p, actionBarText(s));
     }
@@ -470,6 +490,12 @@ public class CloudWalkManager {
             setAir(s.box.world(), pos);
         }
         s.path.clear();
+
+        SavedInventory saved = inventories.get(s.playerId);
+        if (saved != null && p != null && p.isOnline()) {
+            inventories.remove(s.playerId);
+            saved.apply(p);
+        }
 
         int bestBefore = bestScore(s.playerId);
         boolean newBest = record && s.score > bestBefore;
@@ -548,12 +574,107 @@ public class CloudWalkManager {
 
     // ---------- 方块 ----------
 
-    private void place(World world, BlockPos pos) {
-        world.getBlockAt(pos.x(), pos.y(), pos.z()).setType(settings.block, false);
+    private void place(World world, BlockPos pos, Material material) {
+        world.getBlockAt(pos.x(), pos.y(), pos.z()).setType(material, false);
     }
 
     private void setAir(World world, BlockPos pos) {
         world.getBlockAt(pos.x(), pos.y(), pos.z()).setType(Material.AIR, false);
+    }
+
+    // ---------- 方块池 / 物品栏 ----------
+
+    public List<Material> palette() {
+        return settings.palette;
+    }
+
+    public List<Material> enabledBlocks(UUID id) {
+        List<Material> cached = playerBlocks.get(id);
+        if (cached != null) {
+            return cached;
+        }
+        List<Material> list = new ArrayList<>();
+        for (String name : data.getStringList("blocks." + id)) {
+            Material material = Material.matchMaterial(name);
+            if (material != null && settings.palette.contains(material) && !list.contains(material)) {
+                list.add(material);
+            }
+        }
+        if (list.isEmpty()) {
+            list.addAll(settings.palette);
+        }
+        playerBlocks.put(id, list);
+        return list;
+    }
+
+    public void toggleBlock(UUID id, Material material) {
+        List<Material> list = enabledBlocks(id);
+        if (list.contains(material)) {
+            if (list.size() > 1) {
+                list.remove(material);
+            }
+        } else {
+            list.add(material);
+        }
+    }
+
+    public void selectAllBlocks(UUID id) {
+        List<Material> list = enabledBlocks(id);
+        list.clear();
+        list.addAll(settings.palette);
+    }
+
+    public void saveBlocks(UUID id) {
+        List<Material> list = playerBlocks.get(id);
+        if (list == null) {
+            return;
+        }
+        data.set("blocks." + id, list.stream().map(Material::name).toList());
+        saveData();
+    }
+
+    public void openPalette(Player p) {
+        p.openInventory(new PaletteMenu(this, p).getInventory());
+    }
+
+    private Material pickMaterial(UUID id) {
+        List<Material> pool = enabledBlocks(id);
+        if (pool.isEmpty()) {
+            pool = settings.palette;
+        }
+        return pool.get(random.nextInt(pool.size()));
+    }
+
+    public boolean isPaletteTool(ItemStack item) {
+        return item != null && item.getType() == Material.BLAZE_ROD
+                && item.hasItemMeta()
+                && item.getItemMeta().getPersistentDataContainer().has(toolKey, PersistentDataType.BYTE);
+    }
+
+    private ItemStack createTool() {
+        ItemStack item = new ItemStack(Material.BLAZE_ROD);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color("&e&l选择跑酷方块")));
+            meta.lore(List.of(Chat.color("&7右键打开方块选择菜单")));
+            meta.getPersistentDataContainer().set(toolKey, PersistentDataType.BYTE, (byte) 1);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    /** 玩家上线：恢复上次没来得及归还的物品栏，并清掉残留的选择道具。 */
+    public void handleJoin(Player p) {
+        SavedInventory saved = inventories.remove(p.getUniqueId());
+        if (saved != null) {
+            saved.apply(p);
+        }
+        PlayerInventory inventory = p.getInventory();
+        for (int i = 0; i < inventory.getSize(); i++) {
+            if (isPaletteTool(inventory.getItem(i))) {
+                inventory.setItem(i, null);
+            }
+        }
     }
 
     // ---------- 记录 ----------
@@ -637,6 +758,40 @@ public class CloudWalkManager {
             PlayerStats.save(NAMESPACE, data);
         } catch (IOException ex) {
             plugin.getLogger().warning("保存跑酷记录失败: " + ex.getMessage());
+        }
+    }
+
+    /** 进跑酷前的物品栏快照，结束时原样还原（与 SkyPit 相同的做法）。 */
+    private static final class SavedInventory {
+
+        private final ItemStack[] contents;
+        private final ItemStack[] armor;
+        private final ItemStack offhand;
+
+        SavedInventory(Player player) {
+            PlayerInventory inventory = player.getInventory();
+            ItemStack[] all = inventory.getContents();
+            if (all.length == 41) {
+                contents = Arrays.copyOfRange(all, 0, 36);
+                armor = Arrays.copyOfRange(all, 36, 40);
+                offhand = all[40];
+            } else {
+                contents = all.clone();
+                armor = inventory.getArmorContents().clone();
+                offhand = inventory.getItemInOffHand();
+            }
+        }
+
+        void apply(Player player) {
+            PlayerInventory inventory = player.getInventory();
+            inventory.clear();
+            for (int i = 0; i < contents.length; i++) {
+                if (contents[i] != null) {
+                    inventory.setItem(i, contents[i].clone());
+                }
+            }
+            inventory.setArmorContents(armor);
+            inventory.setItemInOffHand(offhand == null ? null : offhand.clone());
         }
     }
 }

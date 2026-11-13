@@ -12,14 +12,14 @@ import java.util.Set;
  */
 public final class PathGenerator {
 
-    private static final int[] HEIGHT_STEPS = {-1, 0, 1};
-
     private final Random random = new Random();
     private final int[] distances;
+    private final int[] heights;
     private final boolean allow4JumpUp;
 
-    public PathGenerator(int[] distances, boolean allow4JumpUp) {
+    public PathGenerator(int[] distances, int[] heights, boolean allow4JumpUp) {
         this.distances = distances.clone();
+        this.heights = heights.clone();
         this.allow4JumpUp = allow4JumpUp;
     }
 
@@ -33,8 +33,8 @@ public final class PathGenerator {
         List<BlockPos> candidates = new ArrayList<>(18);
         for (Direction dir : new Direction[]{heading, heading.left(), heading.right()}) {
             for (int distance : distances) {
-                for (int dy : HEIGHT_STEPS) {
-                    if (!allow4JumpUp && distance == 4 && dy == 1) {
+                for (int dy : heights) {
+                    if (!allow4JumpUp && distance == 4 && dy > 0) {
                         continue;
                     }
                     candidates.add(tail.offset(dir.dx * distance, dy, dir.dz * distance));

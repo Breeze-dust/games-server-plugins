@@ -9,16 +9,22 @@ import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 /** 把跑酷之外的所有出口（下线、传送、死亡、飞行、珍珠……）都收束成「结束本局」。 */
@@ -33,6 +39,41 @@ public class CloudWalkListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onQuit(PlayerQuitEvent event) {
         plugin.getManager().stop(event.getPlayer(), "下线", true, false);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        plugin.getManager().handleJoin(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDrop(PlayerDropItemEvent event) {
+        if (plugin.getManager().isPlaying(event.getPlayer().getUniqueId())
+                && plugin.getManager().isPaletteTool(event.getItemDrop().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPaletteClick(InventoryClickEvent event) {
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof PaletteMenu menu)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getClickedInventory() != top) {
+            return;
+        }
+        if (menu.onClick(event.getRawSlot())) {
+            event.getWhoClicked().closeInventory();
+        }
+    }
+
+    @EventHandler
+    public void onPaletteClose(InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof PaletteMenu menu && menu.dirty()) {
+            plugin.getManager().saveBlocks(menu.owner());
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -107,6 +148,13 @@ public class CloudWalkListener implements Listener {
             return;
         }
         ItemStack item = event.getItem();
+        if (plugin.getManager().isPaletteTool(item)) {
+            event.setCancelled(true);
+            if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                plugin.getManager().openPalette(event.getPlayer());
+            }
+            return;
+        }
         if (item != null && (item.getType() == Material.ENDER_PEARL
                 || item.getType() == Material.FIREWORK_ROCKET)) {
             event.setCancelled(true);

@@ -38,10 +38,46 @@ lane:
 
 # 路径生成
 path:
-  distances: [3, 4]      # 每跳前进的水平格数
-  queue-length: 3        # 前方预生成几个方块
-  allow4-jump-up: false  # 原版跳不上「水平4格+上升1格」，默认关闭
-  block: SMOOTH_STONE    # 方块材质
+  distances: [3, 4]        # 每跳前进的水平格数
+  heights: [-2, -1, 0, 1]  # 每跳的高度差（-2 = 下降两格）
+  queue-length: 3          # 前方预生成几个方块
+  allow4-jump-up: false    # 原版跳不上「水平4格+上升1格」，默认关闭
+
+  # 方块池：进跑酷后物品栏第 1 格的「选择跑酷方块」道具可逐项开关
+  # 默认 16 色羊毛 + 16 色带釉陶瓦；可以自行增删（写 Bukkit 材质名）
+  blocks:
+    - WHITE_WOOL
+    - ORANGE_WOOL
+    - MAGENTA_WOOL
+    - LIGHT_BLUE_WOOL
+    - YELLOW_WOOL
+    - LIME_WOOL
+    - PINK_WOOL
+    - GRAY_WOOL
+    - LIGHT_GRAY_WOOL
+    - CYAN_WOOL
+    - PURPLE_WOOL
+    - BLUE_WOOL
+    - BROWN_WOOL
+    - GREEN_WOOL
+    - RED_WOOL
+    - BLACK_WOOL
+    - WHITE_GLAZED_TERRACOTTA
+    - ORANGE_GLAZED_TERRACOTTA
+    - MAGENTA_GLAZED_TERRACOTTA
+    - LIGHT_BLUE_GLAZED_TERRACOTTA
+    - YELLOW_GLAZED_TERRACOTTA
+    - LIME_GLAZED_TERRACOTTA
+    - PINK_GLAZED_TERRACOTTA
+    - GRAY_GLAZED_TERRACOTTA
+    - LIGHT_GRAY_GLAZED_TERRACOTTA
+    - CYAN_GLAZED_TERRACOTTA
+    - PURPLE_GLAZED_TERRACOTTA
+    - BLUE_GLAZED_TERRACOTTA
+    - BROWN_GLAZED_TERRACOTTA
+    - GREEN_GLAZED_TERRACOTTA
+    - RED_GLAZED_TERRACOTTA
+    - BLACK_GLAZED_TERRACOTTA
 
 # 运行（站在方块上可以无限挂机，没有挂机超时）
 run:

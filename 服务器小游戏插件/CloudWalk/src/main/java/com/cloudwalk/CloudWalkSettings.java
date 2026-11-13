@@ -7,10 +7,26 @@ import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** config.yml 的只读快照。 */
 public final class CloudWalkSettings {
+
+    /** 默认方块池：16 色羊毛 + 16 色带釉陶瓦。 */
+    public static final List<Material> DEFAULT_PALETTE = List.of(
+            Material.WHITE_WOOL, Material.ORANGE_WOOL, Material.MAGENTA_WOOL, Material.LIGHT_BLUE_WOOL,
+            Material.YELLOW_WOOL, Material.LIME_WOOL, Material.PINK_WOOL, Material.GRAY_WOOL,
+            Material.LIGHT_GRAY_WOOL, Material.CYAN_WOOL, Material.PURPLE_WOOL, Material.BLUE_WOOL,
+            Material.BROWN_WOOL, Material.GREEN_WOOL, Material.RED_WOOL, Material.BLACK_WOOL,
+            Material.WHITE_GLAZED_TERRACOTTA, Material.ORANGE_GLAZED_TERRACOTTA,
+            Material.MAGENTA_GLAZED_TERRACOTTA, Material.LIGHT_BLUE_GLAZED_TERRACOTTA,
+            Material.YELLOW_GLAZED_TERRACOTTA, Material.LIME_GLAZED_TERRACOTTA,
+            Material.PINK_GLAZED_TERRACOTTA, Material.GRAY_GLAZED_TERRACOTTA,
+            Material.LIGHT_GRAY_GLAZED_TERRACOTTA, Material.CYAN_GLAZED_TERRACOTTA,
+            Material.PURPLE_GLAZED_TERRACOTTA, Material.BLUE_GLAZED_TERRACOTTA,
+            Material.BROWN_GLAZED_TERRACOTTA, Material.GREEN_GLAZED_TERRACOTTA,
+            Material.RED_GLAZED_TERRACOTTA, Material.BLACK_GLAZED_TERRACOTTA);
 
     public String regionWorld = "";
     public int x1;
@@ -33,9 +49,10 @@ public final class CloudWalkSettings {
     public int maxLanes = 12;
 
     public int[] distances = {3, 4};
+    public int[] heights = {-2, -1, 0, 1};
     public int queueLength = 3;
     public boolean allow4JumpUp = false;
-    public Material block = Material.SMOOTH_STONE;
+    public List<Material> palette = new ArrayList<>(DEFAULT_PALETTE);
 
     public boolean sound = true;
     public boolean particle = true;
@@ -85,8 +102,30 @@ public final class CloudWalkSettings {
 
         s.queueLength = Math.max(1, Math.min(6, cfg.getInt("path.queue-length", 3)));
         s.allow4JumpUp = cfg.getBoolean("path.allow4-jump-up", false);
-        Material material = Material.matchMaterial(cfg.getString("path.block", "SMOOTH_STONE"));
-        s.block = material == null ? Material.SMOOTH_STONE : material;
+
+        List<Integer> heights = cfg.getIntegerList("path.heights");
+        if (heights != null && !heights.isEmpty()) {
+            s.heights = heights.stream()
+                    .filter(h -> h != null && h >= -8 && h <= 8)
+                    .mapToInt(Integer::intValue)
+                    .toArray();
+        }
+        if (s.heights.length == 0) {
+            s.heights = new int[]{-2, -1, 0, 1};
+        }
+
+        List<String> blockNames = cfg.getStringList("path.blocks");
+        List<Material> palette = new ArrayList<>();
+        for (String name : blockNames) {
+            Material material = Material.matchMaterial(name);
+            if (material != null && material.isBlock() && !palette.contains(material)) {
+                palette.add(material);
+            }
+        }
+        if (palette.isEmpty()) {
+            palette.addAll(DEFAULT_PALETTE);
+        }
+        s.palette = palette;
 
         s.sound = cfg.getBoolean("run.sound", true);
         s.particle = cfg.getBoolean("run.particle", true);
