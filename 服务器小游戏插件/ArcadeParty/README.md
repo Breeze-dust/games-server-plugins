@@ -50,6 +50,7 @@
   - **对局中玩家回主城不会退出派对**：小游戏结算会把人 `HubAPI.teleportToLobby` 传回主城，派对只在 `WAITING` 阶段响应 lobby handler；对局/过渡/颁奖阶段的回城传送会被忽略（要退出请用等待室床或 `/arcade leave`）。
   - **换局前强制归零玩家状态**（1.3.13）：进下一局 `join` 之前统一 `normalizePlayer`——旁观/创造模式改回生存、`setInvisible(false)`、去发光、关飞行、恢复碰撞。小游戏会把淘汰者切成旁观模式（万箭齐发、色盲派对等），不清掉就会带进下一局，表现是「除了上一局赢家以外的人全都隐身」。
   - **换局前补回派对归属**（1.3.14）：小游戏结算会 `HubAPI.clearGame(id)`，把「这个人在街机派对里」的信息清掉；派对在每次过渡 `join` 前重新 `HubAPI.setPlaying(id, 街机派对)`，下一个游戏（例如轰炸区）才认得出这是派对的对局，不会结算时自己把人送回大厅。
+  - **过渡/颁奖计时不会再被异常卡死**（1.3.15）：过渡计时任务改成**在任何 `join`/传送之前**挂上（`beginTransition` 先 `cancelTransition()`，防止旧任务按 `state` 把新任务 cancel 掉），`startRound` 的守护/超时任务也提到 `dispatchCommand(start)` 之前——小游戏的开局处理器一抛异常，本局照样会被推进。颁奖 Tick 整段包了 try/catch，出错直接 `endParty`。这两处正是「所有人能转头、走不动」的冻结来源：`state` 一旦卡在 `TRANSITION`（或前三名卡在 `podiumFrozen`），冻结就永远不解。
   - **Hub 菜单入口**：先在产品目录的 HubCore `games` 段加 `name: 街机派对 / icon: FIREWORK_ROCKET / color: 'e' / command: arcade join / join-prefix: arcade join`，再用 `/hub menu set <槽位> FIREWORK_ROCKET game:街机派对 &e&l街机派对`；管理员菜单可直接用 `/arcade menu`，要挂到 Hub 菜单就再加一个动作 `cmd arcade menu` 的物品。
 - **验证**：
   1. `/arcade list` 看到等待区已配置、4 个小游戏启用；`/arcade menu` 能打开并改数值。

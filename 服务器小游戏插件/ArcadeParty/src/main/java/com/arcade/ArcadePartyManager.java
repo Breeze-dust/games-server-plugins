@@ -742,10 +742,16 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             beginPodium();
             return;
         }
+        // 先丢掉上一阶段可能还挂着的过渡任务：下面会早挂新任务，留着旧的就会出现
+        // 两个计时器一起倒计时、旧的那个按 state 去 cancel 掉新任务。
+        cancelTransition();
         state = State.TRANSITION;
         currentGameKey = selected.get(roundIndex);
         currentArena = null;
         transitionLeft = transitionSeconds();
+        // 过渡计时必须在下面任何一步 join / 传送之前挂上：这些调用一旦抛异常，方法直接返回，
+        // 就再没有东西推进派对，而 state 卡在 TRANSITION 时所有人是被冻结的（能转头、走不动）。
+        transitionTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickTransition, 20L, 20L);
 
         String join = plugin.getConfig().getString("games." + currentGameKey + ".join-command", "");
         if (arenaAware(currentGameKey)) {
@@ -817,7 +823,6 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         }
         updateTransitionBar();
         reportArena();
-        transitionTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickTransition, 20L, 20L);
     }
 
     private void tickTransition() {
@@ -893,7 +898,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         }
         broadcast("&6&l第 " + (roundIndex + 1) + " 局：&e" + displayOf(currentGameKey) + " &7开始！"
                 + (transitionSpectators.isEmpty() ? "" : "（" + transitionSpectators.size() + " 人旁观）"));
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), start);
+        // 兜底计时也提前挂：start 命令的处理器在别的插件里，抛异常的话这一局就永远不会结算，
+        // 派对会一直卡在 ROUND（没人回报结果 → 守护逻辑收尾）。
         guardTicks = 0;
         guardIdleTicks = 0;
         guardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickRoundGuard, 20L, 20L);
@@ -903,6 +909,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
                 finishRound(List.of(), List.of(), List.of());
             }
         }, roundTimeoutSeconds() * 20L);
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), start);
     }
 
     @Override
@@ -1036,27 +1043,36 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
 
             @Override
             public void run() {
-                tick++;
-                if (stage == 0 && tick >= 60) {
-                    reveal(3);
-                    stage = 1;
-                } else if (stage == 1 && tick >= 160) {
-                    reveal(2);
-                    stage = 2;
-                } else if (stage == 2 && tick >= 260) {
-                    reveal(1);
-                    stage = 3;
-                } else if (stage == 3 && tick >= 420) {
-                    // 三个人都揭晓完：先公布结果，再留一段时间让观众看前三名
-                    announcePodiumResults();
-                    int delay = endDelaySeconds();
-                    if (delay > 0) {
-                        endTask = Bukkit.getScheduler().runTaskLater(plugin,
-                                ArcadePartyManager.this::endParty, delay * 20L);
-                    } else {
-                        endParty();
+                // 这段里任何一步抛异常，Bukkit 会把这个重复任务整个取消：前三名永远停在
+                // podiumFrozen 里（能转头、走不动），派对也永远走不到 endParty。这里兜住。
+                try {
+                    tick++;
+                    if (stage == 0 && tick >= 60) {
+                        reveal(3);
+                        stage = 1;
+                    } else if (stage == 1 && tick >= 160) {
+                        reveal(2);
+                        stage = 2;
+                    } else if (stage == 2 && tick >= 260) {
+                        reveal(1);
+                        stage = 3;
+                    } else if (stage == 3 && tick >= 420) {
+                        // 三个人都揭晓完：先公布结果，再留一段时间让观众看前三名
+                        announcePodiumResults();
+                        int delay = endDelaySeconds();
+                        if (delay > 0) {
+                            endTask = Bukkit.getScheduler().runTaskLater(plugin,
+                                    ArcadePartyManager.this::endParty, delay * 20L);
+                        } else {
+                            endParty();
+                        }
+                        stage = 4;
                     }
-                    stage = 4;
+                } catch (RuntimeException ex) {
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "颁奖流程出错，直接结束派对", ex);
+                    podiumFrozen.clear();
+                    endParty();
                 }
             }
         }, 1L, 1L);
