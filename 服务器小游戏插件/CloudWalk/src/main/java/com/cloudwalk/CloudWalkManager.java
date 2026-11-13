@@ -832,12 +832,14 @@ public class CloudWalkManager {
 
     public void placeLeaderboard(Player p) {
         Location loc = p.getLocation().clone().add(0, 1.5, 0);
+        loc.setYaw(snapYaw(loc.getYaw()));
+        loc.setPitch(0f);
         LeaderBoard board = new LeaderBoard(loc, null);
         leaderboards.add(board);
         board.entityId = spawnLeaderboard(loc);
         saveLeaderboards();
         refreshLeaderboards();
-        Chat.send(p, "&a已放置云中漫步排行榜（固定朝向，不会跟随玩家）。");
+        Chat.send(p, "&a已放置云中漫步排行榜（吸附到东南西北，固定朝向、无俯仰角）。");
     }
 
     public void removeLeaderboards(CommandSender sender) {
@@ -863,6 +865,9 @@ public class CloudWalkManager {
                 board.entityId = spawnLeaderboard(board.loc);
                 changed = true;
             } else if (entity instanceof TextDisplay display) {
+                // 已有实体也重设朝向：旧版本斜着放的榜会在下一次刷新时被掰正
+                display.setBillboard(Display.Billboard.FIXED);
+                display.setRotation(snapYaw(board.loc.getYaw() + 180f), 0f);
                 applyLeaderboardStyle(display);
             }
         }
@@ -879,9 +884,12 @@ public class CloudWalkManager {
         if (!loc.isChunkLoaded()) {
             loc.getChunk().load();
         }
-        TextDisplay display = world.spawn(loc, TextDisplay.class);
+        Location spawnLoc = loc.clone();
+        spawnLoc.setPitch(0f);
+        TextDisplay display = world.spawn(spawnLoc, TextDisplay.class);
         display.setBillboard(Display.Billboard.FIXED);
-        display.setRotation((loc.getYaw() + 180f) % 360f, 0f);
+        // 只朝四个正方向之一，俯仰角固定 0：正对玩家放置时的朝向
+        display.setRotation(snapYaw(loc.getYaw() + 180f), 0f);
         display.setSeeThrough(false);
         display.setShadowed(true);
         display.setAlignment(TextDisplay.TextAlignment.CENTER);
@@ -942,6 +950,13 @@ public class CloudWalkManager {
 
     private static double toDouble(Object value) {
         return value instanceof Number number ? number.doubleValue() : 0.0;
+    }
+
+    /** 把任意 yaw 吸附到最近的 0/90/180/270，避免排行榜出现斜角。 */
+    private static float snapYaw(float yaw) {
+        float normalized = ((yaw % 360f) + 360f) % 360f;
+        int quarter = Math.round(normalized / 90f) % 4;
+        return quarter * 90f;
     }
 
     // ---------- 头衔 ----------

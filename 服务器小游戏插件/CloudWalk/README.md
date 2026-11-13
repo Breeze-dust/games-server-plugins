@@ -28,7 +28,7 @@
   不会跟随玩家视线）；玩家每跳一块，标记自动移到新的下一块。
 - **新方块粒子**：每生成一个新方块，方块周围会闪 3 波亮绿色 `HAPPY_VILLAGER` 粒子，约 0.65 秒后消失。
 - **浮空排行榜**：`/cloudwalk top place` 在当前位置放置前十名 `TextDisplay` 全息榜（**Billboard.FIXED，固定朝向**，
-  不跟随玩家），`/cloudwalk top remove` 移除全部；每 5 秒刷新文字，记录变化后立即刷新。
+  朝向自动吸附到东南西北四个正方向、俯仰角固定 0，不跟随玩家），`/cloudwalk top remove` 移除全部；每 5 秒刷新文字，记录变化后立即刷新。
   位置/UUID 存在 `config.yml` 的 `leaderboards` 段，重启后按 UUID 找回，丢了会重新生成。
 - **头衔联动**：全服前十自动获得头衔 **「超级搭路」**（ID `cloudwalk_super_bridge`，颜色 `&b`），
   跌出前十立刻收回（离线玩家也生效）。依赖 PlayerTitles 1.4.6+ 的 `revoke` API；
