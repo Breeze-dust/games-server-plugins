@@ -1,7 +1,9 @@
 package com.cloudwalk;
 
+import com.hub.util.Chat;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.entity.EnderPearl;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
@@ -49,7 +51,8 @@ public class CloudWalkListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onDrop(PlayerDropItemEvent event) {
         if (plugin.getManager().isPlaying(event.getPlayer().getUniqueId())
-                && plugin.getManager().isPaletteTool(event.getItemDrop().getItemStack())) {
+                && (plugin.getManager().isPaletteTool(event.getItemDrop().getItemStack())
+                || plugin.getManager().isSoundItem(event.getItemDrop().getItemStack()))) {
             event.setCancelled(true);
         }
     }
@@ -152,6 +155,19 @@ public class CloudWalkListener implements Listener {
             event.setCancelled(true);
             if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
                 plugin.getManager().openPalette(event.getPlayer());
+            }
+            return;
+        }
+        if (plugin.getManager().isSoundItem(item)) {
+            event.setCancelled(true);
+            if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                Player player = event.getPlayer();
+                boolean enabled = plugin.getManager().toggleSound(player.getUniqueId());
+                plugin.getManager().refreshSoundItem(player);
+                Chat.actionBar(player, enabled ? "&a音效已开启" : "&c音效已关闭");
+                if (enabled) {
+                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.4f);
+                }
             }
             return;
         }

@@ -19,7 +19,8 @@
 - **方块池与物品栏**：`path.blocks` 是方块池，默认 16 色羊毛 + 16 色带釉陶瓦；每生成一块从玩家已启用的方块里随机挑一个。
   进跑酷时保存物品栏并清空，第 1 格换成「选择跑酷方块」（烈焰棒）道具：右键打开 54 格菜单，
   点击方块切换启用/禁用，底部「全部启用」「关闭并保存」。选择按玩家存进 `players.yml` 的 `blocks.<uuid>`。
-  结束/下线/关服时原样还原物品栏；跑酷中这个道具不能丢弃。
+  第 2 格是「音效：开启/关闭」（音符盒），右键切换本局音效，按玩家存进 `sound.<uuid>`，默认开启。
+  结束/下线/关服时原样还原物品栏；跑酷中这两个道具都不能丢弃。
 - **落地判定**：每 tick 检查一次：脚部与队列第一块顶面中心水平距离 ≤ 0.85、脚部 Y 在顶面 -0.1~+0.6；
   命中后 +1 分、删旧块、队尾补一块。不判断 Y 速度，所以落地后立刻起跳的连跳也能正常计分。
   XZ 出界判定留了 2 格余量，站在区域最边上的方块不会误判；服务端位置校正（TeleportCause.UNKNOWN）也不会被当成传送。
@@ -47,7 +48,7 @@
   - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
   - `path.distances|heights|queue-length|allow4-jump-up|turn-chance|blocks`
   - `run.sound|particle`、`top-size`、`leaderboards`（全息榜位置，命令写入）
-- **玩家记录**：命名空间 `cloudwalk`，结构 `best.<uuid>` / `bestAt.<uuid>` / `names.<uuid>` / `blocks.<uuid>` / `title-holders`；
+- **玩家记录**：命名空间 `cloudwalk`，结构 `best.<uuid>` / `bestAt.<uuid>` / `names.<uuid>` / `blocks.<uuid>` / `sound.<uuid>` / `title-holders`；
   唯一文件 `server/plugins/MiniGameLib/players.yml`，旧 `CloudWalk/data.yml` 首次加载自动迁移。
   同分按 `bestAt` 升序（先达成者排前）。
 - **构建 / 交付**：`.\build.ps1 -Only CloudWalk`（自动带 MiniGameLib）；

@@ -70,6 +70,7 @@ public class CloudWalkManager {
     private final Map<UUID, SavedInventory> inventories = new LinkedHashMap<>();
     private final Random random = new Random();
     private final NamespacedKey toolKey;
+    private final NamespacedKey soundKey;
 
     private CloudWalkSettings settings;
     private LaneBox baseBox;
@@ -87,6 +88,7 @@ public class CloudWalkManager {
     public CloudWalkManager(CloudWalkPlugin plugin) {
         this.plugin = plugin;
         this.toolKey = new NamespacedKey(plugin, "palette_tool");
+        this.soundKey = new NamespacedKey(plugin, "sound_toggle");
     }
 
     // ---------- 加载 / 保存 ----------
@@ -368,6 +370,7 @@ public class CloudWalkManager {
         inventories.put(id, new SavedInventory(p));
         p.getInventory().clear();
         p.getInventory().setItem(0, createTool());
+        p.getInventory().setItem(1, createSoundItem(id));
 
         ParkourSession session = new ParkourSession(id, p.getName(), lane, box);
         session.path.addAll(path);
@@ -471,7 +474,7 @@ public class CloudWalkManager {
     private void score(Player p, ParkourSession s, BlockPos landed) {
         s.score++;
 
-        if (settings.sound) {
+        if (settings.sound && soundEnabled(s.playerId)) {
             float pitch = Math.min(2.0f, 1.0f + s.score * 0.02f);
             p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, pitch);
         }
@@ -678,6 +681,47 @@ public class CloudWalkManager {
                 && item.getItemMeta().getPersistentDataContainer().has(toolKey, PersistentDataType.BYTE);
     }
 
+    public boolean isSoundItem(ItemStack item) {
+        return item != null && item.getType() == Material.NOTE_BLOCK
+                && item.hasItemMeta()
+                && item.getItemMeta().getPersistentDataContainer().has(soundKey, PersistentDataType.BYTE);
+    }
+
+    public boolean soundEnabled(UUID id) {
+        return data.getBoolean("sound." + id, true);
+    }
+
+    /** @return 切换后的状态：true = 音效开启 */
+    public boolean toggleSound(UUID id) {
+        boolean enabled = !soundEnabled(id);
+        data.set("sound." + id, enabled);
+        saveData();
+        return enabled;
+    }
+
+    public void refreshSoundItem(Player p) {
+        PlayerInventory inventory = p.getInventory();
+        for (int i = 0; i < inventory.getSize(); i++) {
+            if (isSoundItem(inventory.getItem(i))) {
+                inventory.setItem(i, createSoundItem(p.getUniqueId()));
+                return;
+            }
+        }
+    }
+
+    private ItemStack createSoundItem(UUID id) {
+        boolean enabled = soundEnabled(id);
+        ItemStack item = new ItemStack(Material.NOTE_BLOCK);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color(enabled ? "&a音效：开启" : "&c音效：关闭")));
+            meta.lore(List.of(Chat.color("&7右键切换跑酷音效")));
+            meta.getPersistentDataContainer().set(soundKey, PersistentDataType.BYTE, (byte) 1);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
     private ItemStack createTool() {
         ItemStack item = new ItemStack(Material.BLAZE_ROD);
         ItemMeta meta = item.getItemMeta();
@@ -698,7 +742,7 @@ public class CloudWalkManager {
         }
         PlayerInventory inventory = p.getInventory();
         for (int i = 0; i < inventory.getSize(); i++) {
-            if (isPaletteTool(inventory.getItem(i))) {
+            if (isPaletteTool(inventory.getItem(i)) || isSoundItem(inventory.getItem(i))) {
                 inventory.setItem(i, null);
             }
         }
