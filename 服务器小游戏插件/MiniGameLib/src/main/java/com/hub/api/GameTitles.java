@@ -56,6 +56,18 @@ public final class GameTitles {
         return call("owns", new Class<?>[]{UUID.class, String.class}, player, titleId);
     }
 
+    /**
+     * 确保头衔定义存在（不发给任何人）。
+     * 小游戏在 onEnable 里调一次，头衔就会提前出现在管理菜单里，而不是等第一个玩家达成后才出现。
+     *
+     * @return true = 本次新建；false = 已存在 / 没装头衔插件
+     */
+    public static boolean ensure(String titleId, String name, String color, String description) {
+        return call("ensureTitle",
+                new Class<?>[]{String.class, String.class, String.class, String.class},
+                titleId, name, color, description);
+    }
+
     // ---------- 反射桥 ----------
 
     private static boolean call(String method, Class<?>[] types, Object... args) {

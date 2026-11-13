@@ -25,6 +25,13 @@ public class MurderMysteryPlugin extends JavaPlugin {
         // silent=true：不在场中时别报"你不在任何场中"（进服/hub 复原会广播给所有游戏插件，否则一次刷三行）
         com.hub.api.HubAPI.registerLobbyHandler(p -> manager.leave(p, true));
 
+        // 先把头衔定义建好，管理/头衔菜单里不用等第一个玩家达成才出现（没装头衔插件时静默跳过）。
+        // 依赖 plugin.yml 的 softdepend: PlayerTitles 保证它先启用；没有该依赖时会因尚未注册而无效。
+        com.hub.api.GameTitles.ensure(MurderMysteryManager.TITLE_NO_KNIFE,
+                MurderMysteryManager.TITLE_NO_KNIFE_NAME,
+                MurderMysteryManager.TITLE_NO_KNIFE_COLOR,
+                MurderMysteryManager.TITLE_NO_KNIFE_DESC);
+
         getLogger().info("MurderMystery 已启用。");
     }
 

@@ -88,6 +88,12 @@ public class MurderMysteryManager {
     /** 杀手近战刀冷却（毫秒）：一次近战击杀后 2 秒内不能再刀人（飞剑另有自己的 5 秒冷却）。 */
     private static final int KNIFE_COOLDOWN_MS = 2000;
 
+    /** 头衔「无声之刃」：杀手不用近战刀/飞剑赢下一局。ID、内容只在这里定义。 */
+    public static final String TITLE_NO_KNIFE = "mm_no_knife";
+    public static final String TITLE_NO_KNIFE_NAME = "无声之刃";
+    public static final String TITLE_NO_KNIFE_COLOR = "&4";
+    public static final String TITLE_NO_KNIFE_DESC = "&7密室杀手：不使用刀（近战剑与飞剑）赢得一局比赛";
+
     /** 开局身份倒数时长（秒）：屏幕中央 3/2/1，结束后公布各自身份。 */
     private static final int ROLE_COUNTDOWN_SECONDS = 3;
     /**
@@ -5269,8 +5275,8 @@ public class MurderMysteryManager {
             if (!a.isMurderer(id) || a.getKnifeUsers().contains(id)) {
                 continue;
             }
-            boolean unlocked = GameTitles.grantOrCreate(id, "mm_no_knife", "无声之刃", "&4",
-                    "&7密室杀手：不使用刀（近战剑与飞剑）赢得一局比赛");
+            boolean unlocked = GameTitles.grantOrCreate(id, TITLE_NO_KNIFE, TITLE_NO_KNIFE_NAME,
+                    TITLE_NO_KNIFE_COLOR, TITLE_NO_KNIFE_DESC);
             if (!unlocked) {
                 continue;
             }

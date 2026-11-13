@@ -96,4 +96,9 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
     public boolean owns(UUID playerId, String titleId) {
         return titleManager.owns(playerId, titleId);
     }
+
+    @Override
+    public boolean ensureTitle(String titleId, String name, String color, String description) {
+        return titleManager.ensureTitle(titleId, name, color, description);
+    }
 }

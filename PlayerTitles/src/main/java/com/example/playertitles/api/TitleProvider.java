@@ -52,4 +52,14 @@ public interface TitleProvider {
     default boolean owns(UUID playerId, String titleId) {
         return false;
     }
+
+    /**
+     * 确保头衔定义存在（不存在时按给定内容创建），不发给任何玩家。
+     * 小游戏在启用时调用，让该头衔提前出现在管理/头衔菜单里，而不是等第一个玩家达成后才出现。
+     *
+     * @return true = 本次新建；false = 已存在 / 参数无效 / 旧版插件没有此方法
+     */
+    default boolean ensureTitle(String titleId, String name, String color, String description) {
+        return false;
+    }
 }

@@ -253,13 +253,21 @@ public final class TitleManager {
         if (uuid == null || titleId == null || titleId.isBlank()) {
             return false;
         }
-        if (!titles.containsKey(titleId)) {
-            String safeName = name == null || name.isBlank() ? titleId : name;
-            String safeColor = Text.normalizeColor(color == null || color.isBlank() ? "&f" : color);
-            titles.put(titleId, new Title(titleId, safeName, safeColor == null ? "&f" : safeColor,
-                    description == null || description.isBlank() ? "&7暂无描述" : description));
-        }
+        ensureTitle(titleId, name, color, description);
         return grant(uuid, titleId);
+    }
+
+    /** 确保头衔定义存在（不发给任何人）；返回是否本次新建。 */
+    public synchronized boolean ensureTitle(String titleId, String name, String color, String description) {
+        if (titleId == null || titleId.isBlank() || titles.containsKey(titleId)) {
+            return false;
+        }
+        String safeName = name == null || name.isBlank() ? titleId : name;
+        String safeColor = Text.normalizeColor(color == null || color.isBlank() ? "&f" : color);
+        titles.put(titleId, new Title(titleId, safeName, safeColor == null ? "&f" : safeColor,
+                description == null || description.isBlank() ? "&7暂无描述" : description));
+        save();
+        return true;
     }
 
     /** 批量授予；只写一次盘。返回本次新增拥有的人数。 */
