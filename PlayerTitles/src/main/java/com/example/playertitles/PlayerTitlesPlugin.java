@@ -98,6 +98,15 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
     }
 
     @Override
+    public boolean revoke(UUID playerId, String titleId) {
+        if (playerId == null || titleId == null || titleManager.getTitle(titleId) == null) {
+            return false;
+        }
+        titleManager.revoke(playerId, titleId);
+        return true;
+    }
+
+    @Override
     public boolean ensureTitle(String titleId, String name, String color, String description) {
         return titleManager.ensureTitle(titleId, name, color, description);
     }

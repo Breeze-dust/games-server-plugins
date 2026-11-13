@@ -83,6 +83,9 @@ path:
 run:
   sound: true
   particle: true        # 落到新方块时的粒子
-  target-particle: true # 下一个目标方块上方的粒子标记
 
 top-size: 10
+
+# 浮空文字排行榜（/cloudwalk top place 在当前位置放置，top remove 移除）
+# 固定朝向，不会跟着玩家转；每 5 秒刷新一次
+leaderboards: []

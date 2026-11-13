@@ -56,7 +56,6 @@ public final class CloudWalkSettings {
 
     public boolean sound = true;
     public boolean particle = true;
-    public boolean targetParticle = true;
 
     public int topSize = 10;
 
@@ -129,7 +128,6 @@ public final class CloudWalkSettings {
 
         s.sound = cfg.getBoolean("run.sound", true);
         s.particle = cfg.getBoolean("run.particle", true);
-        s.targetParticle = cfg.getBoolean("run.target-particle", true);
 
         s.topSize = Math.max(1, Math.min(50, cfg.getInt("top-size", 10)));
         return s;

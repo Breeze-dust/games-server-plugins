@@ -45,7 +45,20 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                     manager.leave(player);
                 }
             }
-            case "top", "rank" -> showTop(sender, manager);
+            case "top", "rank" -> {
+                if (args.length >= 2 && args[1].equalsIgnoreCase("place")) {
+                    Player player = adminPlayer(sender);
+                    if (player != null) {
+                        manager.placeLeaderboard(player);
+                    }
+                } else if (args.length >= 2 && args[1].equalsIgnoreCase("remove")) {
+                    if (requireAdmin(sender)) {
+                        manager.removeLeaderboards(sender);
+                    }
+                } else {
+                    showTop(sender, manager);
+                }
+            }
             case "stats", "me" -> showStats(sender, manager, args);
             case "help", "?" -> help(sender);
             case "pos1" -> {
@@ -147,10 +160,11 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&8&m--------&r &b&l云中漫步 &8&m--------");
         Chat.send(sender, "&f/cloudwalk &7- 直接开始跑酷");
         Chat.send(sender, "&f/cloudwalk leave &7- 退出本局");
-        Chat.send(sender, "&f/cloudwalk top &7- 全服前十");
+        Chat.send(sender, "&f/cloudwalk top &7- 全服前十（聊天）");
         Chat.send(sender, "&f/cloudwalk stats [玩家] &7- 查看最高分");
         if (hasAdmin(sender)) {
             Chat.send(sender, "&7管理：&fpos1 &7/&f pos2 &7/&f setstart &7/&f setlobby &7/&f info &7/&f reload &7/&f reset <玩家>");
+            Chat.send(sender, "&7全息榜：&f/cloudwalk top place &7（在当前位置放置）、&f/cloudwalk top remove");
         }
     }
 
@@ -203,6 +217,12 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
             for (Player player : plugin.getServer().getOnlinePlayers()) {
                 if (player.getName().toLowerCase().startsWith(prefix)) {
                     out.add(player.getName());
+                }
+            }
+        } else if (args.length == 2 && "top".equalsIgnoreCase(args[0]) && hasAdmin(sender)) {
+            for (String option : List.of("place", "remove")) {
+                if (option.startsWith(args[1].toLowerCase())) {
+                    out.add(option);
                 }
             }
         }

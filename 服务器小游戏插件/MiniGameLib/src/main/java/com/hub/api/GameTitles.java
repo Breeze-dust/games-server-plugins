@@ -57,6 +57,15 @@ public final class GameTitles {
     }
 
     /**
+     * 收回一个头衔（离线玩家也生效）；如果正装备着会同时卸下。
+     *
+     * @return true = 已收回；false = 本来就没有 / 头衔不存在 / 没装头衔插件
+     */
+    public static boolean revoke(UUID player, String titleId) {
+        return call("revoke", new Class<?>[]{UUID.class, String.class}, player, titleId);
+    }
+
+    /**
      * 确保头衔定义存在（不发给任何人）。
      * 小游戏在 onEnable 里调一次，头衔就会提前出现在管理菜单里，而不是等第一个玩家达成后才出现。
      *

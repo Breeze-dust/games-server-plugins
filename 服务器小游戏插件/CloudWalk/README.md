@@ -22,7 +22,15 @@
 - **落地判定**：每 tick 检查一次：脚部与队列第一块顶面中心水平距离 ≤ 0.85、脚部 Y 在顶面 -0.1~+0.6；
   命中后 +1 分、删旧块、队尾补一块。不判断 Y 速度，所以落地后立刻起跳的连跳也能正常计分。
   XZ 出界判定留了 2 格余量，站在区域最边上的方块不会误判；服务端位置校正（TeleportCause.UNKNOWN）也不会被当成传送。
-- **下一块标记**：`run.target-particle: true` 时每 0.5 秒在下一个目标方块上方打一圈只有本人可见的 END_ROD 粒子。
+- **下一块标记**：不再用粒子，改为在下一个目标方块上套一个发光的 `BlockDisplay`（固定 1.01 倍贴合真实方块，
+  不会跟随玩家视线）；玩家每跳一块，标记自动移到新的下一块。
+- **新方块粒子**：每生成一个新方块，方块周围会闪 3 波亮绿色 `HAPPY_VILLAGER` 粒子，约 0.65 秒后消失。
+- **浮空排行榜**：`/cloudwalk top place` 在当前位置放置前十名 `TextDisplay` 全息榜（**Billboard.FIXED，固定朝向**，
+  不跟随玩家），`/cloudwalk top remove` 移除全部；每 5 秒刷新文字，记录变化后立即刷新。
+  位置/UUID 存在 `config.yml` 的 `leaderboards` 段，重启后按 UUID 找回，丢了会重新生成。
+- **头衔联动**：全服前十自动获得头衔 **「超级搭路」**（ID `cloudwalk_super_bridge`，颜色 `&b`），
+  跌出前十立刻收回（离线玩家也生效）。依赖 PlayerTitles 1.4.6+ 的 `revoke` API；
+  持有者列表存在 `players.yml` 的 `title-holders`，每 5 秒兜底同步一次。
 - **结束条件**：Y 低于当前方块 Y-3、离开通道 XZ（含 1 格余量）、下线、传送、死亡、
   飞行/滑翔、末影珍珠/烟花、切创造/旁观、`/hub` 或右键回主城道具、服务器关闭（不记分）。
   **没有挂机超时**：站在方块上可以无限挂机，不会因为长时间不动被遣返。
@@ -32,13 +40,13 @@
 - **命令**：`/cloudwalk`（别名 `/parkour`、`/云中漫步`）
   - 玩家：无参数 / `join` 加入、`leave` 退出、`top` 前十、`stats [玩家]`、`help`
   - 管理（OP 或 `cloudwalk.admin`）：`pos1`、`pos2`（站到对角按）、`setstart`（站到起点按，取脚下那块）、
-    `setlobby`、`info`、`reload`、`reset <在线玩家>`
+    `setlobby`、`info`、`reload`、`reset <在线玩家>`、`top place` / `top remove`（全息榜）
 - **配置**：`server/plugins/CloudWalk/config.yml`（模板 `CloudWalk/src/main/resources/config.yml`）
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`
   - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
   - `path.distances|heights|queue-length|allow4-jump-up|blocks`
-  - `run.sound|particle|target-particle`、`top-size`
-- **玩家记录**：命名空间 `cloudwalk`，结构 `best.<uuid>` / `bestAt.<uuid>` / `names.<uuid>` / `blocks.<uuid>`；
+  - `run.sound|particle`、`top-size`、`leaderboards`（全息榜位置，命令写入）
+- **玩家记录**：命名空间 `cloudwalk`，结构 `best.<uuid>` / `bestAt.<uuid>` / `names.<uuid>` / `blocks.<uuid>` / `title-holders`；
   唯一文件 `server/plugins/MiniGameLib/players.yml`，旧 `CloudWalk/data.yml` 首次加载自动迁移。
   同分按 `bestAt` 升序（先达成者排前）。
 - **构建 / 交付**：`.\build.ps1 -Only CloudWalk`（自动带 MiniGameLib）；

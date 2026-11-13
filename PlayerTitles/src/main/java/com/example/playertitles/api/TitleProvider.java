@@ -54,6 +54,15 @@ public interface TitleProvider {
     }
 
     /**
+     * 收回一个头衔；离线玩家也生效，如果正装备着会同时卸下。
+     *
+     * @return true = 已收回；false = 本来就没有 / 头衔不存在 / 旧版插件没有此方法
+     */
+    default boolean revoke(UUID playerId, String titleId) {
+        return false;
+    }
+
+    /**
      * 确保头衔定义存在（不存在时按给定内容创建），不发给任何玩家。
      * 小游戏在启用时调用，让该头衔提前出现在管理/头衔菜单里，而不是等第一个玩家达成后才出现。
      *

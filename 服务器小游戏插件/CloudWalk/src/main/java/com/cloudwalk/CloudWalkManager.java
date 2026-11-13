@@ -1,9 +1,12 @@
 package com.cloudwalk;
 
+import com.hub.api.GameTitles;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -11,17 +14,26 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,9 +42,11 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,6 +59,10 @@ public class CloudWalkManager {
 
     private static final String NAMESPACE = "cloudwalk";
     private static final int TICK_PERIOD = 1;
+    private static final String TITLE_ID = "cloudwalk_super_bridge";
+    private static final String TITLE_NAME = "超级搭路";
+    private static final String TITLE_COLOR = "&b";
+    private static final String TITLE_DESC = "云中漫步：全服前十名";
 
     private final CloudWalkPlugin plugin;
     private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
@@ -60,8 +78,11 @@ public class CloudWalkManager {
     private YamlConfiguration data;
 
     private BukkitTask tickTask;
+    private BukkitTask leaderboardTask;
     private boolean[] lanesUsed = new boolean[0];
     private int tickCounter;
+
+    private final List<LeaderBoard> leaderboards = new ArrayList<>();
 
     public CloudWalkManager(CloudWalkPlugin plugin) {
         this.plugin = plugin;
@@ -84,6 +105,15 @@ public class CloudWalkManager {
         if (tickTask == null) {
             tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, TICK_PERIOD);
         }
+
+        // 头衔定义提前建好；排行榜与头衔每 5 秒兜底同步一次（头衔插件可能比本插件晚启用）
+        GameTitles.ensure(TITLE_ID, TITLE_NAME, TITLE_COLOR, TITLE_DESC);
+        loadLeaderboards();
+        if (leaderboardTask == null) {
+            leaderboardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::maintenance, 100L, 100L);
+        }
+        Bukkit.getScheduler().runTaskLater(plugin, this::maintenance, 40L);
+        syncTitles();
 
         plugin.getLogger().info("云中漫步已加载：区域" + (baseBox == null ? "未配置" : "已配置")
                 + "，起点" + (baseStart == null ? "未配置" : "已配置")
@@ -329,6 +359,9 @@ public class CloudWalkManager {
         for (BlockPos pos : path) {
             place(box.world(), pos, pickMaterial(id));
         }
+        for (int i = 1; i < path.size(); i++) {
+            sparkle(box.world(), path.get(i));
+        }
 
         inventories.put(id, new SavedInventory(p));
         p.getInventory().clear();
@@ -338,6 +371,7 @@ public class CloudWalkManager {
         session.path.addAll(path);
         session.heading = cursor;
         sessions.put(id, session);
+        updateGlow(session, path.get(1));
 
         Chat.send(p, "&b&l云中漫步 &7· &f跳到前方方块，每块 +1 分；掉下去本局结束。");
         Chat.actionBar(p, actionBarText(session));
@@ -384,7 +418,6 @@ public class CloudWalkManager {
         }
         tickCounter++;
         boolean showBar = tickCounter % 10 == 0;
-        boolean showTarget = settings.targetParticle && tickCounter % 10 == 0;
 
         for (ParkourSession s : new ArrayList<>(sessions.values())) {
             if (s.finished) {
@@ -430,21 +463,7 @@ public class CloudWalkManager {
             if (showBar) {
                 Chat.actionBar(p, actionBarText(s));
             }
-            if (showTarget) {
-                markTarget(p, s);
-            }
         }
-    }
-
-    /** 给下一块打上只有本人可见的粒子标记。 */
-    private void markTarget(Player p, ParkourSession s) {
-        if (s.path.size() < 2) {
-            return;
-        }
-        BlockPos target = s.path.get(1);
-        p.spawnParticle(Particle.END_ROD,
-                target.x() + 0.5, target.y() + 1.35, target.z() + 0.5,
-                8, 0.22, 0.25, 0.22, 0.01);
     }
 
     private void score(Player p, ParkourSession s, BlockPos landed) {
@@ -475,6 +494,8 @@ public class CloudWalkManager {
         }
         place(s.box.world(), next, pickMaterial(s.playerId));
         s.path.add(next);
+        sparkle(s.box.world(), next);
+        updateGlow(s, s.path.get(1));
         Chat.actionBar(p, actionBarText(s));
     }
 
@@ -486,6 +507,10 @@ public class CloudWalkManager {
         sessions.remove(s.playerId);
         freeLane(s.lane);
 
+        if (s.glow != null) {
+            s.glow.remove();
+            s.glow = null;
+        }
         for (BlockPos pos : s.path) {
             setAir(s.box.world(), pos);
         }
@@ -677,6 +702,247 @@ public class CloudWalkManager {
         }
     }
 
+    // ---------- 下一个方块的发光标记 / 新方块粒子 ----------
+
+    /** 用 BlockDisplay 给下一个目标方块套一层发光轮廓（不跟随玩家视线）。 */
+    private void updateGlow(ParkourSession s, BlockPos target) {
+        World world = s.box.world();
+        BlockData data = world.getBlockAt(target.x(), target.y(), target.z()).getBlockData();
+        Location loc = new Location(world, target.x(), target.y(), target.z());
+        if (s.glow == null || !s.glow.isValid()) {
+            s.glow = world.spawn(loc, BlockDisplay.class, display -> {
+                display.setBlock(data);
+                display.setGlowing(true);
+                display.setPersistent(false);
+                display.setInvulnerable(true);
+                display.setGravity(false);
+                display.setShadowRadius(0f);
+                display.setShadowStrength(0f);
+                display.setTransformation(new Transformation(
+                        new Vector3f(-0.005f, -0.005f, -0.005f),
+                        new Quaternionf(),
+                        new Vector3f(1.01f, 1.01f, 1.01f),
+                        new Quaternionf()));
+            });
+        } else {
+            s.glow.teleport(loc);
+            s.glow.setBlock(data);
+            s.glow.setGlowing(true);
+        }
+    }
+
+    /** 新方块生成时的亮绿色粒子，约 0.65 秒后消失。 */
+    private void sparkle(World world, BlockPos pos) {
+        Location center = new Location(world, pos.x() + 0.5, pos.y() + 0.5, pos.z() + 0.5);
+        for (int i = 0; i < 3; i++) {
+            long delay = 1L + i * 6L;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (world.isChunkLoaded(pos.x() >> 4, pos.z() >> 4)) {
+                    world.spawnParticle(Particle.HAPPY_VILLAGER, center, 14, 0.45, 0.45, 0.45, 0.01);
+                }
+            }, delay);
+        }
+    }
+
+    // ---------- 排行榜全息 ----------
+
+    private void maintenance() {
+        refreshLeaderboards();
+        syncTitles();
+    }
+
+    private void loadLeaderboards() {
+        leaderboards.clear();
+        for (Map<?, ?> raw : plugin.getConfig().getMapList("leaderboards")) {
+            Location loc = readLbLocation(raw);
+            if (loc == null) {
+                continue;
+            }
+            Object entity = raw.get("entity");
+            UUID id = parseUuid(entity == null ? "" : String.valueOf(entity));
+            leaderboards.add(new LeaderBoard(loc, id));
+        }
+    }
+
+    private void saveLeaderboards() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (LeaderBoard board : leaderboards) {
+            if (board.loc.getWorld() == null) {
+                continue;
+            }
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("world", board.loc.getWorld().getName());
+            map.put("x", board.loc.getX());
+            map.put("y", board.loc.getY());
+            map.put("z", board.loc.getZ());
+            map.put("yaw", (double) board.loc.getYaw());
+            map.put("pitch", (double) board.loc.getPitch());
+            map.put("entity", board.entityId == null ? "" : board.entityId.toString());
+            list.add(map);
+        }
+        plugin.getConfig().set("leaderboards", list);
+        plugin.saveConfig();
+    }
+
+    public void placeLeaderboard(Player p) {
+        Location loc = p.getLocation().clone().add(0, 1.5, 0);
+        LeaderBoard board = new LeaderBoard(loc, null);
+        leaderboards.add(board);
+        board.entityId = spawnLeaderboard(loc);
+        saveLeaderboards();
+        refreshLeaderboards();
+        Chat.send(p, "&a已放置云中漫步排行榜（固定朝向，不会跟随玩家）。");
+    }
+
+    public void removeLeaderboards(CommandSender sender) {
+        for (LeaderBoard board : leaderboards) {
+            Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
+            if (entity != null) {
+                entity.remove();
+            }
+        }
+        leaderboards.clear();
+        saveLeaderboards();
+        Chat.send(sender, "&a已移除全部云中漫步排行榜。");
+    }
+
+    public void refreshLeaderboards() {
+        boolean changed = false;
+        for (LeaderBoard board : leaderboards) {
+            if (board.loc.getWorld() == null || !board.loc.isChunkLoaded()) {
+                continue;
+            }
+            Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
+            if (entity == null) {
+                board.entityId = spawnLeaderboard(board.loc);
+                changed = true;
+            } else if (entity instanceof TextDisplay display) {
+                applyLeaderboardStyle(display);
+            }
+        }
+        if (changed) {
+            saveLeaderboards();
+        }
+    }
+
+    private UUID spawnLeaderboard(Location loc) {
+        World world = loc.getWorld();
+        if (world == null) {
+            return null;
+        }
+        if (!loc.isChunkLoaded()) {
+            loc.getChunk().load();
+        }
+        TextDisplay display = world.spawn(loc, TextDisplay.class);
+        display.setBillboard(Display.Billboard.FIXED);
+        display.setRotation((loc.getYaw() + 180f) % 360f, 0f);
+        display.setSeeThrough(false);
+        display.setShadowed(true);
+        display.setAlignment(TextDisplay.TextAlignment.CENTER);
+        display.setLineWidth(200);
+        display.setViewRange(64);
+        display.setPersistent(true);
+        display.setInvulnerable(true);
+        display.setGravity(false);
+        display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
+                new Vector3f(1.3f, 1.3f, 1.3f), new Quaternionf()));
+        applyLeaderboardStyle(display);
+        return display.getUniqueId();
+    }
+
+    private void applyLeaderboardStyle(TextDisplay display) {
+        display.text(leaderboardText());
+        display.setDefaultBackground(false);
+        display.setBackgroundColor(Color.fromARGB(130, 15, 15, 30));
+    }
+
+    private Component leaderboardText() {
+        StringBuilder sb = new StringBuilder("§b§l—— 云中漫步 · 全服前十 ——\n");
+        List<TopEntry> top = topEntries();
+        if (top.isEmpty()) {
+            sb.append("§8暂无记录\n§7来大厅输入 /cloudwalk 挑战吧");
+        } else {
+            for (int i = 0; i < top.size(); i++) {
+                TopEntry entry = top.get(i);
+                int rank = i + 1;
+                String color = switch (i) {
+                    case 0 -> "§e";
+                    case 1, 2 -> "§f";
+                    default -> "§7";
+                };
+                sb.append(color).append(rank).append("§7. §f").append(entry.name())
+                        .append(" §7- §b").append(entry.score()).append("§7 分");
+                if (i < top.size() - 1) {
+                    sb.append('\n');
+                }
+            }
+        }
+        return Chat.color(sb.toString());
+    }
+
+    private static Location readLbLocation(Map<?, ?> raw) {
+        Object worldName = raw.get("world");
+        if (worldName == null) {
+            return null;
+        }
+        World world = Bukkit.getWorld(String.valueOf(worldName));
+        if (world == null) {
+            return null;
+        }
+        return new Location(world,
+                toDouble(raw.get("x")), toDouble(raw.get("y")), toDouble(raw.get("z")),
+                (float) toDouble(raw.get("yaw")), (float) toDouble(raw.get("pitch")));
+    }
+
+    private static double toDouble(Object value) {
+        return value instanceof Number number ? number.doubleValue() : 0.0;
+    }
+
+    // ---------- 头衔 ----------
+
+    /** 当前前十 = 「超级搭路」持有者；掉出前十立刻收回。每 5 秒兜底一次。 */
+    private void syncTitles() {
+        Set<String> current = new LinkedHashSet<>();
+        for (TopEntry entry : topEntries()) {
+            current.add(entry.id());
+        }
+
+        List<String> previous = new ArrayList<>(data.getStringList("title-holders"));
+        for (String id : current) {
+            UUID uuid = parseUuid(id);
+            // 用 owns 比对而不是只和上次的列表比：头衔插件晚于本插件加载时也能补发
+            if (uuid != null && !GameTitles.owns(uuid, TITLE_ID)) {
+                GameTitles.grantOrCreate(uuid, TITLE_ID, TITLE_NAME, TITLE_COLOR, TITLE_DESC);
+            }
+        }
+        for (String id : previous) {
+            if (current.contains(id)) {
+                continue;
+            }
+            UUID uuid = parseUuid(id);
+            if (uuid != null) {
+                GameTitles.revoke(uuid, TITLE_ID);
+            }
+        }
+
+        List<String> next = new ArrayList<>(current);
+        if (!previous.equals(next)) {
+            data.set("title-holders", next);
+            saveData();
+        }
+    }
+
+    private static UUID parseUuid(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
     // ---------- 记录 ----------
 
     public int bestScore(UUID id) {
@@ -744,6 +1010,8 @@ public class CloudWalkManager {
         data.set("bestAt." + id, System.currentTimeMillis());
         data.set("names." + id, name);
         saveData();
+        syncTitles();
+        refreshLeaderboards();
     }
 
     public void resetRecord(UUID id) {
@@ -751,6 +1019,8 @@ public class CloudWalkManager {
         data.set("bestAt." + id, null);
         data.set("names." + id, null);
         saveData();
+        syncTitles();
+        refreshLeaderboards();
     }
 
     private void saveData() {
@@ -758,6 +1028,16 @@ public class CloudWalkManager {
             PlayerStats.save(NAMESPACE, data);
         } catch (IOException ex) {
             plugin.getLogger().warning("保存跑酷记录失败: " + ex.getMessage());
+        }
+    }
+
+    private static final class LeaderBoard {
+        final Location loc;
+        UUID entityId;
+
+        LeaderBoard(Location loc, UUID entityId) {
+            this.loc = loc;
+            this.entityId = entityId;
         }
     }
 

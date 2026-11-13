@@ -1,5 +1,7 @@
 package com.cloudwalk;
 
+import org.bukkit.entity.BlockDisplay;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -17,6 +19,9 @@ public final class ParkourSession {
     public Direction heading;
     public int score;
     public boolean finished;
+
+    /** 标记「下一个目标方块」的发光方块展示实体。 */
+    public BlockDisplay glow;
 
     public ParkourSession(UUID playerId, String playerName, int lane, LaneBox box) {
         this.playerId = playerId;
