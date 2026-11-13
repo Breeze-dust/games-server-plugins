@@ -7,6 +7,7 @@
   - `com.hub.api.HubAPI`（静态门面）：游戏插件向主城上报玩家状态 / 场地状态、公屏"加入"播报、回主城联动时用它；关键方法 `setGame` / `setPlaying` / `setGameState` / `clearGame` / `gameOf`（查玩家当前上报的游戏名，不在游戏中为 null） / `setArena` / `removeArena` / `announceJoin`（两参数版 = 只报游戏名；三参数版多带场地名，播报成 `[游戏][场地] 玩家 加入了游戏`，多场地游戏用） / `registerLobbyHandler`（另有 `register` / `isReady` / `getLobby` 等）；主城缺席时全部空操作。
   - `com.hub.api.HubService`：HubCore 侧实现、在它 `onEnable` 里 `HubAPI.register(...)` 接进来的接口；小游戏只调 HubAPI，不要实现它。
   - `com.hub.api.GameState`：玩家/场地状态枚举，只有 `WAITING`（等待中）与 `PLAYING`（已开始）。
+  - `com.hub.api.GameTitles`：小游戏发头衔的桥；`grant(playerId, titleId)` / `grantOrCreate(playerId, titleId, 名称, 颜色, 描述)` / `owns(playerId, titleId)`。反射调头衔插件的 `com.example.playertitles.api.TitleProvider`，小游戏只依赖 MiniGameLib；没装头衔插件或版本旧时全部返回 false、不抛异常。返回 true = 玩家本次新获得（可用来决定是否弹提示）。
   - `com.hub.util.Chat`：所有文字与颜色统一走它；`send` / `broadcast` / `title` / `actionBar` / `color` / `toLegacy`（`&` 与 `§` 都认）。
   - `com.hub.util.SetupMode`：OP 建场模式（备份并清空背包 → 发带 PDC 标记的工具 → 退出还原）；每个插件 new 一个实例，用 `enter` / `exit` / `handleInteract` / `isEditing` / `isTool` / `exitAll`，专属工具回调走 `Tool` + `Handler`。
   - `com.hub.util.WaitCountdown`：等待室自动开局倒计时（队列有 OP 暂停、<min 取消、≥max 3 秒、达标未满 30 秒、加退人不重置）；每场地一个实例，插件实现 `Host` 后调 `update` / `cancel`。
@@ -24,6 +25,7 @@
   | 等待室自动开局规则 | `MiniGameLib/src/main/java/com/hub/util/WaitCountdown.java` |
   | 建场模式工具、背包备份与还原 | `MiniGameLib/src/main/java/com/hub/util/SetupMode.java` |
   | 向主城上报玩家/场地状态、回主城联动 | `MiniGameLib/src/main/java/com/hub/api/HubAPI.java`（实现方 `MiniGameLib/src/main/java/com/hub/api/HubService.java`） |
+  | 小游戏满足条件后给玩家发头衔 | `MiniGameLib/src/main/java/com/hub/api/GameTitles.java`（头衔内容在调用方；已接入示例见 `MurderMysteryManager#grantNoKnifeTitle`） |
   | 玩家记录读写与命名空间 | `MiniGameLib/src/main/java/com/hub/data/PlayerStats.java` |
   | 启动日志、关服兜底 | `MiniGameLib/src/main/java/com/hub/MiniGameLibPlugin.java` |
   | 插件元信息（是否注册命令） | `MiniGameLib/src/main/resources/plugin.yml` |

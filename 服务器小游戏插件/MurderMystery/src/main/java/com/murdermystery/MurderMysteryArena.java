@@ -5,8 +5,10 @@ import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -43,6 +45,7 @@ public class MurderMysteryArena {
     private final Map<UUID, Long> knifeCooldown = new LinkedHashMap<>(); // 杀手近战刀冷却（ms 时间戳）
     private final Map<UUID, Long> detectiveStoneAt = new LinkedHashMap<>(); // 侦探上次领真理之石的时间戳
     private final Map<UUID, UUID> compassTargets = new LinkedHashMap<>(); // 杀手 -> 指南针当前锁定的存活无辜者
+    private final Set<UUID> knifeUsers = new LinkedHashSet<>(); // 本局用过刀（近战/飞剑）击杀的杀手
     private long gameEndMs;
 
     public MurderMysteryArena(String name) {
@@ -162,6 +165,11 @@ public class MurderMysteryArena {
     /** 杀手 -> 指南针当前锁定的存活无辜者（目标死亡后由管理器自动换下一个）。 */
     public Map<UUID, UUID> getCompassTargets() {
         return compassTargets;
+    }
+
+    /** 本局用过刀（近战铁剑/石剑、飞剑）击杀过人的杀手。 */
+    public Set<UUID> getKnifeUsers() {
+        return knifeUsers;
     }
 
     public Map<UUID, Integer> getKills() {

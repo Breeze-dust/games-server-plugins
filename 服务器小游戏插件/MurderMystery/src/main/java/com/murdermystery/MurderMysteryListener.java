@@ -136,6 +136,7 @@ public class MurderMysteryListener implements Listener {
             // 杀手飞剑（由铁剑投出）
             if (m.isThrownProjectile(proj)) {
                 if (arena.isMurderer(shooter.getUniqueId()) && !arena.isMurderer(victim.getUniqueId())) {
+                    arena.getKnifeUsers().add(shooter.getUniqueId()); // 飞剑也算"用刀"
                     m.handleMurdererKill(arena, shooter, victim);
                 }
                 return;
@@ -184,6 +185,7 @@ public class MurderMysteryListener implements Listener {
                 if (arena.isMurderer(attacker.getUniqueId())) {
                     if (!arena.isMurderer(victim.getUniqueId())
                             && m.startKnifeCooldown(arena, attacker)) { // 近战刀 2 秒冷却
+                        arena.getKnifeUsers().add(attacker.getUniqueId());
                         m.handleMurdererKill(arena, attacker, victim);
                     }
                 } else if (arena.isMurderer(victim.getUniqueId())) {
@@ -200,6 +202,7 @@ public class MurderMysteryListener implements Listener {
                 if (attacker.getInventory().getItemInMainHand().getType() == Material.IRON_SWORD
                         && !arena.isMurderer(victim.getUniqueId())
                         && m.startKnifeCooldown(arena, attacker)) { // 近战刀 2 秒冷却
+                    arena.getKnifeUsers().add(attacker.getUniqueId());
                     m.handleMurdererKill(arena, attacker, victim);
                 }
                 return;

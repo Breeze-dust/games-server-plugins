@@ -231,13 +231,35 @@ public final class TitleManager {
         return ids == null ? Set.of() : Set.copyOf(ids);
     }
 
-    /** 管理员授予头衔拥有权（不自动装备）。 */
-    public synchronized void grant(UUID uuid, String titleId) {
-        if (!titles.containsKey(titleId)) {
-            return;
+    /** 授予头衔拥有权（不自动装备）。返回是否本次新获得。 */
+    public synchronized boolean grant(UUID uuid, String titleId) {
+        if (uuid == null || !titles.containsKey(titleId)) {
+            return false;
         }
-        owned.computeIfAbsent(uuid, key -> new HashSet<>()).add(titleId);
+        if (!owned.computeIfAbsent(uuid, key -> new HashSet<>()).add(titleId)) {
+            return false;
+        }
         save();
+        return true;
+    }
+
+    /**
+     * 授予头衔；头衔定义不存在时按给定内容创建（对所有玩家可见），再发放。
+     *
+     * @return 是否本次新获得；参数无效返回 false
+     */
+    public synchronized boolean grantOrCreate(UUID uuid, String titleId,
+                                              String name, String color, String description) {
+        if (uuid == null || titleId == null || titleId.isBlank()) {
+            return false;
+        }
+        if (!titles.containsKey(titleId)) {
+            String safeName = name == null || name.isBlank() ? titleId : name;
+            String safeColor = Text.normalizeColor(color == null || color.isBlank() ? "&f" : color);
+            titles.put(titleId, new Title(titleId, safeName, safeColor == null ? "&f" : safeColor,
+                    description == null || description.isBlank() ? "&7暂无描述" : description));
+        }
+        return grant(uuid, titleId);
     }
 
     /** 批量授予；只写一次盘。返回本次新增拥有的人数。 */

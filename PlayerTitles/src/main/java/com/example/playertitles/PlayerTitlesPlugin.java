@@ -80,4 +80,20 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
             titleManager.applyNametag(player);
         }
     }
+
+    @Override
+    public boolean grant(UUID playerId, String titleId) {
+        return titleManager.grant(playerId, titleId);
+    }
+
+    @Override
+    public boolean grantOrCreate(UUID playerId, String titleId,
+                                 String name, String color, String description) {
+        return titleManager.grantOrCreate(playerId, titleId, name, color, description);
+    }
+
+    @Override
+    public boolean owns(UUID playerId, String titleId) {
+        return titleManager.owns(playerId, titleId);
+    }
 }

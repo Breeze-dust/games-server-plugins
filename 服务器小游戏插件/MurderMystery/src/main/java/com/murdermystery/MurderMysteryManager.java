@@ -1,6 +1,7 @@
 package com.murdermystery;
 
 import com.hub.api.GameState;
+import com.hub.api.GameTitles;
 import com.hub.data.PlayerStats;
 import com.hub.api.HubAPI;
 import com.hub.util.Chat;
@@ -1055,6 +1056,7 @@ public class MurderMysteryManager {
         a.getKills().clear();
         a.getThrowCooldown().clear();
         a.getKnifeCooldown().clear();
+        a.getKnifeUsers().clear();
         a.getDetectiveStoneAt().clear();
         a.getCompassTargets().clear();
         cancelGameTask(a); // 清掉上一局可能残留的计时/指南针任务
@@ -2130,6 +2132,7 @@ public class MurderMysteryManager {
                 recordWin(id);
             }
         }
+        grantNoKnifeTitle(a, innocentsWin);
         // 还原所有玩家：自动回主城并拿菜单道具
         for (UUID id : new ArrayList<>(a.getPlayers())) {
             Player pp = Bukkit.getPlayer(id);
@@ -2168,6 +2171,7 @@ public class MurderMysteryManager {
         a.getKills().clear();
         a.getThrowCooldown().clear();
         a.getKnifeCooldown().clear();
+        a.getKnifeUsers().clear();
         a.getDetectiveStoneAt().clear();
         a.getCompassTargets().clear();
         lastGoldSpawn.remove(a.getName());
@@ -5252,6 +5256,30 @@ public class MurderMysteryManager {
     }
 
     // ---------- 战绩（胜场 / 击杀） ----------
+
+    /**
+     * 头衔「无声之刃」：杀手阵营获胜，且该杀手本局没有用近战刀/飞剑击杀过人。
+     * 头衔由头衔插件（PlayerTitles）持有；没装头衔插件时 GameTitles 返回 false，不影响结算。
+     */
+    private void grantNoKnifeTitle(MurderMysteryArena a, boolean innocentsWin) {
+        if (innocentsWin) {
+            return;
+        }
+        for (UUID id : new ArrayList<>(a.getPlayers())) {
+            if (!a.isMurderer(id) || a.getKnifeUsers().contains(id)) {
+                continue;
+            }
+            boolean unlocked = GameTitles.grantOrCreate(id, "mm_no_knife", "无声之刃", "&4",
+                    "&7密室杀手：不使用刀（近战剑与飞剑）赢得一局比赛");
+            if (!unlocked) {
+                continue;
+            }
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                Chat.send(p, "&6你用刀以外的手段赢下了这一局——获得头衔 &4[无声之刃]&6！");
+            }
+        }
+    }
 
     public void recordWin(UUID id) {
         if (data == null) {

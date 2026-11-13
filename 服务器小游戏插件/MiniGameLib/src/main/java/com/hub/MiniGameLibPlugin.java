@@ -20,7 +20,7 @@ public class MiniGameLibPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        getLogger().info("MiniGameLib 已启用（公共库：HubAPI / Chat / SetupMode / WaitCountdown / PlayerStats）。");
+        getLogger().info("MiniGameLib 已启用（公共库：HubAPI / GameTitles / Chat / SetupMode / WaitCountdown / PlayerStats）。");
         // 唯一的玩家记录文件（各小游戏共用一个）：启动日志就是“线上有没有带对文件”的证据
         getLogger().info("玩家记录 " + PlayerStats.file().getPath() + " -> " + PlayerStats.summary());
     }
