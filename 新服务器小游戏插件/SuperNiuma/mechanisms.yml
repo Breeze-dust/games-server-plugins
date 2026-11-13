@@ -21,6 +21,7 @@ mechanisms:
       - '&7碰到尖刺的玩家本回合失败'
       - '&7左键水平旋转，右键上下翻转'
     rotation: horizontal-flip
+    hit-inset: 0.3          # 判定盒水平收缩（格）：0.3 = 身体中心要进到这一格内才算碰到
     variants:
       single:
         name: '1x1'
@@ -176,7 +177,8 @@ mechanisms:
       - '&7需要放在方块上'
       - '&7无法旋转，触发后消失'
     rotation: none
-    radius: 1
+    radius: 1               # 爆炸波及半径（1 = 3x3x3）
+    hit-inset: 0.2          # 触发判定盒水平收缩（格）：只影响“踩到”的判定，不影响波及范围
 
   ladder:
     enabled: true

@@ -691,9 +691,18 @@ public final class MechanismManager {
         }
         Location secondAnchor = clampPortalAnchor(session, anchor);
         BlockFace secondFacing = facingFor(def, yawSteps, pitchSteps);
-        List<Location> cells = new ArrayList<>();
-        cells.addAll(portalCells(firstAnchor));
-        cells.addAll(portalCells(secondAnchor));
+        List<Location> firstCells = portalCells(firstAnchor);
+        List<Location> secondCells = portalCells(secondAnchor);
+        // 两扇门重叠会把同一格记录两次；还原时第二次还原会把这格写成“原来的传送门”，留下残块。
+        for (Location cell : secondCells) {
+            for (Location first : firstCells) {
+                if (sameBlock(cell, first)) {
+                    return PlaceResult.fail("第二扇门和第一扇重叠了，请往外挪一格。");
+                }
+            }
+        }
+        List<Location> cells = new ArrayList<>(firstCells);
+        cells.addAll(secondCells);
         String error = validateCells(room, arena, cells);
         if (error != null) {
             return PlaceResult.fail(error);
@@ -1131,19 +1140,26 @@ public final class MechanismManager {
         if (!room.isRunning()) {
             return;
         }
+        // 尖刺只有尖端窄窄一截，判定盒按 hit-inset 水平收缩，避免擦到边就失败。
+        double inset = hitInset(instance, 0.3);
         for (Player player : room.activePlayers()) {
             BoundingBox box = player.getBoundingBox();
             for (PlacedBlock block : instance.blocks()) {
                 Location loc = block.location();
                 BoundingBox cube = new BoundingBox(
-                        loc.getBlockX(), loc.getBlockY(), loc.getBlockZ(),
-                        loc.getBlockX() + 1.0, loc.getBlockY() + 1.0, loc.getBlockZ() + 1.0);
+                        loc.getBlockX() + inset, loc.getBlockY(), loc.getBlockZ() + inset,
+                        loc.getBlockX() + 1.0 - inset, loc.getBlockY() + 1.0,
+                        loc.getBlockZ() + 1.0 - inset);
                 if (box.overlaps(cube)) {
                     room.onPlayerFailed(player, instance.owner(), "被尖刺扎到");
                     break;
                 }
             }
         }
+    }
+
+    private double hitInset(MechanismInstance instance, double fallback) {
+        return Math.max(0.0, Math.min(0.45, instance.def().param("hit-inset", fallback)));
     }
 
     private void tickSpring(GameRoom room, MechanismInstance instance) {
@@ -1216,9 +1232,12 @@ public final class MechanismManager {
             return;
         }
         Location center = instance.anchor();
+        // 地毯很薄：判定盒水平收缩 + 只算地毯下半层，站在旁边或从上面跳过去都不会触发。
+        double inset = hitInset(instance, 0.2);
         BoundingBox trigger = new BoundingBox(
-                center.getBlockX(), center.getBlockY(), center.getBlockZ(),
-                center.getBlockX() + 1.0, center.getBlockY() + 1.0, center.getBlockZ() + 1.0);
+                center.getBlockX() + inset, center.getBlockY(), center.getBlockZ() + inset,
+                center.getBlockX() + 1.0 - inset, center.getBlockY() + 0.5,
+                center.getBlockZ() + 1.0 - inset);
         for (Player player : room.activePlayers()) {
             if (!player.getBoundingBox().overlaps(trigger)) {
                 continue;
@@ -1406,8 +1425,16 @@ public final class MechanismManager {
             return;
         }
         instance.setRemoved(true);
+        // 同一格可能被记录多次（例如重复放置），还原时只认第一次记录的原始方块。
+        Set<String> restored = new HashSet<>();
         for (PlacedBlock block : instance.blocks()) {
-            block.location().getBlock().setBlockData(block.previous(), false);
+            Location loc = block.location();
+            String key = loc.getWorld().getName() + ":" + loc.getBlockX() + ":"
+                    + loc.getBlockY() + ":" + loc.getBlockZ();
+            if (!restored.add(key)) {
+                continue;
+            }
+            loc.getBlock().setBlockData(block.previous(), false);
         }
         instance.blocks().clear();
         for (Entity entity : instance.entities()) {
