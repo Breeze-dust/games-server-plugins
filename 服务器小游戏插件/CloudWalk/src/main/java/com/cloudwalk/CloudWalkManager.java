@@ -388,12 +388,12 @@ public class CloudWalkManager {
                 double dx = loc.getX() - (target.x() + 0.5);
                 double dz = loc.getZ() - (target.z() + 0.5);
                 double feetY = loc.getY();
-                // 落在目标方块顶面附近：水平 0.8 格内、脚部 Y 在顶面 +0.0~+0.5、不在上升途中。
-                // 不用 Player#isOnGround（已弃用，且依赖客户端上报）。
+                // 落在目标方块顶面附近：水平 0.8 格内、脚部 Y 在顶面 -0.1~+0.6。
+                // 不判断 Y 速度：玩家落地后立刻起跳（连跳）时，采样到 +0.4 仍然算数。
+                // 也不用 Player#isOnGround（已弃用，且依赖客户端上报）。
                 if (dx * dx + dz * dz <= 0.8 * 0.8
-                        && feetY >= target.y() + 1.0
-                        && feetY < target.y() + 1.5
-                        && p.getVelocity().getY() <= 0.05) {
+                        && feetY >= target.y() + 0.9
+                        && feetY < target.y() + 1.6) {
                     score(p, s, target);
                     if (s.finished) {
                         continue;
