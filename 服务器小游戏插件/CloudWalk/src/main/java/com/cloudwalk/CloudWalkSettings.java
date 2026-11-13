@@ -52,6 +52,7 @@ public final class CloudWalkSettings {
     public int[] heights = {-2, -1, 0, 1};
     public int queueLength = 3;
     public boolean allow4JumpUp = false;
+    public double turnChance = 0.25;
     public List<Material> palette = new ArrayList<>(DEFAULT_PALETTE);
 
     public boolean sound = true;
@@ -101,6 +102,7 @@ public final class CloudWalkSettings {
 
         s.queueLength = Math.max(1, Math.min(6, cfg.getInt("path.queue-length", 3)));
         s.allow4JumpUp = cfg.getBoolean("path.allow4-jump-up", false);
+        s.turnChance = Math.max(0.0, Math.min(1.0, cfg.getDouble("path.turn-chance", 0.25)));
 
         List<Integer> heights = cfg.getIntegerList("path.heights");
         if (heights != null && !heights.isEmpty()) {

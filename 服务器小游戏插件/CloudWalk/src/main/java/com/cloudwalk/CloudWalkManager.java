@@ -95,7 +95,8 @@ public class CloudWalkManager {
         settings = CloudWalkSettings.load(plugin.getConfig());
         baseBox = buildBaseBox(settings);
         baseStart = buildBaseStart(settings);
-        generator = new PathGenerator(settings.distances, settings.heights, settings.allow4JumpUp);
+        generator = new PathGenerator(settings.distances, settings.heights,
+                settings.allow4JumpUp, settings.turnChance);
         playerBlocks.clear();
         ensureLaneArray();
 
@@ -277,6 +278,7 @@ public class CloudWalkManager {
                 + " 条，当前 &b" + sessions.size() + " &f人在跑。");
         out.add("&b生成：&f距离 " + java.util.Arrays.toString(settings.distances)
                 + "，高度 " + java.util.Arrays.toString(settings.heights)
+                + "，拐弯概率 " + settings.turnChance
                 + "，预生成 " + settings.queueLength + " 块，4格+上升 "
                 + (settings.allow4JumpUp ? "允许" : "禁止")
                 + "，方块池 " + settings.palette.size() + " 种");

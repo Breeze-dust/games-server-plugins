@@ -1,7 +1,6 @@
 package com.cloudwalk;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -16,11 +15,13 @@ public final class PathGenerator {
     private final int[] distances;
     private final int[] heights;
     private final boolean allow4JumpUp;
+    private final double turnChance;
 
-    public PathGenerator(int[] distances, int[] heights, boolean allow4JumpUp) {
+    public PathGenerator(int[] distances, int[] heights, boolean allow4JumpUp, double turnChance) {
         this.distances = distances.clone();
         this.heights = heights.clone();
         this.allow4JumpUp = allow4JumpUp;
+        this.turnChance = Math.max(0.0, Math.min(1.0, turnChance));
     }
 
     /**
@@ -30,23 +31,62 @@ public final class PathGenerator {
      * @return 合法的新方块位置；没有可用位置时返回 null
      */
     public BlockPos next(BlockPos tail, Direction heading, Set<BlockPos> occupied, LaneBox box) {
-        List<BlockPos> candidates = new ArrayList<>(18);
-        for (Direction dir : new Direction[]{heading, heading.left(), heading.right()}) {
+        Direction[] directions = {heading, heading.left(), heading.right()};
+        List<List<BlockPos>> valid = new ArrayList<>(3);
+        for (Direction dir : directions) {
+            List<BlockPos> list = new ArrayList<>(distances.length * heights.length);
             for (int distance : distances) {
                 for (int dy : heights) {
                     if (!allow4JumpUp && distance == 4 && dy > 0) {
                         continue;
                     }
-                    candidates.add(tail.offset(dir.dx * distance, dy, dir.dz * distance));
+                    BlockPos pos = tail.offset(dir.dx * distance, dy, dir.dz * distance);
+                    if (box.contains(pos) && !occupied.contains(pos)) {
+                        list.add(pos);
+                    }
+                }
+            }
+            valid.add(list);
+        }
+
+        // 方向权重：直行 1-turnChance，左/右各 turnChance/2
+        double[] weights = {1.0 - turnChance, turnChance / 2.0, turnChance / 2.0};
+        double total = 0.0;
+        for (int i = 0; i < 3; i++) {
+            if (!valid.get(i).isEmpty()) {
+                total += weights[i];
+            }
+        }
+
+        int chosen = -1;
+        if (total > 0.0) {
+            double roll = random.nextDouble() * total;
+            for (int i = 0; i < 3; i++) {
+                if (valid.get(i).isEmpty()) {
+                    continue;
+                }
+                roll -= weights[i];
+                if (roll <= 0.0) {
+                    chosen = i;
+                    break;
                 }
             }
         }
-        Collections.shuffle(candidates, random);
-        for (BlockPos pos : candidates) {
-            if (box.contains(pos) && !occupied.contains(pos)) {
-                return pos;
+        if (chosen < 0) {
+            // 所有可用方向权重都是 0（turn-chance=0 且直行被挡）：在可用方向里等概率兜底
+            List<Integer> available = new ArrayList<>(3);
+            for (int i = 0; i < 3; i++) {
+                if (!valid.get(i).isEmpty()) {
+                    available.add(i);
+                }
             }
+            if (available.isEmpty()) {
+                return null;
+            }
+            chosen = available.get(random.nextInt(available.size()));
         }
-        return null;
+
+        List<BlockPos> pool = valid.get(chosen);
+        return pool.get(random.nextInt(pool.size()));
     }
 }
