@@ -37,6 +37,11 @@ public class CloudWalkListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
+        // UNKNOWN 是服务端自己做的位置校正（延迟/移动校验回拉），不是玩家或插件传送；
+        // 把它当成「传送离开」会让人明明落在方块上却突然结束。
+        if (event.getCause() == PlayerTeleportEvent.TeleportCause.UNKNOWN) {
+            return;
+        }
         plugin.getManager().stop(event.getPlayer(), "传送离开", true, false);
     }
 
@@ -58,8 +63,9 @@ public class CloudWalkListener implements Listener {
         if (!event.isFlying() || !plugin.getManager().isPlaying(event.getPlayer().getUniqueId())) {
             return;
         }
+        // 只取消飞行：主城如果有双击空格起飞之类的机制，不应因此直接结束本局。
+        // 真正飞起来（isFlying）由 2 tick 循环兜底结束。
         event.setCancelled(true);
-        plugin.getManager().stop(event.getPlayer(), "尝试飞行", true, true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

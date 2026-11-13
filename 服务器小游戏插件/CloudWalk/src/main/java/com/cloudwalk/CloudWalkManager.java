@@ -37,7 +37,7 @@ import java.util.UUID;
 public class CloudWalkManager {
 
     private static final String NAMESPACE = "cloudwalk";
-    private static final int TICK_PERIOD = 2;
+    private static final int TICK_PERIOD = 1;
 
     private final CloudWalkPlugin plugin;
     private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
@@ -50,7 +50,7 @@ public class CloudWalkManager {
 
     private BukkitTask tickTask;
     private boolean[] lanesUsed = new boolean[0];
-    private int actionBarTick;
+    private int tickCounter;
 
     public CloudWalkManager(CloudWalkPlugin plugin) {
         this.plugin = plugin;
@@ -363,8 +363,9 @@ public class CloudWalkManager {
         if (sessions.isEmpty()) {
             return;
         }
-        actionBarTick++;
-        boolean showBar = actionBarTick % 5 == 0;
+        tickCounter++;
+        boolean showBar = tickCounter % 10 == 0;
+        boolean showTarget = settings.targetParticle && tickCounter % 10 == 0;
         long now = System.currentTimeMillis();
         long afkMillis = settings.afkEndSeconds * 1000L;
 
@@ -388,10 +389,10 @@ public class CloudWalkManager {
                 double dx = loc.getX() - (target.x() + 0.5);
                 double dz = loc.getZ() - (target.z() + 0.5);
                 double feetY = loc.getY();
-                // 落在目标方块顶面附近：水平 0.8 格内、脚部 Y 在顶面 -0.1~+0.6。
+                // 落在目标方块顶面附近：水平 0.85 格内、脚部 Y 在顶面 -0.1~+0.6。
                 // 不判断 Y 速度：玩家落地后立刻起跳（连跳）时，采样到 +0.4 仍然算数。
                 // 也不用 Player#isOnGround（已弃用，且依赖客户端上报）。
-                if (dx * dx + dz * dz <= 0.8 * 0.8
+                if (dx * dx + dz * dz <= 0.85 * 0.85
                         && feetY >= target.y() + 0.9
                         && feetY < target.y() + 1.6) {
                     score(p, s, target);
@@ -409,14 +410,28 @@ public class CloudWalkManager {
                 finish(p, s, "使用了飞行", true, true);
                 continue;
             }
-            if (now - s.lastProgressAt > afkMillis) {
+            if (afkMillis > 0 && now - s.lastProgressAt > afkMillis) {
                 finish(p, s, "长时间没有前进", true, true);
                 continue;
             }
             if (showBar) {
                 Chat.actionBar(p, actionBarText(s));
             }
+            if (showTarget) {
+                markTarget(p, s);
+            }
         }
+    }
+
+    /** 给下一块打上只有本人可见的粒子标记。 */
+    private void markTarget(Player p, ParkourSession s) {
+        if (s.path.size() < 2) {
+            return;
+        }
+        BlockPos target = s.path.get(1);
+        p.spawnParticle(Particle.END_ROD,
+                target.x() + 0.5, target.y() + 1.35, target.z() + 0.5,
+                8, 0.22, 0.25, 0.22, 0.01);
     }
 
     private void score(Player p, ParkourSession s, BlockPos landed) {
@@ -439,7 +454,7 @@ public class CloudWalkManager {
         BlockPos tail = s.path.get(s.path.size() - 1);
         BlockPos next = generator.next(tail, s.heading, new HashSet<>(s.path), s.box);
         if (next == null) {
-            finish(p, s, "没有可落脚的方块了", true, true);
+            finish(p, s, "路径到达区域边界", true, true);
             return;
         }
         Direction direction = Direction.between(tail, next);

@@ -45,8 +45,9 @@ path:
 
 # 运行
 run:
-  afk-end-seconds: 10 # 这么久没得分就结束本局
+  afk-end-seconds: 0    # 0 = 永不因挂机结束（可以在方块上无限站着）
   sound: true
-  particle: true
+  particle: true        # 落到新方块时的粒子
+  target-particle: true # 下一个目标方块上方的粒子标记
 
 top-size: 10

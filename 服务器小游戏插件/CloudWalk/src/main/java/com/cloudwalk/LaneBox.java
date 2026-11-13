@@ -12,13 +12,13 @@ public record LaneBox(World world, int minX, int maxX, int minY, int maxY, int m
                 && pos.z() >= minZ && pos.z() <= maxZ;
     }
 
-    /** 只比 XZ：玩家站在区域最上面一块时脚部 Y 会超出盒子，不能拿 Y 判定出界。 */
+    /** 只比 XZ，并留 2 格余量：玩家站在区域最边上的方块、身体有一部分伸出去时不该判出界。 */
     public boolean containsXZ(Location loc) {
         if (loc.getWorld() == null || !loc.getWorld().equals(world)) {
             return false;
         }
-        return loc.getX() >= minX && loc.getX() < maxX + 1.0
-                && loc.getZ() >= minZ && loc.getZ() < maxZ + 1.0;
+        return loc.getX() >= minX - 2.0 && loc.getX() < maxX + 3.0
+                && loc.getZ() >= minZ - 2.0 && loc.getZ() < maxZ + 3.0;
     }
 
     public LaneBox translate(int dx, int dy, int dz) {
