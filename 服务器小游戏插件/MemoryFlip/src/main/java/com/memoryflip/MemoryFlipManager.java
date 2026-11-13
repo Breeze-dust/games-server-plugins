@@ -15,6 +15,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.BlockFace;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -50,6 +52,8 @@ public final class MemoryFlipManager {
 
     public static final String GAME = "记忆翻牌";
     public static final String ARENA = "主场地";
+    /** HubAPI 里街机派对的显示名：结算时靠它认出「这局是派对拉进来的」。 */
+    private static final String ARCADE_PARTY_GAME = "街机派对";
 
     public enum State {
         WAITING, RUNNING
@@ -81,6 +85,8 @@ public final class MemoryFlipManager {
     private final Set<UUID> waiting = new LinkedHashSet<>();
     private final Set<UUID> playing = new LinkedHashSet<>();
     private final Map<UUID, PlayState> states = new HashMap<>();
+    /** 由街机派对拉进来的玩家：结算时不能自己回城，否则会被踢出派对队列。 */
+    private final Set<UUID> arcadePartyPlayers = new LinkedHashSet<>();
 
     private BukkitTask gameTask;
     private int secondsLeft;
@@ -197,6 +203,24 @@ public final class MemoryFlipManager {
         return Math.max(5, Math.min(100, cfgInt("review-delay-ticks", 20)));
     }
 
+    /** 对局中允许点展示框的距离（格）。默认 3 格太近，4×4 的墙边角经常点不到。 */
+    private double touchDistance() {
+        double value = plugin.getConfig().getDouble("board.touch-distance", 8.0);
+        return Math.max(3.0, Math.min(32.0, value));
+    }
+
+    /** 对局中放宽/还原玩家点实体（展示框）的距离。 */
+    private void applyReach(Player player, boolean extended) {
+        if (player == null) {
+            return;
+        }
+        AttributeInstance attribute = player.getAttribute(Attribute.ENTITY_INTERACTION_RANGE);
+        if (attribute == null) {
+            return;
+        }
+        attribute.setBaseValue(extended ? touchDistance() : attribute.getDefaultValue());
+    }
+
     private StartCountdown startCountdown() {
         if (startCountdown == null) {
             startCountdown = new StartCountdown(plugin);
@@ -239,8 +263,11 @@ public final class MemoryFlipManager {
         liveSidebar.hideAll();
         restoreFrames();
         for (UUID id : playing) {
-            showNameTag(Bukkit.getPlayer(id));
+            Player p = Bukkit.getPlayer(id);
+            showNameTag(p);
+            applyReach(p, false);
         }
+        arcadePartyPlayers.clear();
         saveData();
     }
 
@@ -254,6 +281,7 @@ public final class MemoryFlipManager {
         changed |= setDefault("board.rows", 4);
         changed |= setDefault("board.cols", 4);
         changed |= setDefault("board.spacing", 6);
+        changed |= setDefault("board.touch-distance", 8.0);
         changed |= setDefault("board.wall-material", "SMOOTH_STONE");
         changed |= setDefault("board.floor-material", "SMOOTH_STONE");
         changed |= setDefault("board.items", List.of("DIAMOND", "EMERALD", "GOLD_INGOT", "IRON_INGOT",
@@ -340,6 +368,10 @@ public final class MemoryFlipManager {
             return;
         }
         waiting.add(id);
+        // 进场前 HubAPI 里的游戏名还是「街机派对」= 这局由派对拉进来，结算时不能自己回城
+        if (ARCADE_PARTY_GAME.equals(HubAPI.gameOf(id))) {
+            arcadePartyPlayers.add(id);
+        }
         player.getInventory().clear();
         player.setGameMode(GameMode.SURVIVAL);
         resetPlayer(player);
@@ -366,6 +398,7 @@ public final class MemoryFlipManager {
         if (st != null) {
             resetBoard(st);
         }
+        arcadePartyPlayers.remove(id);
         showNameTag(player);
         clearGameState(player);
         HubAPI.clearGame(id);
@@ -397,6 +430,8 @@ public final class MemoryFlipManager {
         if (st != null) {
             resetBoard(st);
         }
+        arcadePartyPlayers.remove(id);
+        applyReach(player, false);
         showNameTag(player);
         HubAPI.clearGame(id);
         if (state == State.RUNNING && wasPlaying && (playing.isEmpty() || allFinished())) {
@@ -492,6 +527,7 @@ public final class MemoryFlipManager {
             p.setFoodLevel(20);
             p.teleport(board.stand);
             hideNameTag(p);
+            applyReach(p, true);
             HubAPI.setPlaying(id, GAME);
             Chat.title(p, "&b&l" + GAME, "&f翻开两张相同的物品！", 2);
         }
@@ -774,23 +810,36 @@ public final class MemoryFlipManager {
         broadcast("&6===============================");
 
         liveSidebar.hide("memoryflip");
+        if (!arcadePartyPlayers.isEmpty()) {
+            plugin.getLogger().info("[记忆翻牌] 结算：" + arcadePartyPlayers.size()
+                    + " 名玩家仍由街机派对接管，不自行回城。");
+        }
         for (UUID id : new ArrayList<>(playing)) {
             PlayState st = states.get(id);
             if (st != null) {
                 resetBoard(st);
             }
+            // 街机派对拉进来的：回城 / 清背包 / 清 tab 都由派对负责。这里调
+            // teleportToLobby 会向所有插件广播「回大厅」，把刚排进下一局的人踢出派对。
+            boolean arcade = arcadePartyPlayers.contains(id);
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
                 showNameTag(p);
+                applyReach(p, false);
                 p.setGameMode(GameMode.SURVIVAL);
                 p.setHealth(20);
                 p.setFoodLevel(20);
-                HubAPI.teleportToLobby(p);
+                if (!arcade) {
+                    HubAPI.teleportToLobby(p);
+                }
             }
-            HubAPI.clearGame(id);
+            if (!arcade) {
+                HubAPI.clearGame(id);
+            }
         }
         playing.clear();
         states.clear();
+        arcadePartyPlayers.clear();
         updateCountdown();
         reportArena();
     }
@@ -911,6 +960,7 @@ public final class MemoryFlipManager {
         player.setGameMode(GameMode.SURVIVAL);
         player.setAllowFlight(false);
         player.setFlying(false);
+        applyReach(player, false);
     }
 
     // ---------- 任务 ----------

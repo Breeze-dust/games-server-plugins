@@ -12,13 +12,14 @@
   - 先配完 `totalPairs` 对的人完成；全部玩家都完成或时间到即结算。
   - **排名**：已完成的按完成用时从短到长排在前；未完成的按已配对数从多到少，再按名字。前三名 +3/+2/+1 积分并记 `firsts/seconds/thirds`（`games.memoryflip`）。
   - 场内玩家无伤、不能破坏/放置方块、不能丢东西；展示框玩家无法拿走物品；**局内隐藏头顶名字**（防止挡住牌面）。
+  - **局内放宽点展示框的距离**（1.1.6）：开局把玩家的 `minecraft:entity_interaction_range` 设成 `board.touch-distance`（默认 8 格；原版只有 3 格，4×4 墙的上下左右边角经常点不到），离开 / 结算 / 退服 / 关服时还原默认值。
   - **场地保护不分是否在局内**（1.1.5）：墙、地台、展示框所在格被**任何人**拆/放都会取消；展示框本身挂 `HangingBreakEvent` 拦下（拆支撑方块、爆炸、`/kill` 等都不会让它掉成掉落物）。以前只拦"参赛玩家"的破坏，别人（或边缘玩家）拆掉墙方块，展示框就会整块掉出来。
 - **命令**：`/memory`（别名 `/mem`、`/memoryflip`、`/flip`）
   - 玩家：`join`、`leave`、`list`、`stats [玩家]`、`help`
   - OP：**`build [人数]`**（站在场地中心，生成四排相对的翻牌墙 + 地台 + 展示框，人数必须是偶数，会先清掉旧场地）、`setlobby`、`save`、`start`、`stop`、`reload`、`stats reset`
 - **配置**：`server/plugins/MemoryFlip/config.yml`
   - `min-players` / `max-players` / `game-seconds`（默认 300）/ `countdown-seconds` / `review-delay-ticks`
-  - `board.rows` / `board.cols`（乘积必须偶数）/ `board.spacing`（相邻墙面间距，默认 6）/ `board.wall-material` / `board.floor-material`
+  - `board.rows` / `board.cols`（乘积必须偶数）/ `board.spacing`（相邻墙面间距，默认 6）/ `board.touch-distance`（对局中能点多远的展示框，默认 8.0，原版 3.0）/ `board.wall-material` / `board.floor-material`
   - `board.items`：牌面物品池（会自动成对）
   - `lobby`（`/memory setlobby` 写）
 - **建场步骤（OP）**：
@@ -30,6 +31,7 @@
   - 间距若填奇数会向上取偶数；多出的两面同时加在相对的两侧（北/南）。
   - 注意：四排围成一圈，需要足够空旷的场地（默认 16 人、间距 6 时约 40×40 格）。**旧版本建的场地要重新执行 `/memory build`**（`clear` 只清它自己记录过的方块）。
 - **街机派对**：已接入本局池（key `memoryflip`，命令 `memory join` / `memory start`，`max-players: 16`，非多场地）。派对会直接把人拉进来再开局。
+  - **结算不自己回城**（1.1.6）：`join` 时若 `HubAPI.gameOf(id)` 还是「街机派对」就记进 `arcadePartyPlayers`；`endGame` 对这些人只做恢复（名字/模式/血量/触及距离），跳过 `teleportToLobby` 和 `HubAPI.clearGame`，回城与清背包交给派对。以前结算直接 `teleportToLobby`，会向所有插件广播「回大厅」，把刚排进下一局的人踢出派对。日志里出现 `[记忆翻牌] 结算：N 名玩家仍由街机派对接管` 即为生效。
 - **常见坑**：
   - **`build` 清场**：会删掉上一次 `build` 记录的墙和展示框（只清它记录过的方块），然后重新生成；不要在已建好的建筑里执行。
   - **展示框被玩家动过**：插件会取消玩家对展示框的点击/破坏；场地方块（墙/地台/框位）现在对**所有人**受保护，拆不掉也放不进（先 `/memory build` 或重启删场）。

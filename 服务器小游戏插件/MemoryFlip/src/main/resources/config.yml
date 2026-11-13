@@ -24,6 +24,8 @@ board:
   cols: 4
   # 相邻两块牌位之间的水平间距（格），建议 >= 5
   spacing: 6
+  # 对局中点展示框的距离（格）。原版只有 3 格，4×4 的墙上下左右边角经常点不到
+  touch-distance: 8.0
   # 墙体 / 地台材质
   wall-material: SMOOTH_STONE
   floor-material: SMOOTH_STONE
