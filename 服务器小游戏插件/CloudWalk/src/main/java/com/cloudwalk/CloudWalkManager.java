@@ -317,7 +317,6 @@ public class CloudWalkManager {
         ParkourSession session = new ParkourSession(id, p.getName(), lane, box);
         session.path.addAll(path);
         session.heading = cursor;
-        session.lastProgressAt = System.currentTimeMillis();
         sessions.put(id, session);
 
         Chat.send(p, "&b&l云中漫步 &7· &f跳到前方方块，每块 +1 分；掉下去本局结束。");
@@ -366,8 +365,6 @@ public class CloudWalkManager {
         tickCounter++;
         boolean showBar = tickCounter % 10 == 0;
         boolean showTarget = settings.targetParticle && tickCounter % 10 == 0;
-        long now = System.currentTimeMillis();
-        long afkMillis = settings.afkEndSeconds * 1000L;
 
         for (ParkourSession s : new ArrayList<>(sessions.values())) {
             if (s.finished) {
@@ -410,10 +407,6 @@ public class CloudWalkManager {
                 finish(p, s, "使用了飞行", true, true);
                 continue;
             }
-            if (afkMillis > 0 && now - s.lastProgressAt > afkMillis) {
-                finish(p, s, "长时间没有前进", true, true);
-                continue;
-            }
             if (showBar) {
                 Chat.actionBar(p, actionBarText(s));
             }
@@ -436,7 +429,6 @@ public class CloudWalkManager {
 
     private void score(Player p, ParkourSession s, BlockPos landed) {
         s.score++;
-        s.lastProgressAt = System.currentTimeMillis();
 
         if (settings.sound) {
             float pitch = Math.min(2.0f, 1.0f + s.score * 0.02f);

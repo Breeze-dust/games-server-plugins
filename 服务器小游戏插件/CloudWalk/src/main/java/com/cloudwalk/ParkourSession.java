@@ -16,7 +16,6 @@ public final class ParkourSession {
     /** 进入路径末端方块的方向，下一块按它来算前 / 左 / 右。 */
     public Direction heading;
     public int score;
-    public long lastProgressAt;
     public boolean finished;
 
     public ParkourSession(UUID playerId, String playerName, int lane, LaneBox box) {

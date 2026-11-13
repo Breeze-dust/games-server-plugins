@@ -37,7 +37,6 @@ public final class CloudWalkSettings {
     public boolean allow4JumpUp = false;
     public Material block = Material.SMOOTH_STONE;
 
-    public int afkEndSeconds = 10;
     public boolean sound = true;
     public boolean particle = true;
     public boolean targetParticle = true;
@@ -89,7 +88,6 @@ public final class CloudWalkSettings {
         Material material = Material.matchMaterial(cfg.getString("path.block", "SMOOTH_STONE"));
         s.block = material == null ? Material.SMOOTH_STONE : material;
 
-        s.afkEndSeconds = Math.max(0, cfg.getInt("run.afk-end-seconds", 0));
         s.sound = cfg.getBoolean("run.sound", true);
         s.particle = cfg.getBoolean("run.particle", true);
         s.targetParticle = cfg.getBoolean("run.target-particle", true);

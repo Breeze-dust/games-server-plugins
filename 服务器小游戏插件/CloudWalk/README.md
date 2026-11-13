@@ -21,7 +21,7 @@
 - **下一块标记**：`run.target-particle: true` 时每 0.5 秒在下一个目标方块上方打一圈只有本人可见的 END_ROD 粒子。
 - **结束条件**：Y 低于当前方块 Y-3、离开通道 XZ（含 1 格余量）、下线、传送、死亡、
   飞行/滑翔、末影珍珠/烟花、切创造/旁观、`/hub` 或右键回主城道具、服务器关闭（不记分）。
-  **默认没有挂机超时**：`run.afk-end-seconds: 0` 可以在方块上无限站着；设成正数才会因长时间没得分结束。
+  **没有挂机超时**：站在方块上可以无限挂机，不会因为长时间不动被遣返。
 - **入口 / 主流程**：`CloudWalk/src/main/java/com/cloudwalk/CloudWalkPlugin.java#onEnable`
   → `CloudWalkManager#load`（读 config + `PlayerStats.load("cloudwalk", …)` + 启动 2 tick 循环）
   → `CloudWalkCommand`（`/cloudwalk` 无参数 = 加入）→ `CloudWalkListener`（各种出口）。
@@ -33,7 +33,7 @@
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`
   - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
   - `path.distances|queue-length|allow4-jump-up|block`
-  - `run.afk-end-seconds|sound|particle|target-particle`、`top-size`
+  - `run.sound|particle|target-particle`、`top-size`
 - **玩家记录**：命名空间 `cloudwalk`，结构 `best.<uuid>` / `bestAt.<uuid>` / `names.<uuid>`；
   唯一文件 `server/plugins/MiniGameLib/players.yml`，旧 `CloudWalk/data.yml` 首次加载自动迁移。
   同分按 `bestAt` 升序（先达成者排前）。

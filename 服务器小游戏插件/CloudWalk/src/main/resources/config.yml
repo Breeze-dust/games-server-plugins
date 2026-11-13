@@ -43,9 +43,8 @@ path:
   allow4-jump-up: false  # 原版跳不上「水平4格+上升1格」，默认关闭
   block: SMOOTH_STONE    # 方块材质
 
-# 运行
+# 运行（站在方块上可以无限挂机，没有挂机超时）
 run:
-  afk-end-seconds: 0    # 0 = 永不因挂机结束（可以在方块上无限站着）
   sound: true
   particle: true        # 落到新方块时的粒子
   target-particle: true # 下一个目标方块上方的粒子标记
