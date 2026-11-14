@@ -1270,10 +1270,14 @@ public class CloudWalkManager {
 
     // ---------- 头衔 ----------
 
-    /** 每个难度各自的前十持有对应头衔；掉出前十立刻收回，每 5 秒兜底一次。 */
+    /** 每个难度前十持有对应头衔；高难度前十同时持有所有更低难度的头衔（但不出现在低难度榜上）。 */
     private void syncTitles() {
         boolean changed = false;
-        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+        Set<String> inherited = new LinkedHashSet<>();
+        List<CloudWalkSettings.Difficulty> difficulties = settings.difficulties;
+
+        for (int i = difficulties.size() - 1; i >= 0; i--) {
+            CloudWalkSettings.Difficulty difficulty = difficulties.get(i);
             String key = "title-holders." + difficulty.id;
             List<String> previous = new ArrayList<>(data.getStringList(key));
 
@@ -1288,10 +1292,11 @@ public class CloudWalkManager {
                     data.set(key, null);
                     changed = true;
                 }
+                // 未开放的难度不贡献自己的前十，但更高难度的持有者继续往下传
                 continue;
             }
 
-            Set<String> current = new LinkedHashSet<>();
+            Set<String> current = new LinkedHashSet<>(inherited);
             for (TopEntry entry : topEntries(difficulty.id)) {
                 current.add(entry.id());
             }
@@ -1318,6 +1323,7 @@ public class CloudWalkManager {
                 data.set(key, next);
                 changed = true;
             }
+            inherited = current;
         }
         if (changed) {
             saveData();
