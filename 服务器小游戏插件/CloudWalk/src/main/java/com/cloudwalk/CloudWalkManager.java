@@ -356,7 +356,7 @@ public class CloudWalkManager {
             out.add("&b起点：&f" + baseStart.x() + "," + baseStart.y() + "," + baseStart.z()
                     + (inside ? "" : " &c(不在区域内)"));
         }
-        out.add("&b通道：&f" + settings.axis + " 轴并排，间隔 " + settings.laneGap
+        out.add("&b通道：&f以区域为中心按方形螺旋铺开，X/Z 间隔 " + settings.laneGap
                 + " 格，每层抬高 " + settings.heightStep + " 格，上限 " + settings.maxLanes
                 + " 条，当前 &b" + sessions.size() + " &f人在跑。");
         StringBuilder difficultyLine = new StringBuilder();
@@ -712,14 +712,37 @@ public class CloudWalkManager {
     }
 
     private int[] laneOffset(int lane) {
-        int width = settings.axis.equals("z")
-                ? baseBox.maxZ() - baseBox.minZ() + 1
-                : baseBox.maxX() - baseBox.minX() + 1;
-        int distance = lane * (width + settings.laneGap);
-        int height = lane * settings.heightStep;
-        return settings.axis.equals("z")
-                ? new int[]{0, height, distance}
-                : new int[]{distance, height, 0};
+        int[] grid = gridOffset(lane);
+        int stepX = (baseBox.maxX() - baseBox.minX() + 1) + settings.laneGap;
+        int stepZ = (baseBox.maxZ() - baseBox.minZ() + 1) + settings.laneGap;
+        return new int[]{grid[0] * stepX, lane * settings.heightStep, grid[1] * stepZ};
+    }
+
+    /** 方形螺旋编号：0 在中心，之后一圈圈向外，尽量以区域为中心铺成方形。 */
+    private static int[] gridOffset(int lane) {
+        if (lane <= 0) {
+            return new int[]{0, 0};
+        }
+        int ring = (int) Math.ceil((Math.sqrt(lane + 1) - 1) / 2.0);
+        int ringStart = (2 * ring - 1) * (2 * ring - 1);
+        int pos = lane - ringStart;
+        int side = 2 * ring;
+        int gx;
+        int gz;
+        if (pos < side) {
+            gx = ring;
+            gz = -ring + pos;
+        } else if (pos < 2 * side) {
+            gx = ring - (pos - side);
+            gz = ring;
+        } else if (pos < 3 * side) {
+            gx = -ring;
+            gz = ring - (pos - 2 * side);
+        } else {
+            gx = -ring + (pos - 3 * side);
+            gz = -ring;
+        }
+        return new int[]{gx, gz};
     }
 
     private LaneBox laneBox(int lane) {

@@ -82,7 +82,6 @@ public final class CloudWalkSettings {
 
     public Location lobby;
 
-    public String axis = "x";
     public int laneGap = 3;
     public int heightStep = 2;
     public int maxLanes = 12;
@@ -127,7 +126,6 @@ public final class CloudWalkSettings {
 
         s.lobby = readLocation(cfg.getConfigurationSection("lobby"));
 
-        s.axis = "z".equalsIgnoreCase(cfg.getString("lane.axis", "x")) ? "z" : "x";
         s.laneGap = Math.max(1, cfg.getInt("lane.gap", 3));
         s.heightStep = Math.max(0, cfg.getInt("lane.height-step", 2));
         s.maxLanes = Math.max(1, Math.min(64, cfg.getInt("lane.max", 12)));

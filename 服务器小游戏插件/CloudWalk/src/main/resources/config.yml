@@ -31,11 +31,10 @@ lobby:
   yaw: 0.0
   pitch: 0.0
 
-# 多人通道：每人一份区域副本，横向并排、逐层抬高
+# 多人通道：每人一份区域副本，以区域为中心按方形螺旋向 X/Z 两个方向铺开
 lane:
-  axis: x        # x 或 z：通道并排的方向
-  gap: 3         # 相邻通道之间的空格
-  height-step: 2 # 每多一名玩家，起点抬高多少格
+  gap: 3         # 相邻通道之间在 X/Z 两个方向的空格
+  height-step: 2 # 每多一名玩家，起点抬高多少格（0 = 全部同高）
   max: 12        # 最多同时多少人跑
 
 # 路径生成（heights/queue-length/turn-chance/blocks 三个难度共用）

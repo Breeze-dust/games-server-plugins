@@ -7,10 +7,10 @@
   每个难度单独记录个人最高分和前十。
 - **定位**：主城活动（类似 SkyPit / LobbyToys），**不注册进 HubCore 的 9 个游戏列表**，没有等待室和场地流程。
   只依赖 `MiniGameLib`（`HubAPI` + `PlayerStats`），可选主城；没装 HubCore 时用 `/cloudwalk setlobby` 的回城点。
-- **通道怎么排**：每名玩家一份区域副本，沿 `lane.axis`（默认 X）横向并排，间隔 `lane.gap`（默认 3 格），
-  每条起点再抬高 `lane.height-step`（默认 2 格）。所以相邻两人互相看得见、路径永远不会重叠；
-  上下错开 2 格后跳上对方通道也是不可能的（只能往下掉，掉下去就结束）。**不要**改成纯垂直叠放：
-  每跳高度差 -1/0/+1，路径会垂直漂移，只隔 2~3 格的话几跳之内两条路就会交叉。
+- **通道怎么排**：每名玩家一份区域副本，以 `pos1/pos2` 划出的区域为中心按**方形螺旋**铺开：
+  0 号在中心，之后一圈圈向外，X/Z 两个方向都隔 `lane.gap`，每条起点再抬高 `lane.height-step`。
+  相邻两人互相看得见、路径永远不会重叠。高度会垂直漂移，所以**不要**把通道只上下叠放：
+  只隔 2~3 格的话几跳之内两条路就会交叉。
 - **真实方块**：路径全是 `path.block` 材质的真实方块，结束后逐块清成空气；玩家之间看得见。
   区域必须是**专用空间**（建议主城高空），不要和建筑重叠。
 - **生成算法**：从路径末端按「前 / 左 / 右 × 水平 3/4 格 × 高度 -2/-1/0/+1」列合法候选
@@ -69,7 +69,7 @@
 - **配置**：`server/plugins/CloudWalk/config.yml`（模板 `CloudWalk/src/main/resources/config.yml`）
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`。
     `start.random` / `start.random-y` 控制是否随机起点（不由命令写入，可手改）
-  - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
+  - `lane.gap|height-step|max`：通道在 X/Z 的间隔、每层抬高、最多同时人数
   - `path.distances|heights|queue-length|turn-chance|special-first-blocks|blocks`（前两项是简单/中等的基础距离和共用高度）
   - `difficulties.easy|medium|hard`：名字、颜色、是否开放、`allow4-jump-up`、`allow-4-far`、`distances`、对应头衔
   - `leaderboard.default-difficulty`：全息榜默认页
