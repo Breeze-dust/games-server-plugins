@@ -68,7 +68,7 @@
   - 玩家：无参数 / `join` 打开难度选择、`easy|medium|hard` 直接开始、
     `leave` 退出、`top [难度]` 该难度前十、`stats [玩家]` 各难度最高分、`help`
   - 管理（OP 或 `cloudwalk.admin`）：`pos1`、`pos2`（站到对角按）、`setstart`（站到起点按，取脚下那块）、
-    `setlobby`、`info`、`reload`、`reset <在线玩家>`（清全部难度）、`top place` / `top remove`（全息榜）
+    `setlobby`、`info`、`reload`、`reset <玩家|all>`（清单个玩家全部难度，all = 清空所有人）、`top place` / `top remove`（全息榜）
 - **配置**：`server/plugins/CloudWalk/config.yml`（模板 `CloudWalk/src/main/resources/config.yml`）
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`。
     `start.random` / `start.random-y` 控制是否随机起点（不由命令写入，可手改）

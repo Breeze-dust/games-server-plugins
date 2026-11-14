@@ -1582,6 +1582,17 @@ public class CloudWalkManager {
         refreshLeaderboards();
     }
 
+    /** 清空全部玩家、全部难度的记录与头衔。 */
+    public void resetAllRecords() {
+        data.set("best", null);
+        data.set("bestAt", null);
+        data.set("names", null);
+        saveData();
+        // 不清 title-holders：让 syncTitles 先按旧名单收回头衔，再自己清空
+        syncTitles();
+        refreshLeaderboards();
+    }
+
     /** 旧版单一难度的记录一次性搬到中等难度。 */
     private void migrateLegacyRecords() {
         boolean changed = false;

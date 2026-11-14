@@ -130,7 +130,12 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (args.length < 2) {
-                    Chat.send(sender, "&c用法：/cloudwalk reset <在线玩家>");
+                    Chat.send(sender, "&c用法：/cloudwalk reset <在线玩家> &7或 &f/cloudwalk reset all");
+                    return true;
+                }
+                if (args[1].equalsIgnoreCase("all")) {
+                    manager.resetAllRecords();
+                    Chat.send(sender, "&a已清空全部玩家的云中漫步记录，并收回所有头衔。");
                     return true;
                 }
                 Player target = plugin.getServer().getPlayerExact(args[1]);
@@ -194,7 +199,7 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&f/cloudwalk top [难度] &7- 对应难度前十（聊天）");
         Chat.send(sender, "&f/cloudwalk stats [玩家] &7- 查看各难度最高分");
         if (hasAdmin(sender)) {
-            Chat.send(sender, "&7管理：&fpos1 &7/&f pos2 &7/&f setstart &7/&f setlobby &7/&f info &7/&f reload &7/&f reset <玩家>");
+            Chat.send(sender, "&7管理：&fpos1 &7/&f pos2 &7/&f setstart &7/&f setlobby &7/&f info &7/&f reload &7/&f reset <玩家|all>");
             Chat.send(sender, "&7全息榜：&f/cloudwalk top place &7（在当前位置放置）、&f/cloudwalk top remove");
         }
     }
@@ -258,6 +263,9 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
         } else if (args.length == 2
                 && ("stats".equalsIgnoreCase(args[0]) || "reset".equalsIgnoreCase(args[0]))) {
             String prefix = args[1].toLowerCase();
+            if ("reset".equalsIgnoreCase(args[0]) && "all".startsWith(prefix)) {
+                out.add("all");
+            }
             for (Player player : plugin.getServer().getOnlinePlayers()) {
                 if (player.getName().toLowerCase().startsWith(prefix)) {
                     out.add(player.getName());
