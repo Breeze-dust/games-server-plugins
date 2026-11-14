@@ -49,6 +49,10 @@ public final class PathGenerator {
             List<BlockPos> list = new ArrayList<>(distances.length * heights.length);
             for (int distance : distances) {
                 for (int dy : heights) {
+                    if (distance >= 5 && dy > 0) {
+                        // 四格远只出平跳/下降，不生成「四远一高」
+                        continue;
+                    }
                     if (!allow4JumpUp && distance == 4 && dy > 0) {
                         continue;
                     }

@@ -585,7 +585,12 @@ public class CloudWalkManager {
     }
 
     private void score(Player p, ParkourSession s, BlockPos landed) {
-        s.score++;
+        BlockPos from = s.current();
+        int distance = Math.abs(landed.x() - from.x()) + Math.abs(landed.z() - from.z());
+        int dy = landed.y() - from.y();
+        // 三远一高（水平4 + 上升）和四格跳（水平5）各 +2，其余 +1
+        int gained = (distance >= 5 || (distance == 4 && dy > 0)) ? 2 : 1;
+        s.score += gained;
 
         if (settings.sound && soundEnabled(s.playerId)) {
             float pitch = Math.min(2.0f, 1.0f + s.score * 0.02f);
@@ -618,7 +623,7 @@ public class CloudWalkManager {
         s.generated++;
         sparkle(s.box.world(), next);
         updateGlow(s, s.path.get(1));
-        Chat.actionBar(p, actionBarText(s));
+        Chat.actionBar(p, "&a+" + gained + " &8· " + actionBarText(s));
     }
 
     private void finish(Player p, ParkourSession s, String reason, boolean record, boolean teleport) {
