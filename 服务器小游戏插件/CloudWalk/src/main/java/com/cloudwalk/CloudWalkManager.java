@@ -911,7 +911,7 @@ public class CloudWalkManager {
         loc.setPitch(0f);
         LeaderBoard board = new LeaderBoard(loc, null, null, null);
         leaderboards.add(board);
-        board.entityId = spawnDisplay(mainLocation(board, layoutEntries(settings.defaultDifficulty().id)));
+        board.entityId = spawnDisplay(mainLocation(board, settings.topSize));
         board.footerId = spawnFooter(loc);
         board.interactionId = spawnInteraction(loc);
         saveLeaderboards();
@@ -947,7 +947,7 @@ public class CloudWalkManager {
                 continue;
             }
             CloudWalkSettings.Difficulty defaultDifficulty = settings.defaultDifficulty();
-            Location mainLoc = mainLocation(board, layoutEntries(defaultDifficulty.id));
+            Location mainLoc = mainLocation(board, settings.topSize);
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
             if (!(entity instanceof TextDisplay display)) {
                 board.entityId = spawnDisplay(mainLoc);
@@ -1090,10 +1090,8 @@ public class CloudWalkManager {
         StringBuilder sb = new StringBuilder(difficulty.color)
                 .append("&l—— 云中漫步 · ").append(difficulty.name).append("榜 ——\n");
         List<TopEntry> top = topEntries(difficulty.id);
-        if (top.isEmpty()) {
-            sb.append("&8暂无记录");
-        } else {
-            for (int i = 0; i < top.size(); i++) {
+        for (int i = 0; i < settings.topSize; i++) {
+            if (i < top.size()) {
                 TopEntry entry = top.get(i);
                 int rank = i + 1;
                 String color = switch (i) {
@@ -1103,17 +1101,14 @@ public class CloudWalkManager {
                 };
                 sb.append(color).append(rank).append("&7. &f").append(entry.name())
                         .append(" &7- ").append(difficulty.color).append(entry.score()).append("&7 分");
-                if (i < top.size() - 1) {
-                    sb.append('\n');
-                }
+            } else {
+                sb.append("&8").append(i + 1).append("&7. &8空位");
+            }
+            if (i < settings.topSize - 1) {
+                sb.append('\n');
             }
         }
         return Chat.color(sb.toString());
-    }
-
-    /** 榜单实际占的行数（空榜也占 1 行提示），用来算主榜高度。 */
-    private int layoutEntries(String difficultyId) {
-        return Math.max(1, topEntries(difficultyId).size());
     }
 
     // ---------- 榜单翻页（每名玩家私有一份，20 秒后恢复默认页） ----------
@@ -1160,7 +1155,7 @@ public class CloudWalkManager {
             }
         }
         CloudWalkSettings.Difficulty next = enabled.get((index + 1) % enabled.size());
-        Location pageLoc = mainLocation(board, layoutEntries(next.id));
+        Location pageLoc = mainLocation(board, settings.topSize);
 
         TextDisplay display = null;
         if (view != null) {
@@ -1221,15 +1216,23 @@ public class CloudWalkManager {
     }
 
     private void refreshPageViews() {
-        for (PageView view : pageViews.values()) {
-            if (!(Bukkit.getEntity(view.entityId) instanceof TextDisplay display) || !display.isValid()) {
+        for (UUID playerId : new ArrayList<>(pageViews.keySet())) {
+            PageView view = pageViews.get(playerId);
+            if (view == null) {
                 continue;
             }
             CloudWalkSettings.Difficulty difficulty = settings.difficulty(view.difficultyId);
-            if (difficulty != null) {
-                display.teleport(mainLocation(view.board, layoutEntries(difficulty.id)));
-                display.text(difficultyText(difficulty));
+            if (difficulty == null) {
+                removePageView(playerId);
+                continue;
             }
+            if (!(Bukkit.getEntity(view.entityId) instanceof TextDisplay display) || !display.isValid()) {
+                // 私有页实体丢了：撤掉视图，让主榜重新可见，避免玩家盯着一块空板
+                removePageView(playerId);
+                continue;
+            }
+            display.teleport(mainLocation(view.board, settings.topSize));
+            display.text(difficultyText(difficulty));
         }
     }
 
