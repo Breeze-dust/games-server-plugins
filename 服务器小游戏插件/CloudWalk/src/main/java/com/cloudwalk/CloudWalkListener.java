@@ -21,13 +21,17 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+
+import java.util.UUID;
 
 /** 把跑酷之外的所有出口（下线、传送、死亡、飞行、珍珠……）都收束成「结束本局」。 */
 public class CloudWalkListener implements Listener {
@@ -40,6 +44,7 @@ public class CloudWalkListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onQuit(PlayerQuitEvent event) {
+        plugin.getManager().removePageView(event.getPlayer().getUniqueId());
         plugin.getManager().stop(event.getPlayer(), "下线", true, false);
     }
 
@@ -55,6 +60,41 @@ public class CloudWalkListener implements Listener {
                 || plugin.getManager().isSoundItem(event.getItemDrop().getItemStack()))) {
             event.setCancelled(true);
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDifficultyClick(InventoryClickEvent event) {
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof DifficultyMenu menu)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getClickedInventory() != top) {
+            return;
+        }
+        CloudWalkSettings.Difficulty difficulty = menu.difficultyAt(event.getRawSlot());
+        if (difficulty == null || !(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        player.closeInventory();
+        if (!difficulty.enabled) {
+            Chat.send(player, "&c这个难度还没有开放。");
+            return;
+        }
+        plugin.getManager().join(player, difficulty);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBoardClick(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+        UUID standId = event.getRightClicked().getUniqueId();
+        if (!plugin.getManager().isBoardStand(standId)) {
+            return;
+        }
+        event.setCancelled(true);
+        plugin.getManager().handleBoardClick(event.getPlayer(), standId);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

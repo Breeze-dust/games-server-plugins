@@ -28,6 +28,38 @@ public final class CloudWalkSettings {
             Material.BROWN_GLAZED_TERRACOTTA, Material.GREEN_GLAZED_TERRACOTTA,
             Material.RED_GLAZED_TERRACOTTA, Material.BLACK_GLAZED_TERRACOTTA);
 
+    /** 一个难度：名字、是否开放、生成参数、对应头衔。 */
+    public static final class Difficulty {
+        public final String id;
+        public final String name;
+        public final String color;
+        public final boolean enabled;
+        public final boolean allow4JumpUp;
+        public final int[] distances;
+        public final String titleId;
+        public final String titleName;
+        public final String titleColor;
+        public final String titleDesc;
+        /** 0=简单 1=中等 2=困难；越大越难。 */
+        public final int order;
+
+        public Difficulty(String id, String name, String color, boolean enabled, boolean allow4JumpUp,
+                          int[] distances, String titleId, String titleName, String titleColor,
+                          String titleDesc, int order) {
+            this.id = id;
+            this.name = name;
+            this.color = color;
+            this.enabled = enabled;
+            this.allow4JumpUp = allow4JumpUp;
+            this.distances = distances;
+            this.titleId = titleId;
+            this.titleName = titleName;
+            this.titleColor = titleColor;
+            this.titleDesc = titleDesc;
+            this.order = order;
+        }
+    }
+
     public String regionWorld = "";
     public int x1;
     public int y1;
@@ -48,10 +80,8 @@ public final class CloudWalkSettings {
     public int heightStep = 2;
     public int maxLanes = 12;
 
-    public int[] distances = {3, 4};
     public int[] heights = {-2, -1, 0, 1};
     public int queueLength = 3;
-    public boolean allow4JumpUp = false;
     public double turnChance = 0.25;
     public List<Material> palette = new ArrayList<>(DEFAULT_PALETTE);
 
@@ -59,6 +89,8 @@ public final class CloudWalkSettings {
     public boolean particle = true;
 
     public int topSize = 10;
+    public List<Difficulty> difficulties = new ArrayList<>();
+    public String defaultDifficulty = "medium";
 
     public static CloudWalkSettings load(FileConfiguration cfg) {
         CloudWalkSettings s = new CloudWalkSettings();
@@ -89,19 +121,19 @@ public final class CloudWalkSettings {
         s.heightStep = Math.max(0, cfg.getInt("lane.height-step", 2));
         s.maxLanes = Math.max(1, Math.min(64, cfg.getInt("lane.max", 12)));
 
+        int[] baseDistances = {3, 4};
         List<Integer> dists = cfg.getIntegerList("path.distances");
         if (dists != null && !dists.isEmpty()) {
-            s.distances = dists.stream()
+            int[] parsed = dists.stream()
                     .filter(d -> d != null && d >= 1 && d <= 8)
                     .mapToInt(Integer::intValue)
                     .toArray();
-        }
-        if (s.distances.length == 0) {
-            s.distances = new int[]{3, 4};
+            if (parsed.length > 0) {
+                baseDistances = parsed;
+            }
         }
 
         s.queueLength = Math.max(1, Math.min(6, cfg.getInt("path.queue-length", 3)));
-        s.allow4JumpUp = cfg.getBoolean("path.allow4-jump-up", false);
         s.turnChance = Math.max(0.0, Math.min(1.0, cfg.getDouble("path.turn-chance", 0.25)));
 
         List<Integer> heights = cfg.getIntegerList("path.heights");
@@ -128,11 +160,80 @@ public final class CloudWalkSettings {
         }
         s.palette = palette;
 
+        ConfigurationSection diffSec = cfg.getConfigurationSection("difficulties");
+        s.difficulties.add(readDifficulty("easy", diffSec == null ? null : diffSec.getConfigurationSection("easy"), baseDistances));
+        s.difficulties.add(readDifficulty("medium", diffSec == null ? null : diffSec.getConfigurationSection("medium"), baseDistances));
+        s.difficulties.add(readDifficulty("hard", diffSec == null ? null : diffSec.getConfigurationSection("hard"), baseDistances));
+        s.defaultDifficulty = cfg.getString("leaderboard.default-difficulty", "medium");
+
         s.sound = cfg.getBoolean("run.sound", true);
         s.particle = cfg.getBoolean("run.particle", true);
 
         s.topSize = Math.max(1, Math.min(50, cfg.getInt("top-size", 10)));
         return s;
+    }
+
+    public Difficulty difficulty(String id) {
+        for (Difficulty difficulty : difficulties) {
+            if (difficulty.id.equalsIgnoreCase(id)) {
+                return difficulty;
+            }
+        }
+        return null;
+    }
+
+    public Difficulty defaultDifficulty() {
+        Difficulty difficulty = difficulty(defaultDifficulty);
+        if (difficulty != null) {
+            return difficulty;
+        }
+        for (Difficulty candidate : difficulties) {
+            if (candidate.enabled) {
+                return candidate;
+            }
+        }
+        return difficulties.get(0);
+    }
+
+    private static Difficulty readDifficulty(String id, ConfigurationSection sec, int[] baseDistances) {
+        Difficulty def = defaultDifficulty(id, baseDistances);
+        if (sec == null) {
+            return def;
+        }
+        int[] distances = def.distances;
+        List<Integer> parsed = sec.getIntegerList("distances");
+        if (parsed != null && !parsed.isEmpty()) {
+            int[] values = parsed.stream()
+                    .filter(d -> d != null && d >= 1 && d <= 8)
+                    .mapToInt(Integer::intValue)
+                    .toArray();
+            if (values.length > 0) {
+                distances = values;
+            }
+        }
+        return new Difficulty(
+                id,
+                sec.getString("name", def.name),
+                sec.getString("color", def.color),
+                sec.getBoolean("enabled", def.enabled),
+                sec.getBoolean("allow4-jump-up", def.allow4JumpUp),
+                distances,
+                sec.getString("title-id", def.titleId),
+                sec.getString("title-name", def.titleName),
+                sec.getString("title-color", def.titleColor),
+                sec.getString("title-desc", def.titleDesc),
+                def.order);
+    }
+
+    private static Difficulty defaultDifficulty(String id, int[] baseDistances) {
+        return switch (id) {
+            case "easy" -> new Difficulty("easy", "简单", "&a", true, false, baseDistances,
+                    "cloudwalk_easy_bridge", "漫步新手", "&a", "云中漫步：简单榜前十", 0);
+            case "medium" -> new Difficulty("medium", "中等", "&e", true, true, baseDistances,
+                    "cloudwalk_super_bridge", "超级搭路", "&b", "云中漫步：中等榜前十", 1);
+            default -> new Difficulty("hard", "困难", "&c", false, true, new int[]{3, 4, 5},
+                    "cloudwalk_hard_bridge", "云端宗师", "&c", "云中漫步：困难榜前十", 2);
+        };
     }
 
     static Location readLocation(ConfigurationSection sec) {

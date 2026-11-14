@@ -19,6 +19,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
@@ -59,15 +60,14 @@ public class CloudWalkManager {
 
     private static final String NAMESPACE = "cloudwalk";
     private static final int TICK_PERIOD = 1;
-    private static final String TITLE_ID = "cloudwalk_super_bridge";
-    private static final String TITLE_NAME = "超级搭路";
-    private static final String TITLE_COLOR = "&b";
-    private static final String TITLE_DESC = "云中漫步：全服前十名";
+    private static final long PAGE_VIEW_MILLIS = 20_000L;
 
     private final CloudWalkPlugin plugin;
     private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
     private final Map<UUID, List<Material>> playerBlocks = new LinkedHashMap<>();
     private final Map<UUID, SavedInventory> inventories = new LinkedHashMap<>();
+    private final Map<String, PathGenerator> generators = new LinkedHashMap<>();
+    private final Map<UUID, PageView> pageViews = new LinkedHashMap<>();
     private final Random random = new Random();
     private final NamespacedKey toolKey;
     private final NamespacedKey soundKey;
@@ -75,7 +75,6 @@ public class CloudWalkManager {
     private CloudWalkSettings settings;
     private LaneBox baseBox;
     private BlockPos baseStart;
-    private PathGenerator generator;
     private YamlConfiguration data;
 
     private BukkitTask tickTask;
@@ -97,20 +96,30 @@ public class CloudWalkManager {
         settings = CloudWalkSettings.load(plugin.getConfig());
         baseBox = buildBaseBox(settings);
         baseStart = buildBaseStart(settings);
-        generator = new PathGenerator(settings.distances, settings.heights,
-                settings.allow4JumpUp, settings.turnChance);
+        generators.clear();
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            generators.put(difficulty.id, new PathGenerator(difficulty.distances, settings.heights,
+                    difficulty.allow4JumpUp, settings.turnChance));
+        }
         playerBlocks.clear();
         ensureLaneArray();
+        clearPageViews();
 
         if (data == null) {
             data = PlayerStats.load(NAMESPACE, new File(plugin.getDataFolder(), "data.yml"));
         }
+        migrateLegacyRecords();
         if (tickTask == null) {
             tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, TICK_PERIOD);
         }
 
         // 头衔定义提前建好；排行榜与头衔每 5 秒兜底同步一次（头衔插件可能比本插件晚启用）
-        GameTitles.ensure(TITLE_ID, TITLE_NAME, TITLE_COLOR, TITLE_DESC);
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            if (difficulty.enabled) {
+                GameTitles.ensure(difficulty.titleId, difficulty.titleName,
+                        difficulty.titleColor, difficulty.titleDesc);
+            }
+        }
         loadLeaderboards();
         if (leaderboardTask == null) {
             leaderboardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::maintenance, 100L, 100L);
@@ -125,6 +134,7 @@ public class CloudWalkManager {
     }
 
     public void onDisable() {
+        clearPageViews();
         for (ParkourSession s : new ArrayList<>(sessions.values())) {
             Player p = Bukkit.getPlayer(s.playerId);
             finish(p, s, "服务器关闭", false, false);
@@ -278,21 +288,42 @@ public class CloudWalkManager {
         out.add("&b通道：&f" + settings.axis + " 轴并排，间隔 " + settings.laneGap
                 + " 格，每层抬高 " + settings.heightStep + " 格，上限 " + settings.maxLanes
                 + " 条，当前 &b" + sessions.size() + " &f人在跑。");
-        out.add("&b生成：&f距离 " + java.util.Arrays.toString(settings.distances)
-                + "，高度 " + java.util.Arrays.toString(settings.heights)
+        StringBuilder difficultyLine = new StringBuilder();
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            if (difficultyLine.length() > 0) {
+                difficultyLine.append(" &7/ ");
+            }
+            difficultyLine.append(difficulty.enabled ? difficulty.color : "&8")
+                    .append(difficulty.name)
+                    .append(difficulty.enabled ? "" : "(未开放)")
+                    .append("&7 距离").append(Arrays.toString(difficulty.distances))
+                    .append(difficulty.allow4JumpUp ? "(含4+上升)" : "");
+        }
+        out.add("&b难度：" + difficultyLine);
+        out.add("&b生成：&f高度 " + Arrays.toString(settings.heights)
                 + "，拐弯概率 " + settings.turnChance
-                + "，预生成 " + settings.queueLength + " 块，4格+上升 "
-                + (settings.allow4JumpUp ? "允许" : "禁止")
-                + "，方块池 " + settings.palette.size() + " 种");
+                + "，预生成 " + settings.queueLength + " 块，方块池 " + settings.palette.size() + " 种");
         return out;
     }
 
     // ---------- 加入 / 退出 ----------
 
-    public void join(Player p) {
+    public void openDifficultyMenu(Player p) {
+        if (sessions.containsKey(p.getUniqueId())) {
+            Chat.send(p, "&e你已经在跑酷中，用 &f/cloudwalk leave &e退出。");
+            return;
+        }
+        p.openInventory(new DifficultyMenu(this, p).getInventory());
+    }
+
+    public void join(Player p, CloudWalkSettings.Difficulty difficulty) {
         UUID id = p.getUniqueId();
         if (sessions.containsKey(id)) {
             Chat.send(p, "&e你已经在跑酷中，用 &f/cloudwalk leave &e退出。");
+            return;
+        }
+        if (difficulty == null || !difficulty.enabled) {
+            Chat.send(p, "&c这个难度还没有开放。");
             return;
         }
         if (!isConfigured()) {
@@ -305,6 +336,11 @@ public class CloudWalkManager {
         }
         if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
             Chat.send(p, "&c旁观模式不能跑酷。");
+            return;
+        }
+        PathGenerator generator = generators.get(difficulty.id);
+        if (generator == null) {
+            Chat.send(p, "&c难度配置异常，请联系管理员。");
             return;
         }
 
@@ -372,13 +408,14 @@ public class CloudWalkManager {
         p.getInventory().setItem(0, createTool());
         p.getInventory().setItem(1, createSoundItem(id));
 
-        ParkourSession session = new ParkourSession(id, p.getName(), lane, box);
+        ParkourSession session = new ParkourSession(id, p.getName(), lane, box, difficulty);
         session.path.addAll(path);
         session.heading = cursor;
         sessions.put(id, session);
         updateGlow(session, path.get(1));
 
-        Chat.send(p, "&b&l云中漫步 &7· &f跳到前方方块，每块 +1 分；掉下去本局结束。");
+        Chat.send(p, "&b&l云中漫步 &7· " + difficulty.color + difficulty.name
+                + " &7· &f跳到前方方块，每块 +1 分；掉下去本局结束。");
         Chat.actionBar(p, actionBarText(session));
     }
 
@@ -488,7 +525,9 @@ public class CloudWalkManager {
         setAir(s.box.world(), old);
 
         BlockPos tail = s.path.get(s.path.size() - 1);
-        BlockPos next = generator.next(tail, s.heading, new HashSet<>(s.path), s.box);
+        PathGenerator generator = generators.get(s.difficulty.id);
+        BlockPos next = generator == null ? null
+                : generator.next(tail, s.heading, new HashSet<>(s.path), s.box);
         if (next == null) {
             finish(p, s, "路径到达区域边界", true, true);
             return;
@@ -527,18 +566,19 @@ public class CloudWalkManager {
             saved.apply(p);
         }
 
-        int bestBefore = bestScore(s.playerId);
+        int bestBefore = bestScore(s.playerId, s.difficulty.id);
         boolean newBest = record && s.score > bestBefore;
         if (record) {
-            recordScore(s.playerId, s.playerName, s.score);
+            recordScore(s.playerId, s.playerName, s.score, s.difficulty.id);
         }
 
         if (p != null && p.isOnline()) {
-            StringBuilder msg = new StringBuilder("&8[&b云中漫步&8] &f本局 &b").append(s.score).append(" &7分");
+            StringBuilder msg = new StringBuilder("&8[&b云中漫步&8] &7").append(s.difficulty.color)
+                    .append(s.difficulty.name).append(" &7· &f本局 &b").append(s.score).append(" &7分");
             if (newBest) {
                 msg.append(" &a· 新纪录！");
             } else {
-                msg.append(" &7· 最高 &b").append(bestScore(s.playerId));
+                msg.append(" &7· 最高 &b").append(bestScore(s.playerId, s.difficulty.id));
             }
             msg.append(" &8(").append(reason).append(")");
             Chat.send(p, msg.toString());
@@ -560,7 +600,8 @@ public class CloudWalkManager {
     }
 
     private String actionBarText(ParkourSession s) {
-        return "&b本局 &e" + s.score + " &8· &6最高 &e" + bestScore(s.playerId);
+        return s.difficulty.color + s.difficulty.name + " &8· &b本局 &e" + s.score
+                + " &8· &6最高 &e" + bestScore(s.playerId, s.difficulty.id);
     }
 
     // ---------- 通道 ----------
@@ -734,7 +775,7 @@ public class CloudWalkManager {
         return item;
     }
 
-    /** 玩家上线：恢复上次没来得及归还的物品栏，并清掉残留的选择道具。 */
+    /** 玩家上线：恢复上次没来得及归还的物品栏，清掉残留的选择道具，并隐藏别人的私有榜单页。 */
     public void handleJoin(Player p) {
         SavedInventory saved = inventories.remove(p.getUniqueId());
         if (saved != null) {
@@ -746,6 +787,24 @@ public class CloudWalkManager {
                 inventory.setItem(i, null);
             }
         }
+        for (PageView view : pageViews.values()) {
+            Entity entity = Bukkit.getEntity(view.entityId);
+            if (entity != null) {
+                p.hideEntity(plugin, entity);
+            }
+        }
+    }
+
+    public List<CloudWalkSettings.Difficulty> difficulties() {
+        return settings.difficulties;
+    }
+
+    public CloudWalkSettings.Difficulty difficultyById(String id) {
+        return settings.difficulty(id);
+    }
+
+    public CloudWalkSettings.Difficulty defaultDifficulty() {
+        return settings.defaultDifficulty();
     }
 
     // ---------- 下一个方块的发光标记 / 新方块粒子 ----------
@@ -794,7 +853,9 @@ public class CloudWalkManager {
 
     private void maintenance() {
         refreshLeaderboards();
+        refreshPageViews();
         syncTitles();
+        prunePageViews();
     }
 
     private void loadLeaderboards() {
@@ -805,8 +866,10 @@ public class CloudWalkManager {
                 continue;
             }
             Object entity = raw.get("entity");
-            UUID id = parseUuid(entity == null ? "" : String.valueOf(entity));
-            leaderboards.add(new LeaderBoard(loc, id));
+            Object stand = raw.get("stand");
+            leaderboards.add(new LeaderBoard(loc,
+                    parseUuid(entity == null ? "" : String.valueOf(entity)),
+                    parseUuid(stand == null ? "" : String.valueOf(stand))));
         }
     }
 
@@ -824,6 +887,7 @@ public class CloudWalkManager {
             map.put("yaw", (double) board.loc.getYaw());
             map.put("pitch", (double) board.loc.getPitch());
             map.put("entity", board.entityId == null ? "" : board.entityId.toString());
+            map.put("stand", board.standId == null ? "" : board.standId.toString());
             list.add(map);
         }
         plugin.getConfig().set("leaderboards", list);
@@ -834,19 +898,25 @@ public class CloudWalkManager {
         Location loc = p.getLocation().clone().add(0, 1.5, 0);
         loc.setYaw(snapYaw(loc.getYaw()));
         loc.setPitch(0f);
-        LeaderBoard board = new LeaderBoard(loc, null);
+        LeaderBoard board = new LeaderBoard(loc, null, null);
         leaderboards.add(board);
-        board.entityId = spawnLeaderboard(loc);
+        board.entityId = spawnDisplay(loc);
+        board.standId = spawnStand(loc);
         saveLeaderboards();
         refreshLeaderboards();
         Chat.send(p, "&a已放置云中漫步排行榜（吸附到东南西北，固定朝向、无俯仰角）。");
     }
 
     public void removeLeaderboards(CommandSender sender) {
+        clearPageViews();
         for (LeaderBoard board : leaderboards) {
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
             if (entity != null) {
                 entity.remove();
+            }
+            Entity stand = board.standId == null ? null : Bukkit.getEntity(board.standId);
+            if (stand != null) {
+                stand.remove();
             }
         }
         leaderboards.clear();
@@ -861,14 +931,29 @@ public class CloudWalkManager {
                 continue;
             }
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
-            if (entity == null) {
-                board.entityId = spawnLeaderboard(board.loc);
+            if (!(entity instanceof TextDisplay display)) {
+                board.entityId = spawnDisplay(board.loc);
                 changed = true;
-            } else if (entity instanceof TextDisplay display) {
+                Entity fresh = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
+                if (fresh != null) {
+                    // 新生成的基础榜也要对正在看私有页的玩家隐藏
+                    for (Map.Entry<UUID, PageView> entry : pageViews.entrySet()) {
+                        Player viewer = Bukkit.getPlayer(entry.getKey());
+                        if (viewer != null) {
+                            viewer.hideEntity(plugin, fresh);
+                        }
+                    }
+                }
+            } else {
                 // 已有实体也重设朝向：旧版本斜着放的榜会在下一次刷新时被掰正
                 display.setBillboard(Display.Billboard.FIXED);
                 display.setRotation(snapYaw(board.loc.getYaw() + 180f), 0f);
-                applyLeaderboardStyle(display);
+                applyLeaderboardStyle(display, settings.defaultDifficulty());
+            }
+            Entity stand = board.standId == null ? null : Bukkit.getEntity(board.standId);
+            if (stand == null) {
+                board.standId = spawnStand(board.loc);
+                changed = true;
             }
         }
         if (changed) {
@@ -876,7 +961,12 @@ public class CloudWalkManager {
         }
     }
 
-    private UUID spawnLeaderboard(Location loc) {
+    private UUID spawnDisplay(Location loc) {
+        TextDisplay display = createDisplay(loc, true);
+        return display == null ? null : display.getUniqueId();
+    }
+
+    private TextDisplay createDisplay(Location loc, boolean persistent) {
         World world = loc.getWorld();
         if (world == null) {
             return null;
@@ -888,50 +978,196 @@ public class CloudWalkManager {
         spawnLoc.setPitch(0f);
         TextDisplay display = world.spawn(spawnLoc, TextDisplay.class);
         display.setBillboard(Display.Billboard.FIXED);
-        // 只朝四个正方向之一，俯仰角固定 0：正对玩家放置时的朝向
+        // 只朝四个正方向之一，俯仰角固定 0
         display.setRotation(snapYaw(loc.getYaw() + 180f), 0f);
         display.setSeeThrough(false);
         display.setShadowed(true);
         display.setAlignment(TextDisplay.TextAlignment.CENTER);
         display.setLineWidth(200);
         display.setViewRange(64);
-        display.setPersistent(true);
+        display.setPersistent(persistent);
         display.setInvulnerable(true);
         display.setGravity(false);
         display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
                 new Vector3f(1.3f, 1.3f, 1.3f), new Quaternionf()));
-        applyLeaderboardStyle(display);
-        return display.getUniqueId();
+        applyLeaderboardStyle(display, settings.defaultDifficulty());
+        return display;
     }
 
-    private void applyLeaderboardStyle(TextDisplay display) {
-        display.text(leaderboardText());
+    /** 榜单的点击判定：一个隐形盔甲架，右键它切换页面。 */
+    private UUID spawnStand(Location loc) {
+        World world = loc.getWorld();
+        if (world == null) {
+            return null;
+        }
+        Location standLoc = loc.clone().add(0, -0.9, 0);
+        ArmorStand stand = world.spawn(standLoc, ArmorStand.class);
+        stand.setInvisible(true);
+        stand.setInvulnerable(true);
+        stand.setGravity(false);
+        stand.setSilent(true);
+        stand.setPersistent(false);
+        stand.setCanPickupItems(false);
+        stand.setRemoveWhenFarAway(false);
+        return stand.getUniqueId();
+    }
+
+    private void applyLeaderboardStyle(TextDisplay display, CloudWalkSettings.Difficulty difficulty) {
+        display.text(difficultyText(difficulty));
         display.setDefaultBackground(false);
         display.setBackgroundColor(Color.fromARGB(130, 15, 15, 30));
     }
 
-    private Component leaderboardText() {
-        StringBuilder sb = new StringBuilder("§b§l—— 云中漫步 · 全服前十 ——\n");
-        List<TopEntry> top = topEntries();
+    private Component difficultyText(CloudWalkSettings.Difficulty difficulty) {
+        StringBuilder sb = new StringBuilder(difficulty.color)
+                .append("&l—— 云中漫步 · ").append(difficulty.name).append("榜 ——\n");
+        List<TopEntry> top = topEntries(difficulty.id);
         if (top.isEmpty()) {
-            sb.append("§8暂无记录\n§7来大厅输入 /cloudwalk 挑战吧");
+            sb.append("&8暂无记录\n&7输入 /cloudwalk 挑战吧");
         } else {
             for (int i = 0; i < top.size(); i++) {
                 TopEntry entry = top.get(i);
                 int rank = i + 1;
                 String color = switch (i) {
-                    case 0 -> "§e";
-                    case 1, 2 -> "§f";
-                    default -> "§7";
+                    case 0 -> "&e";
+                    case 1, 2 -> "&f";
+                    default -> "&7";
                 };
-                sb.append(color).append(rank).append("§7. §f").append(entry.name())
-                        .append(" §7- §b").append(entry.score()).append("§7 分");
+                sb.append(color).append(rank).append("&7. &f").append(entry.name())
+                        .append(" &7- ").append(difficulty.color).append(entry.score()).append("&7 分");
                 if (i < top.size() - 1) {
                     sb.append('\n');
                 }
             }
         }
+        sb.append("\n&7右键榜单切换难度");
         return Chat.color(sb.toString());
+    }
+
+    // ---------- 榜单翻页（每名玩家私有一份，20 秒后恢复默认页） ----------
+
+    public boolean isBoardStand(UUID id) {
+        if (id == null) {
+            return false;
+        }
+        for (LeaderBoard board : leaderboards) {
+            if (id.equals(board.standId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void handleBoardClick(Player p, UUID standId) {
+        for (LeaderBoard board : leaderboards) {
+            if (standId.equals(board.standId)) {
+                nextPage(p, board);
+                return;
+            }
+        }
+    }
+
+    private void nextPage(Player p, LeaderBoard board) {
+        List<CloudWalkSettings.Difficulty> enabled = new ArrayList<>();
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            if (difficulty.enabled) {
+                enabled.add(difficulty);
+            }
+        }
+        if (enabled.isEmpty()) {
+            return;
+        }
+
+        PageView view = pageViews.get(p.getUniqueId());
+        String current = view == null ? settings.defaultDifficulty().id : view.difficultyId;
+        int index = 0;
+        for (int i = 0; i < enabled.size(); i++) {
+            if (enabled.get(i).id.equals(current)) {
+                index = i;
+                break;
+            }
+        }
+        CloudWalkSettings.Difficulty next = enabled.get((index + 1) % enabled.size());
+
+        TextDisplay display = null;
+        if (view != null) {
+            Entity entity = Bukkit.getEntity(view.entityId);
+            if (entity instanceof TextDisplay existing && existing.isValid()) {
+                display = existing;
+            } else {
+                removePageView(p.getUniqueId());
+            }
+        }
+        if (display == null) {
+            display = createDisplay(board.loc, false);
+            if (display == null) {
+                return;
+            }
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (!other.equals(p)) {
+                    other.hideEntity(plugin, display);
+                }
+            }
+            Entity base = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
+            if (base != null) {
+                p.hideEntity(plugin, base);
+            }
+        }
+        display.text(difficultyText(next));
+        pageViews.put(p.getUniqueId(), new PageView(display.getUniqueId(), next.id,
+                System.currentTimeMillis() + PAGE_VIEW_MILLIS));
+    }
+
+    public void removePageView(UUID playerId) {
+        PageView view = pageViews.remove(playerId);
+        if (view == null) {
+            return;
+        }
+        Entity entity = Bukkit.getEntity(view.entityId);
+        if (entity != null) {
+            entity.remove();
+        }
+        Player p = Bukkit.getPlayer(playerId);
+        if (p != null && p.isOnline()) {
+            for (LeaderBoard board : leaderboards) {
+                if (board.entityId == null) {
+                    continue;
+                }
+                Entity base = Bukkit.getEntity(board.entityId);
+                if (base != null) {
+                    p.showEntity(plugin, base);
+                }
+            }
+        }
+    }
+
+    private void prunePageViews() {
+        long now = System.currentTimeMillis();
+        for (UUID id : new ArrayList<>(pageViews.keySet())) {
+            PageView view = pageViews.get(id);
+            if (view != null && view.expiresAt <= now) {
+                removePageView(id);
+            }
+        }
+    }
+
+    private void refreshPageViews() {
+        for (PageView view : pageViews.values()) {
+            if (!(Bukkit.getEntity(view.entityId) instanceof TextDisplay display) || !display.isValid()) {
+                continue;
+            }
+            CloudWalkSettings.Difficulty difficulty = settings.difficulty(view.difficultyId);
+            if (difficulty != null) {
+                display.text(difficultyText(difficulty));
+            }
+        }
+    }
+
+    private void clearPageViews() {
+        for (UUID id : new ArrayList<>(pageViews.keySet())) {
+            removePageView(id);
+        }
+        pageViews.clear();
     }
 
     private static Location readLbLocation(Map<?, ?> raw) {
@@ -961,34 +1197,56 @@ public class CloudWalkManager {
 
     // ---------- 头衔 ----------
 
-    /** 当前前十 = 「超级搭路」持有者；掉出前十立刻收回。每 5 秒兜底一次。 */
+    /** 每个难度各自的前十持有对应头衔；掉出前十立刻收回，每 5 秒兜底一次。 */
     private void syncTitles() {
-        Set<String> current = new LinkedHashSet<>();
-        for (TopEntry entry : topEntries()) {
-            current.add(entry.id());
-        }
+        boolean changed = false;
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            String key = "title-holders." + difficulty.id;
+            List<String> previous = new ArrayList<>(data.getStringList(key));
 
-        List<String> previous = new ArrayList<>(data.getStringList("title-holders"));
-        for (String id : current) {
-            UUID uuid = parseUuid(id);
-            // 用 owns 比对而不是只和上次的列表比：头衔插件晚于本插件加载时也能补发
-            if (uuid != null && !GameTitles.owns(uuid, TITLE_ID)) {
-                GameTitles.grantOrCreate(uuid, TITLE_ID, TITLE_NAME, TITLE_COLOR, TITLE_DESC);
-            }
-        }
-        for (String id : previous) {
-            if (current.contains(id)) {
+            if (!difficulty.enabled) {
+                for (String id : previous) {
+                    UUID uuid = parseUuid(id);
+                    if (uuid != null) {
+                        GameTitles.revoke(uuid, difficulty.titleId);
+                    }
+                }
+                if (!previous.isEmpty()) {
+                    data.set(key, null);
+                    changed = true;
+                }
                 continue;
             }
-            UUID uuid = parseUuid(id);
-            if (uuid != null) {
-                GameTitles.revoke(uuid, TITLE_ID);
+
+            Set<String> current = new LinkedHashSet<>();
+            for (TopEntry entry : topEntries(difficulty.id)) {
+                current.add(entry.id());
+            }
+            for (String id : current) {
+                UUID uuid = parseUuid(id);
+                // 用 owns 比对而不是只和上次的列表比：头衔插件晚于本插件加载时也能补发
+                if (uuid != null && !GameTitles.owns(uuid, difficulty.titleId)) {
+                    GameTitles.grantOrCreate(uuid, difficulty.titleId, difficulty.titleName,
+                            difficulty.titleColor, difficulty.titleDesc);
+                }
+            }
+            for (String id : previous) {
+                if (current.contains(id)) {
+                    continue;
+                }
+                UUID uuid = parseUuid(id);
+                if (uuid != null) {
+                    GameTitles.revoke(uuid, difficulty.titleId);
+                }
+            }
+
+            List<String> next = new ArrayList<>(current);
+            if (!previous.equals(next)) {
+                data.set(key, next);
+                changed = true;
             }
         }
-
-        List<String> next = new ArrayList<>(current);
-        if (!previous.equals(next)) {
-            data.set("title-holders", next);
+        if (changed) {
             saveData();
         }
     }
@@ -1006,28 +1264,34 @@ public class CloudWalkManager {
 
     // ---------- 记录 ----------
 
-    public int bestScore(UUID id) {
-        return data.getInt("best." + id, 0);
+    public int bestScore(UUID id, String difficultyId) {
+        return data.getInt("best." + difficultyId + "." + id, 0);
     }
 
     public int recordCount() {
-        ConfigurationSection best = data.getConfigurationSection("best");
-        return best == null ? 0 : best.getKeys(false).size();
+        int count = 0;
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            ConfigurationSection best = data.getConfigurationSection("best." + difficulty.id);
+            if (best != null) {
+                count += best.getKeys(false).size();
+            }
+        }
+        return count;
     }
 
     public record TopEntry(String id, String name, int score, long at) {
     }
 
-    private List<TopEntry> allEntries() {
+    private List<TopEntry> allEntries(String difficultyId) {
         List<TopEntry> list = new ArrayList<>();
-        ConfigurationSection best = data.getConfigurationSection("best");
+        ConfigurationSection best = data.getConfigurationSection("best." + difficultyId);
         if (best != null) {
             for (String id : best.getKeys(false)) {
                 int score = best.getInt(id);
                 if (score <= 0) {
                     continue;
                 }
-                long at = data.getLong("bestAt." + id, 0L);
+                long at = data.getLong("bestAt." + difficultyId + "." + id, 0L);
                 String name = data.getString("names." + id, "未知玩家");
                 list.add(new TopEntry(id, name, score, at));
             }
@@ -1037,20 +1301,47 @@ public class CloudWalkManager {
         return list;
     }
 
-    public List<TopEntry> topEntries() {
-        List<TopEntry> all = allEntries();
-        if (all.size() > settings.topSize) {
-            return new ArrayList<>(all.subList(0, settings.topSize));
+    public List<TopEntry> topEntries(String difficultyId) {
+        Set<String> excluded = harderTopIds(difficultyId);
+        List<TopEntry> list = new ArrayList<>();
+        for (TopEntry entry : allEntries(difficultyId)) {
+            if (!excluded.contains(entry.id())) {
+                list.add(entry);
+            }
         }
-        return all;
+        if (list.size() > settings.topSize) {
+            return new ArrayList<>(list.subList(0, settings.topSize));
+        }
+        return list;
     }
 
-    public int rankOf(UUID id) {
-        if (bestScore(id) <= 0) {
+    /** 更难的榜前十不计入较低难度榜：困难榜前十不出现在中/简单，中等榜前十不出现在简单。 */
+    private Set<String> harderTopIds(String difficultyId) {
+        Set<String> excluded = new HashSet<>();
+        CloudWalkSettings.Difficulty current = settings.difficulty(difficultyId);
+        if (current == null) {
+            return excluded;
+        }
+        for (CloudWalkSettings.Difficulty other : settings.difficulties) {
+            if (other.enabled && other.order > current.order) {
+                for (TopEntry entry : topEntries(other.id)) {
+                    excluded.add(entry.id());
+                }
+            }
+        }
+        return excluded;
+    }
+
+    public int rankOf(UUID id, String difficultyId) {
+        if (bestScore(id, difficultyId) <= 0) {
             return 0;
         }
+        Set<String> excluded = harderTopIds(difficultyId);
         int rank = 1;
-        for (TopEntry entry : allEntries()) {
+        for (TopEntry entry : allEntries(difficultyId)) {
+            if (excluded.contains(entry.id())) {
+                continue;
+            }
             if (entry.id().equals(id.toString())) {
                 return rank;
             }
@@ -1059,16 +1350,17 @@ public class CloudWalkManager {
         return 0;
     }
 
-    private void recordScore(UUID id, String name, int score) {
+    private void recordScore(UUID id, String name, int score, String difficultyId) {
         if (score <= 0) {
             return;
         }
-        int best = data.getInt("best." + id, 0);
+        String path = "best." + difficultyId + "." + id;
+        int best = data.getInt(path, 0);
         if (score <= best) {
             return;
         }
-        data.set("best." + id, score);
-        data.set("bestAt." + id, System.currentTimeMillis());
+        data.set(path, score);
+        data.set("bestAt." + difficultyId + "." + id, System.currentTimeMillis());
         data.set("names." + id, name);
         saveData();
         syncTitles();
@@ -1076,12 +1368,44 @@ public class CloudWalkManager {
     }
 
     public void resetRecord(UUID id) {
-        data.set("best." + id, null);
-        data.set("bestAt." + id, null);
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            data.set("best." + difficulty.id + "." + id, null);
+            data.set("bestAt." + difficulty.id + "." + id, null);
+        }
         data.set("names." + id, null);
         saveData();
         syncTitles();
         refreshLeaderboards();
+    }
+
+    /** 旧版单一难度的记录一次性搬到中等难度。 */
+    private void migrateLegacyRecords() {
+        boolean changed = false;
+        ConfigurationSection best = data.getConfigurationSection("best");
+        if (best != null) {
+            for (String key : new ArrayList<>(best.getKeys(false))) {
+                if (settings.difficulty(key) != null) {
+                    continue;
+                }
+                int score = best.getInt(key);
+                long at = data.getLong("bestAt." + key, 0L);
+                data.set("best.medium." + key, score);
+                if (at > 0) {
+                    data.set("bestAt.medium." + key, at);
+                }
+                data.set("best." + key, null);
+                data.set("bestAt." + key, null);
+                changed = true;
+            }
+        }
+        if (data.isList("title-holders")) {
+            data.set("title-holders.medium", data.getStringList("title-holders"));
+            data.set("title-holders", null);
+            changed = true;
+        }
+        if (changed) {
+            saveData();
+        }
     }
 
     private void saveData() {
@@ -1095,10 +1419,24 @@ public class CloudWalkManager {
     private static final class LeaderBoard {
         final Location loc;
         UUID entityId;
+        UUID standId;
 
-        LeaderBoard(Location loc, UUID entityId) {
+        LeaderBoard(Location loc, UUID entityId, UUID standId) {
             this.loc = loc;
             this.entityId = entityId;
+            this.standId = standId;
+        }
+    }
+
+    private static final class PageView {
+        final UUID entityId;
+        final String difficultyId;
+        final long expiresAt;
+
+        PageView(UUID entityId, String difficultyId, long expiresAt) {
+            this.entityId = entityId;
+            this.difficultyId = difficultyId;
+            this.expiresAt = expiresAt;
         }
     }
 

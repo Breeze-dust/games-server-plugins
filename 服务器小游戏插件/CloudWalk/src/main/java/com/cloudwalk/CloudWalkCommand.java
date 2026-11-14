@@ -25,18 +25,36 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
         if (args.length == 0) {
             Player player = asPlayer(sender);
             if (player != null) {
-                manager.join(player);
+                manager.openDifficultyMenu(player);
             } else {
                 help(sender);
             }
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
+        String sub = args[0].toLowerCase();
+        switch (sub) {
             case "join", "play" -> {
                 Player player = asPlayer(sender);
-                if (player != null) {
-                    manager.join(player);
+                if (player == null) {
+                    return true;
+                }
+                if (args.length < 2) {
+                    manager.openDifficultyMenu(player);
+                    return true;
+                }
+                CloudWalkSettings.Difficulty difficulty = difficultyArg(manager, args[1]);
+                if (difficulty == null) {
+                    Chat.send(sender, "&c未知难度：" + args[1] + "（可用 easy/medium/hard 或 简单/中等/困难）");
+                    return true;
+                }
+                manager.join(player, difficulty);
+            }
+            case "easy", "medium", "hard" -> {
+                Player player = asPlayer(sender);
+                CloudWalkSettings.Difficulty difficulty = manager.difficultyById(sub);
+                if (player != null && difficulty != null) {
+                    manager.join(player, difficulty);
                 }
             }
             case "leave", "quit", "exit" -> {
@@ -56,7 +74,14 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                         manager.removeLeaderboards(sender);
                     }
                 } else {
-                    showTop(sender, manager);
+                    CloudWalkSettings.Difficulty difficulty = args.length >= 2
+                            ? difficultyArg(manager, args[1])
+                            : manager.defaultDifficulty();
+                    if (difficulty == null) {
+                        Chat.send(sender, "&c未知难度：" + args[1]);
+                        return true;
+                    }
+                    showTop(sender, manager, difficulty);
                 }
             }
             case "stats", "me" -> showStats(sender, manager, args);
@@ -121,16 +146,18 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private void showTop(CommandSender sender, CloudWalkManager manager) {
-        List<CloudWalkManager.TopEntry> top = manager.topEntries();
+    private void showTop(CommandSender sender, CloudWalkManager manager, CloudWalkSettings.Difficulty difficulty) {
+        List<CloudWalkManager.TopEntry> top = manager.topEntries(difficulty.id);
+        Chat.send(sender, "&8&m----&r " + difficulty.color + "&l云中漫步 · " + difficulty.name
+                + "榜 &8&m----");
         if (top.isEmpty()) {
-            Chat.send(sender, "&7云中漫步还没有记录，做第一个登顶的人吧。");
+            Chat.send(sender, "&7这个难度还没有记录。");
             return;
         }
-        Chat.send(sender, "&8&m--------&r &b&l云中漫步 · 全服前十 &8&m--------");
         int rank = 1;
         for (CloudWalkManager.TopEntry entry : top) {
-            Chat.send(sender, "&e#" + rank + " &f" + entry.name() + " &7- &b" + entry.score() + " &7分");
+            Chat.send(sender, "&e#" + rank + " &f" + entry.name() + " &7- "
+                    + difficulty.color + entry.score() + " &7分");
             rank++;
         }
     }
@@ -150,22 +177,39 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                 return;
             }
         }
-        int best = manager.bestScore(target.getUniqueId());
-        int rank = manager.rankOf(target.getUniqueId());
-        Chat.send(sender, "&b" + target.getName() + " &f最高分 &e" + best
-                + (rank > 0 ? " &7（第 " + rank + " 名）" : ""));
+        Chat.send(sender, "&b" + target.getName() + " &f各难度最高分：");
+        for (CloudWalkSettings.Difficulty difficulty : manager.difficulties()) {
+            int best = manager.bestScore(target.getUniqueId(), difficulty.id);
+            int rank = manager.rankOf(target.getUniqueId(), difficulty.id);
+            Chat.send(sender, "  " + difficulty.color + difficulty.name + " &7- &e" + best
+                    + (rank > 0 ? " &7（第 " + rank + " 名）" : ""));
+        }
     }
 
     private void help(CommandSender sender) {
         Chat.send(sender, "&8&m--------&r &b&l云中漫步 &8&m--------");
-        Chat.send(sender, "&f/cloudwalk &7- 直接开始跑酷");
+        Chat.send(sender, "&f/cloudwalk &7- 选择难度并开始跑酷");
+        Chat.send(sender, "&f/cloudwalk easy|medium|hard &7- 直接开始某个难度");
         Chat.send(sender, "&f/cloudwalk leave &7- 退出本局");
-        Chat.send(sender, "&f/cloudwalk top &7- 全服前十（聊天）");
-        Chat.send(sender, "&f/cloudwalk stats [玩家] &7- 查看最高分");
+        Chat.send(sender, "&f/cloudwalk top [难度] &7- 对应难度前十（聊天）");
+        Chat.send(sender, "&f/cloudwalk stats [玩家] &7- 查看各难度最高分");
         if (hasAdmin(sender)) {
             Chat.send(sender, "&7管理：&fpos1 &7/&f pos2 &7/&f setstart &7/&f setlobby &7/&f info &7/&f reload &7/&f reset <玩家>");
             Chat.send(sender, "&7全息榜：&f/cloudwalk top place &7（在当前位置放置）、&f/cloudwalk top remove");
         }
+    }
+
+    private CloudWalkSettings.Difficulty difficultyArg(CloudWalkManager manager, String raw) {
+        CloudWalkSettings.Difficulty difficulty = manager.difficultyById(raw);
+        if (difficulty != null) {
+            return difficulty;
+        }
+        for (CloudWalkSettings.Difficulty candidate : manager.difficulties()) {
+            if (candidate.name.equals(raw)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private Player asPlayer(CommandSender sender) {
@@ -199,7 +243,7 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> out = new ArrayList<>();
         if (args.length == 1) {
-            for (String sub : List.of("join", "leave", "top", "stats", "help")) {
+            for (String sub : List.of("join", "easy", "medium", "hard", "leave", "top", "stats", "help")) {
                 if (sub.startsWith(args[0].toLowerCase())) {
                     out.add(sub);
                 }
@@ -219,10 +263,23 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                     out.add(player.getName());
                 }
             }
-        } else if (args.length == 2 && "top".equalsIgnoreCase(args[0]) && hasAdmin(sender)) {
-            for (String option : List.of("place", "remove")) {
+        } else if (args.length == 2 && "top".equalsIgnoreCase(args[0])) {
+            List<String> options = hasAdmin(sender) ? List.of("place", "remove") : List.of();
+            for (String option : options) {
                 if (option.startsWith(args[1].toLowerCase())) {
                     out.add(option);
+                }
+            }
+            for (CloudWalkSettings.Difficulty difficulty : plugin.getManager().difficulties()) {
+                if (difficulty.id.startsWith(args[1].toLowerCase())) {
+                    out.add(difficulty.id);
+                }
+            }
+        } else if (args.length == 2
+                && ("join".equalsIgnoreCase(args[0]) || "play".equalsIgnoreCase(args[0]))) {
+            for (CloudWalkSettings.Difficulty difficulty : plugin.getManager().difficulties()) {
+                if (difficulty.id.startsWith(args[1].toLowerCase())) {
+                    out.add(difficulty.id);
                 }
             }
         }
