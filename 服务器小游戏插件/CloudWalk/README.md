@@ -20,7 +20,8 @@
 - **难度**：`difficulties` 段配置三个难度，各自有独立的前十和最高分：
   - **简单**：当前难度，`allow4-jump-up: false`，不会出现「空 3 格 + 上升 1 格」。
   - **中等**：在简单基础上 `allow4-jump-up: true`，加入「空 3 格 + 上升 1 格」。
-  - **困难**：暂未开放（`enabled: false`）；`distances` 已预先加入 5（空 4 格），开放前保持关闭。
+    已预留 `allow-4-far`（距离 5 / 空 4 格），默认 `false`，原版跳不到，留给跳跃提升。
+  - **困难**：暂未开放（`enabled: false`），`allow-4-far: true`。
   - 高难度榜前十**不会**出现在低难度榜里，也拿不到低难度头衔。
 - **方块池与物品栏**：`path.blocks` 是方块池，默认 16 色羊毛 + 16 色带釉陶瓦；每生成一块从玩家已启用的方块里随机挑一个。
   进跑酷时保存物品栏并清空，第 1 格换成「选择跑酷方块」（烈焰棒）道具：右键打开 54 格菜单，
@@ -35,8 +36,10 @@
 - **新方块粒子**：每生成一个新方块，方块周围会闪 3 波亮绿色 `HAPPY_VILLAGER` 粒子，约 0.65 秒后消失。
 - **浮空排行榜**：`/cloudwalk top place` 在当前位置放置 `TextDisplay` 全息榜（**Billboard.FIXED，固定朝向**，
   朝向自动吸附到东南西北四个正方向、俯仰角固定 0，不跟随玩家），`/cloudwalk top remove` 移除全部；
-  一张榜分成多个难度页（默认显示 `leaderboard.default-difficulty`），**右键榜单**会为这名玩家单独打开下一页
-  （每人一份私有显示，20 秒无操作自动回到默认页，不影响其他人）。每 5 秒刷新文字，记录变化后立即刷新。
+  一张榜分成多个难度页（默认显示 `leaderboard.default-difficulty`）：主榜固定 10 行，底部单独一条「**下一页 >>>**」。
+  **只有底部「下一页 >>>」那一小块区域可点**（一个 `Interaction` 实体，用右键），点击后为这名玩家单独切到下一页
+  （每人一份私有显示，20 秒无操作自动回到默认页，不影响其他人）。主榜与底部文字是两个独立 TextDisplay，
+  主榜固定在底部上方 4.2 格，所以点击区永远对着「下一页」那一行。每 5 秒刷新文字，记录变化后立即刷新。
   位置/UUID 存在 `config.yml` 的 `leaderboards` 段，重启后按 UUID 找回，丢了会重新生成。
 - **头衔联动**：每个难度各自的前十获得对应头衔，掉出前十立刻收回（离线也生效）：
   - 简单：**「漫步新手」**（`cloudwalk_easy_bridge`，`&a`）
@@ -59,7 +62,7 @@
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`
   - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
   - `path.distances|heights|queue-length|turn-chance|blocks`（前两项是简单/中等的基础距离和共用高度）
-  - `difficulties.easy|medium|hard`：名字、颜色、是否开放、`allow4-jump-up`、`distances`、对应头衔
+  - `difficulties.easy|medium|hard`：名字、颜色、是否开放、`allow4-jump-up`、`allow-4-far`、`distances`、对应头衔
   - `leaderboard.default-difficulty`：全息榜默认页
   - `run.sound|particle`、`top-size`、`leaderboards`（全息榜位置，命令写入）
 - **玩家记录**：命名空间 `cloudwalk`，结构

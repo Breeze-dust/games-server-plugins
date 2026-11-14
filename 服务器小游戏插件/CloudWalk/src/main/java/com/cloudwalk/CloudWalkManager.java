@@ -19,10 +19,10 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
@@ -61,6 +61,9 @@ public class CloudWalkManager {
     private static final String NAMESPACE = "cloudwalk";
     private static final int TICK_PERIOD = 1;
     private static final long PAGE_VIEW_MILLIS = 20_000L;
+    /** 主榜相对底部的抬高量：底部固定放「下一页 >>>」和点击区。 */
+    private static final double MAIN_OFFSET_Y = 4.2;
+    private static final String FOOTER_TEXT = "&e&l[ 下一页 >>> ]";
 
     private final CloudWalkPlugin plugin;
     private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
@@ -866,9 +869,11 @@ public class CloudWalkManager {
                 continue;
             }
             Object entity = raw.get("entity");
-            Object stand = raw.get("stand");
+            Object footer = raw.get("footer");
+            Object stand = raw.get("interact") != null ? raw.get("interact") : raw.get("stand");
             leaderboards.add(new LeaderBoard(loc,
                     parseUuid(entity == null ? "" : String.valueOf(entity)),
+                    parseUuid(footer == null ? "" : String.valueOf(footer)),
                     parseUuid(stand == null ? "" : String.valueOf(stand))));
         }
     }
@@ -887,7 +892,8 @@ public class CloudWalkManager {
             map.put("yaw", (double) board.loc.getYaw());
             map.put("pitch", (double) board.loc.getPitch());
             map.put("entity", board.entityId == null ? "" : board.entityId.toString());
-            map.put("stand", board.standId == null ? "" : board.standId.toString());
+            map.put("footer", board.footerId == null ? "" : board.footerId.toString());
+            map.put("interact", board.interactionId == null ? "" : board.interactionId.toString());
             list.add(map);
         }
         plugin.getConfig().set("leaderboards", list);
@@ -895,16 +901,17 @@ public class CloudWalkManager {
     }
 
     public void placeLeaderboard(Player p) {
-        Location loc = p.getLocation().clone().add(0, 1.5, 0);
+        Location loc = p.getLocation().clone().add(0, 0.5, 0);
         loc.setYaw(snapYaw(loc.getYaw()));
         loc.setPitch(0f);
-        LeaderBoard board = new LeaderBoard(loc, null, null);
+        LeaderBoard board = new LeaderBoard(loc, null, null, null);
         leaderboards.add(board);
-        board.entityId = spawnDisplay(loc);
-        board.standId = spawnStand(loc);
+        board.entityId = spawnDisplay(mainLocation(board));
+        board.footerId = spawnFooter(loc);
+        board.interactionId = spawnInteraction(loc);
         saveLeaderboards();
         refreshLeaderboards();
-        Chat.send(p, "&a已放置云中漫步排行榜（吸附到东南西北，固定朝向、无俯仰角）。");
+        Chat.send(p, "&a已放置云中漫步排行榜：底部「下一页 >>>」那一行是唯一的点击区（右键切换难度）。");
     }
 
     public void removeLeaderboards(CommandSender sender) {
@@ -914,9 +921,13 @@ public class CloudWalkManager {
             if (entity != null) {
                 entity.remove();
             }
-            Entity stand = board.standId == null ? null : Bukkit.getEntity(board.standId);
+            Entity stand = board.interactionId == null ? null : Bukkit.getEntity(board.interactionId);
             if (stand != null) {
                 stand.remove();
+            }
+            Entity footer = board.footerId == null ? null : Bukkit.getEntity(board.footerId);
+            if (footer != null) {
+                footer.remove();
             }
         }
         leaderboards.clear();
@@ -930,9 +941,10 @@ public class CloudWalkManager {
             if (board.loc.getWorld() == null || !board.loc.isChunkLoaded()) {
                 continue;
             }
+            Location mainLoc = mainLocation(board);
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
             if (!(entity instanceof TextDisplay display)) {
-                board.entityId = spawnDisplay(board.loc);
+                board.entityId = spawnDisplay(mainLoc);
                 changed = true;
                 Entity fresh = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
                 if (fresh != null) {
@@ -945,20 +957,41 @@ public class CloudWalkManager {
                     }
                 }
             } else {
-                // 已有实体也重设朝向：旧版本斜着放的榜会在下一次刷新时被掰正
+                // 已有实体也重设位置与朝向：旧版本放的榜会在下一次刷新时被摆正
+                display.teleport(mainLoc);
                 display.setBillboard(Display.Billboard.FIXED);
                 display.setRotation(snapYaw(board.loc.getYaw() + 180f), 0f);
                 applyLeaderboardStyle(display, settings.defaultDifficulty());
             }
-            Entity stand = board.standId == null ? null : Bukkit.getEntity(board.standId);
-            if (stand == null) {
-                board.standId = spawnStand(board.loc);
+
+            Entity footer = board.footerId == null ? null : Bukkit.getEntity(board.footerId);
+            if (!(footer instanceof TextDisplay)) {
+                if (footer != null) {
+                    footer.remove();
+                }
+                board.footerId = spawnFooter(board.loc);
+                changed = true;
+            }
+
+            Entity stand = board.interactionId == null ? null : Bukkit.getEntity(board.interactionId);
+            if (!(stand instanceof Interaction)) {
+                if (stand != null) {
+                    // 旧版本放的是隐形盔甲架，换成 Interaction 点击区
+                    stand.remove();
+                }
+                board.interactionId = spawnInteraction(board.loc);
                 changed = true;
             }
         }
         if (changed) {
             saveLeaderboards();
         }
+    }
+
+    private static Location mainLocation(LeaderBoard board) {
+        Location main = board.loc.clone();
+        main.add(0, MAIN_OFFSET_Y, 0);
+        return main;
     }
 
     private UUID spawnDisplay(Location loc) {
@@ -994,22 +1027,50 @@ public class CloudWalkManager {
         return display;
     }
 
-    /** 榜单的点击判定：一个隐形盔甲架，右键它切换页面。 */
-    private UUID spawnStand(Location loc) {
+    /** 榜单底部的点击区：只覆盖「下一页 >>>」那一行。 */
+    private UUID spawnInteraction(Location loc) {
         World world = loc.getWorld();
         if (world == null) {
             return null;
         }
-        Location standLoc = loc.clone().add(0, -0.9, 0);
-        ArmorStand stand = world.spawn(standLoc, ArmorStand.class);
-        stand.setInvisible(true);
-        stand.setInvulnerable(true);
-        stand.setGravity(false);
-        stand.setSilent(true);
-        stand.setPersistent(false);
-        stand.setCanPickupItems(false);
-        stand.setRemoveWhenFarAway(false);
-        return stand.getUniqueId();
+        Interaction interaction = world.spawn(loc.clone(), Interaction.class);
+        interaction.setInteractionWidth(3.2f);
+        interaction.setInteractionHeight(1.1f);
+        interaction.setResponsive(true);
+        interaction.setPersistent(false);
+        interaction.setInvulnerable(true);
+        interaction.setRotation(snapYaw(loc.getYaw() + 180f), 0f);
+        return interaction.getUniqueId();
+    }
+
+    /** 底部静态的「下一页 >>>」文字（主榜单独放在它上方）。 */
+    private UUID spawnFooter(Location loc) {
+        World world = loc.getWorld();
+        if (world == null) {
+            return null;
+        }
+        if (!loc.isChunkLoaded()) {
+            loc.getChunk().load();
+        }
+        Location spawnLoc = loc.clone();
+        spawnLoc.setPitch(0f);
+        TextDisplay display = world.spawn(spawnLoc, TextDisplay.class);
+        display.setBillboard(Display.Billboard.FIXED);
+        display.setRotation(snapYaw(loc.getYaw() + 180f), 0f);
+        display.setSeeThrough(false);
+        display.setShadowed(true);
+        display.setAlignment(TextDisplay.TextAlignment.CENTER);
+        display.setLineWidth(200);
+        display.setViewRange(64);
+        display.setPersistent(true);
+        display.setInvulnerable(true);
+        display.setGravity(false);
+        display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
+                new Vector3f(1.1f, 1.1f, 1.1f), new Quaternionf()));
+        display.text(Chat.color(FOOTER_TEXT));
+        display.setDefaultBackground(false);
+        display.setBackgroundColor(Color.fromARGB(130, 15, 15, 30));
+        return display.getUniqueId();
     }
 
     private void applyLeaderboardStyle(TextDisplay display, CloudWalkSettings.Difficulty difficulty) {
@@ -1022,10 +1083,8 @@ public class CloudWalkManager {
         StringBuilder sb = new StringBuilder(difficulty.color)
                 .append("&l—— 云中漫步 · ").append(difficulty.name).append("榜 ——\n");
         List<TopEntry> top = topEntries(difficulty.id);
-        if (top.isEmpty()) {
-            sb.append("&8暂无记录\n&7输入 /cloudwalk 挑战吧");
-        } else {
-            for (int i = 0; i < top.size(); i++) {
+        for (int i = 0; i < settings.topSize; i++) {
+            if (i < top.size()) {
                 TopEntry entry = top.get(i);
                 int rank = i + 1;
                 String color = switch (i) {
@@ -1035,32 +1094,33 @@ public class CloudWalkManager {
                 };
                 sb.append(color).append(rank).append("&7. &f").append(entry.name())
                         .append(" &7- ").append(difficulty.color).append(entry.score()).append("&7 分");
-                if (i < top.size() - 1) {
-                    sb.append('\n');
-                }
+            } else {
+                sb.append("&8—");
+            }
+            if (i < settings.topSize - 1) {
+                sb.append('\n');
             }
         }
-        sb.append("\n&7右键榜单切换难度");
         return Chat.color(sb.toString());
     }
 
     // ---------- 榜单翻页（每名玩家私有一份，20 秒后恢复默认页） ----------
 
-    public boolean isBoardStand(UUID id) {
+    public boolean isBoardInteraction(UUID id) {
         if (id == null) {
             return false;
         }
         for (LeaderBoard board : leaderboards) {
-            if (id.equals(board.standId)) {
+            if (id.equals(board.interactionId)) {
                 return true;
             }
         }
         return false;
     }
 
-    public void handleBoardClick(Player p, UUID standId) {
+    public void handleBoardClick(Player p, UUID interactionId) {
         for (LeaderBoard board : leaderboards) {
-            if (standId.equals(board.standId)) {
+            if (interactionId.equals(board.interactionId)) {
                 nextPage(p, board);
                 return;
             }
@@ -1099,7 +1159,7 @@ public class CloudWalkManager {
             }
         }
         if (display == null) {
-            display = createDisplay(board.loc, false);
+            display = createDisplay(mainLocation(board), false);
             if (display == null) {
                 return;
             }
@@ -1419,12 +1479,14 @@ public class CloudWalkManager {
     private static final class LeaderBoard {
         final Location loc;
         UUID entityId;
-        UUID standId;
+        UUID footerId;
+        UUID interactionId;
 
-        LeaderBoard(Location loc, UUID entityId, UUID standId) {
+        LeaderBoard(Location loc, UUID entityId, UUID footerId, UUID interactionId) {
             this.loc = loc;
             this.entityId = entityId;
-            this.standId = standId;
+            this.footerId = footerId;
+            this.interactionId = interactionId;
         }
     }
 

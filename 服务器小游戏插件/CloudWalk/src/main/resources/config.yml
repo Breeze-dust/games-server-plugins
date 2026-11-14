@@ -82,13 +82,15 @@ path:
 # 难度（每个难度单独记录最高分和前十，互不影响）
 # easy  = 当前难度，不含「空 3 格 + 上升 1 格」
 # medium= 在 easy 基础上加入「空 3 格 + 上升 1 格」
-# hard  = 暂未开放；distances 已预先加入 5（空 4 格），开放前保持 enabled: false
+# hard  = 暂未开放
+# allow-4-far: true 时额外加入距离 5（空 4 格）；原版跳不到，留给跳跃提升，默认关闭
 difficulties:
   easy:
     name: 简单
     color: '&a'
     enabled: true
     allow4-jump-up: false
+    allow-4-far: false
     distances: [3, 4]
     title-id: cloudwalk_easy_bridge
     title-name: 漫步新手
@@ -99,6 +101,7 @@ difficulties:
     color: '&e'
     enabled: true
     allow4-jump-up: true
+    allow-4-far: false   # 预留：改成 true 后加入距离 5（空 4 格）
     distances: [3, 4]
     title-id: cloudwalk_super_bridge
     title-name: 超级搭路
@@ -109,7 +112,8 @@ difficulties:
     color: '&c'
     enabled: false
     allow4-jump-up: true
-    distances: [3, 4, 5]
+    allow-4-far: true
+    distances: [3, 4]
     title-id: cloudwalk_hard_bridge
     title-name: 云端宗师
     title-color: '&c'

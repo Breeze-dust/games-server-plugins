@@ -89,12 +89,12 @@ public class CloudWalkListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        UUID standId = event.getRightClicked().getUniqueId();
-        if (!plugin.getManager().isBoardStand(standId)) {
+        UUID interactionId = event.getRightClicked().getUniqueId();
+        if (!plugin.getManager().isBoardInteraction(interactionId)) {
             return;
         }
         event.setCancelled(true);
-        plugin.getManager().handleBoardClick(event.getPlayer(), standId);
+        plugin.getManager().handleBoardClick(event.getPlayer(), interactionId);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

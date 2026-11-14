@@ -35,6 +35,8 @@ public final class CloudWalkSettings {
         public final String color;
         public final boolean enabled;
         public final boolean allow4JumpUp;
+        /** 是否加入距离 5（空 4 格）；原版跳不到，留给跳跃提升。 */
+        public final boolean allow4Far;
         public final int[] distances;
         public final String titleId;
         public final String titleName;
@@ -44,13 +46,14 @@ public final class CloudWalkSettings {
         public final int order;
 
         public Difficulty(String id, String name, String color, boolean enabled, boolean allow4JumpUp,
-                          int[] distances, String titleId, String titleName, String titleColor,
-                          String titleDesc, int order) {
+                          boolean allow4Far, int[] distances, String titleId, String titleName,
+                          String titleColor, String titleDesc, int order) {
             this.id = id;
             this.name = name;
             this.color = color;
             this.enabled = enabled;
             this.allow4JumpUp = allow4JumpUp;
+            this.allow4Far = allow4Far;
             this.distances = distances;
             this.titleId = titleId;
             this.titleName = titleName;
@@ -211,12 +214,29 @@ public final class CloudWalkSettings {
                 distances = values;
             }
         }
+        boolean allow4Far = sec.getBoolean("allow-4-far", def.allow4Far);
+        if (allow4Far) {
+            boolean present = false;
+            for (int distance : distances) {
+                if (distance == 5) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) {
+                int[] extended = new int[distances.length + 1];
+                System.arraycopy(distances, 0, extended, 0, distances.length);
+                extended[distances.length] = 5;
+                distances = extended;
+            }
+        }
         return new Difficulty(
                 id,
                 sec.getString("name", def.name),
                 sec.getString("color", def.color),
                 sec.getBoolean("enabled", def.enabled),
                 sec.getBoolean("allow4-jump-up", def.allow4JumpUp),
+                allow4Far,
                 distances,
                 sec.getString("title-id", def.titleId),
                 sec.getString("title-name", def.titleName),
@@ -227,11 +247,11 @@ public final class CloudWalkSettings {
 
     private static Difficulty defaultDifficulty(String id, int[] baseDistances) {
         return switch (id) {
-            case "easy" -> new Difficulty("easy", "简单", "&a", true, false, baseDistances,
+            case "easy" -> new Difficulty("easy", "简单", "&a", true, false, false, baseDistances,
                     "cloudwalk_easy_bridge", "漫步新手", "&a", "云中漫步：简单榜前十", 0);
-            case "medium" -> new Difficulty("medium", "中等", "&e", true, true, baseDistances,
+            case "medium" -> new Difficulty("medium", "中等", "&e", true, true, false, baseDistances,
                     "cloudwalk_super_bridge", "超级搭路", "&b", "云中漫步：中等榜前十", 1);
-            default -> new Difficulty("hard", "困难", "&c", false, true, new int[]{3, 4, 5},
+            default -> new Difficulty("hard", "困难", "&c", false, true, true, new int[]{3, 4},
                     "cloudwalk_hard_bridge", "云端宗师", "&c", "云中漫步：困难榜前十", 2);
         };
     }
