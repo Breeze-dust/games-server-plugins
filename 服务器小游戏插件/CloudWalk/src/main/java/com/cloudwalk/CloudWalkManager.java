@@ -1210,8 +1210,14 @@ public class CloudWalkManager {
     }
 
     private Component difficultyText(CloudWalkSettings.Difficulty difficulty) {
+        List<CloudWalkSettings.Difficulty> pages = nonEmptyPages();
+        int pageIndex = pages.indexOf(difficulty);
+        String pageSuffix = pages.size() > 1 && pageIndex >= 0
+                ? " (" + (pageIndex + 1) + "/" + pages.size() + ")"
+                : "";
         StringBuilder sb = new StringBuilder(difficulty.color)
-                .append("&l—— 云中漫步 · ").append(difficulty.name).append("榜 ——\n");
+                .append("&l—— 云中漫步 · ").append(difficulty.name).append("榜")
+                .append(pageSuffix).append(" ——\n");
         List<TopEntry> top = topEntries(difficulty.id);
         for (int i = 0; i < settings.topSize; i++) {
             if (i < top.size()) {
@@ -1257,14 +1263,20 @@ public class CloudWalkManager {
         }
     }
 
-    private void nextPage(Player p, LeaderBoard board) {
-        // 只翻有记录的难度页，避免切到一整页都是「空位」的空页
-        List<CloudWalkSettings.Difficulty> enabled = new ArrayList<>();
+    /** 有记录、且已开放的难度页（翻页只在里面循环）。 */
+    private List<CloudWalkSettings.Difficulty> nonEmptyPages() {
+        List<CloudWalkSettings.Difficulty> pages = new ArrayList<>();
         for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
             if (difficulty.enabled && !topEntries(difficulty.id).isEmpty()) {
-                enabled.add(difficulty);
+                pages.add(difficulty);
             }
         }
+        return pages;
+    }
+
+    private void nextPage(Player p, LeaderBoard board) {
+        // 只翻有记录的难度页，避免切到一整页都是「空位」的空页
+        List<CloudWalkSettings.Difficulty> enabled = nonEmptyPages();
         if (enabled.isEmpty()) {
             return;
         }
@@ -1324,6 +1336,8 @@ public class CloudWalkManager {
         if (p != null && p.isOnline() && view.board.entityId != null) {
             Entity base = Bukkit.getEntity(view.board.entityId);
             if (base != null) {
+                // 强制重发一次实体生成包，避免 hide/show 状态在实体重建后不同步
+                p.hideEntity(plugin, base);
                 p.showEntity(plugin, base);
             }
         }
