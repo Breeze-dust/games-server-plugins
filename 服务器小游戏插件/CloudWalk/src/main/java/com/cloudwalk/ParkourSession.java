@@ -19,6 +19,8 @@ public final class ParkourSession {
     /** 进入路径末端方块的方向，下一块按它来算前 / 左 / 右。 */
     public Direction heading;
     public int score;
+    /** 已经生成过的方块数（不含起始块），用于「开局前几块不出现三远一高」。 */
+    public int generated;
     public boolean finished;
 
     /** 标记「下一个目标方块」的发光方块展示实体。 */

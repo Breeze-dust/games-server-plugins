@@ -20,6 +20,7 @@
 - **难度**：`difficulties` 段配置三个难度，各自有独立的前十和最高分：
   - **简单**：当前难度，`allow4-jump-up: false`，不会出现「空 3 格 + 上升 1 格」。
   - **中等**：在简单基础上 `allow4-jump-up: true`，加入「空 3 格 + 上升 1 格」。
+    这种跳**不会连续出现**，**开局前 `special-first-blocks`（默认 3）块也不会出现**；
     已预留 `allow-4-far`（距离 5 / 空 4 格），默认 `false`，原版跳不到，留给跳跃提升。
   - **困难**：暂未开放（`enabled: false`），`allow-4-far: true`。
   - 高难度榜前十**不会**出现在低难度榜里，也拿不到低难度头衔。
@@ -65,7 +66,7 @@
 - **配置**：`server/plugins/CloudWalk/config.yml`（模板 `CloudWalk/src/main/resources/config.yml`）
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`
   - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
-  - `path.distances|heights|queue-length|turn-chance|blocks`（前两项是简单/中等的基础距离和共用高度）
+  - `path.distances|heights|queue-length|turn-chance|special-first-blocks|blocks`（前两项是简单/中等的基础距离和共用高度）
   - `difficulties.easy|medium|hard`：名字、颜色、是否开放、`allow4-jump-up`、`allow-4-far`、`distances`、对应头衔
   - `leaderboard.default-difficulty`：全息榜默认页
   - `run.sound|particle`、`top-size`、`leaderboards`（全息榜位置，命令写入）

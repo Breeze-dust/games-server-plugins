@@ -25,12 +25,24 @@ public final class PathGenerator {
     }
 
     /**
-     * @param tail     路径末端方块
-     * @param heading  进入 tail 的方向（tail 的「前方」）
-     * @param occupied 当前路径上已有方块（当前 + 队列）
+     * @param tail         路径末端方块
+     * @param heading      进入 tail 的方向（tail 的「前方」）
+     * @param occupied     当前路径上已有方块（当前 + 队列）
+     * @param allowSpecial 是否允许生成「水平4 + 上升」（三远一高）
      * @return 合法的新方块位置；没有可用位置时返回 null
      */
-    public BlockPos next(BlockPos tail, Direction heading, Set<BlockPos> occupied, LaneBox box) {
+    public BlockPos next(BlockPos tail, Direction heading, Set<BlockPos> occupied, LaneBox box,
+                         boolean allowSpecial) {
+        BlockPos chosen = pick(tail, heading, occupied, box, allowSpecial);
+        if (chosen == null && !allowSpecial) {
+            // 除了三远一高已经没有别的落点：宁可破一次例，也不要让玩家卡死
+            chosen = pick(tail, heading, occupied, box, true);
+        }
+        return chosen;
+    }
+
+    private BlockPos pick(BlockPos tail, Direction heading, Set<BlockPos> occupied, LaneBox box,
+                          boolean allowSpecial) {
         Direction[] directions = {heading, heading.left(), heading.right()};
         List<List<BlockPos>> valid = new ArrayList<>(3);
         for (Direction dir : directions) {
@@ -38,6 +50,9 @@ public final class PathGenerator {
             for (int distance : distances) {
                 for (int dy : heights) {
                     if (!allow4JumpUp && distance == 4 && dy > 0) {
+                        continue;
+                    }
+                    if (!allowSpecial && distance == 4 && dy > 0) {
                         continue;
                     }
                     BlockPos pos = tail.offset(dir.dx * distance, dy, dir.dz * distance);

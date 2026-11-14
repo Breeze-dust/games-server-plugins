@@ -86,6 +86,8 @@ public final class CloudWalkSettings {
     public int[] heights = {-2, -1, 0, 1};
     public int queueLength = 3;
     public double turnChance = 0.25;
+    /** 开局前这么多块不允许出现「水平4 + 上升1」。 */
+    public int specialFirstBlocks = 3;
     public List<Material> palette = new ArrayList<>(DEFAULT_PALETTE);
 
     public boolean sound = true;
@@ -138,6 +140,7 @@ public final class CloudWalkSettings {
 
         s.queueLength = Math.max(1, Math.min(6, cfg.getInt("path.queue-length", 3)));
         s.turnChance = Math.max(0.0, Math.min(1.0, cfg.getDouble("path.turn-chance", 0.25)));
+        s.specialFirstBlocks = Math.max(0, Math.min(20, cfg.getInt("path.special-first-blocks", 3)));
 
         List<Integer> heights = cfg.getIntegerList("path.heights");
         if (heights != null && !heights.isEmpty()) {

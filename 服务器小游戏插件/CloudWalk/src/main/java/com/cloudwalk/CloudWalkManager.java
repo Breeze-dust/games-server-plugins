@@ -368,9 +368,11 @@ public class CloudWalkManager {
         List<BlockPos> path = new ArrayList<>();
         path.add(start);
         Direction cursor = heading;
+        int generated = 0;
         for (int i = 0; i < settings.queueLength; i++) {
             BlockPos tail = path.get(path.size() - 1);
-            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box);
+            boolean allowSpecial = generated >= settings.specialFirstBlocks && !isSpecialJump(path);
+            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box, allowSpecial);
             if (next == null) {
                 freeLane(lane);
                 Chat.send(p, "&c这块区域放不下起始路径，请检查区域大小。");
@@ -381,6 +383,7 @@ public class CloudWalkManager {
                 cursor = heading;
             }
             path.add(next);
+            generated++;
         }
 
         if (p.isInsideVehicle()) {
@@ -419,6 +422,7 @@ public class CloudWalkManager {
         ParkourSession session = new ParkourSession(id, p.getName(), lane, box, difficulty);
         session.path.addAll(path);
         session.heading = cursor;
+        session.generated = generated;
         sessions.put(id, session);
         updateGlow(session, path.get(1));
 
@@ -534,8 +538,9 @@ public class CloudWalkManager {
 
         BlockPos tail = s.path.get(s.path.size() - 1);
         PathGenerator generator = generators.get(s.difficulty.id);
+        boolean allowSpecial = s.generated >= settings.specialFirstBlocks && !isSpecialJump(s.path);
         BlockPos next = generator == null ? null
-                : generator.next(tail, s.heading, new HashSet<>(s.path), s.box);
+                : generator.next(tail, s.heading, new HashSet<>(s.path), s.box, allowSpecial);
         if (next == null) {
             finish(p, s, "路径到达区域边界", true, true);
             return;
@@ -546,6 +551,7 @@ public class CloudWalkManager {
         }
         place(s.box.world(), next, pickMaterial(s.playerId));
         s.path.add(next);
+        s.generated++;
         sparkle(s.box.world(), next);
         updateGlow(s, s.path.get(1));
         Chat.actionBar(p, actionBarText(s));
@@ -610,6 +616,17 @@ public class CloudWalkManager {
     private String actionBarText(ParkourSession s) {
         return s.difficulty.color + s.difficulty.name + " &8· &b本局 &e" + s.score
                 + " &8· &6最高 &e" + bestScore(s.playerId, s.difficulty.id);
+    }
+
+    /** 上一跳是不是「水平 4 + 上升」（三远一高）。 */
+    private static boolean isSpecialJump(List<BlockPos> path) {
+        if (path.size() < 2) {
+            return false;
+        }
+        BlockPos previous = path.get(path.size() - 2);
+        BlockPos tail = path.get(path.size() - 1);
+        int distance = Math.abs(tail.x() - previous.x()) + Math.abs(tail.z() - previous.z());
+        return distance == 4 && tail.y() > previous.y();
     }
 
     // ---------- 通道 ----------
