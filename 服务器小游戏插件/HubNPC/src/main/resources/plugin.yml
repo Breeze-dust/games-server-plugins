@@ -1,0 +1,16 @@
+name: HubNPC
+version: '1.0.0'
+main: com.hubnpc.HubNPCPlugin
+api-version: '1.21'
+description: 主城 NPC：可生成、可设皮肤、右键执行指令
+softdepend: [SkinsRestorer]
+commands:
+  npc:
+    description: NPC 管理
+    usage: /npc help
+    aliases: [hubnpc]
+    permission: hubnpc.admin
+permissions:
+  hubnpc.admin:
+    description: 管理 NPC（生成、删除、皮肤、右键指令）
+    default: op
