@@ -61,8 +61,10 @@ public class CloudWalkManager {
     private static final String NAMESPACE = "cloudwalk";
     private static final int TICK_PERIOD = 1;
     private static final long PAGE_VIEW_MILLIS = 20_000L;
-    /** 主榜相对底部的抬高量：底部固定放「下一页 >>>」和点击区。 */
-    private static final double MAIN_OFFSET_Y = 4.2;
+    /** 全息文字的行高（字体行高 0.25 × 显示缩放 1.3）。 */
+    private static final double LINE_HEIGHT = 0.25 * 1.3;
+    /** 主榜最后一行与底部「下一页」之间的空隙。 */
+    private static final double FOOTER_GAP = 0.35;
     private static final String FOOTER_TEXT = "&e&l[ 下一页 >>> ]";
 
     private final CloudWalkPlugin plugin;
@@ -909,7 +911,7 @@ public class CloudWalkManager {
         loc.setPitch(0f);
         LeaderBoard board = new LeaderBoard(loc, null, null, null);
         leaderboards.add(board);
-        board.entityId = spawnDisplay(mainLocation(board));
+        board.entityId = spawnDisplay(mainLocation(board, layoutEntries(settings.defaultDifficulty().id)));
         board.footerId = spawnFooter(loc);
         board.interactionId = spawnInteraction(loc);
         saveLeaderboards();
@@ -944,7 +946,8 @@ public class CloudWalkManager {
             if (board.loc.getWorld() == null || !board.loc.isChunkLoaded()) {
                 continue;
             }
-            Location mainLoc = mainLocation(board);
+            CloudWalkSettings.Difficulty defaultDifficulty = settings.defaultDifficulty();
+            Location mainLoc = mainLocation(board, layoutEntries(defaultDifficulty.id));
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
             if (!(entity instanceof TextDisplay display)) {
                 board.entityId = spawnDisplay(mainLoc);
@@ -991,9 +994,10 @@ public class CloudWalkManager {
         }
     }
 
-    private static Location mainLocation(LeaderBoard board) {
+    private static Location mainLocation(LeaderBoard board, int entries) {
+        // TextDisplay 的文字块以实体位置为垂直中心：把整块往上挪，让最后一行刚好落在「下一页」上方
         Location main = board.loc.clone();
-        main.add(0, MAIN_OFFSET_Y, 0);
+        main.add(0, (1 + entries) / 2.0 * LINE_HEIGHT + FOOTER_GAP, 0);
         return main;
     }
 
@@ -1086,8 +1090,10 @@ public class CloudWalkManager {
         StringBuilder sb = new StringBuilder(difficulty.color)
                 .append("&l—— 云中漫步 · ").append(difficulty.name).append("榜 ——\n");
         List<TopEntry> top = topEntries(difficulty.id);
-        for (int i = 0; i < settings.topSize; i++) {
-            if (i < top.size()) {
+        if (top.isEmpty()) {
+            sb.append("&8暂无记录");
+        } else {
+            for (int i = 0; i < top.size(); i++) {
                 TopEntry entry = top.get(i);
                 int rank = i + 1;
                 String color = switch (i) {
@@ -1097,14 +1103,17 @@ public class CloudWalkManager {
                 };
                 sb.append(color).append(rank).append("&7. &f").append(entry.name())
                         .append(" &7- ").append(difficulty.color).append(entry.score()).append("&7 分");
-            } else {
-                sb.append("&8—");
-            }
-            if (i < settings.topSize - 1) {
-                sb.append('\n');
+                if (i < top.size() - 1) {
+                    sb.append('\n');
+                }
             }
         }
         return Chat.color(sb.toString());
+    }
+
+    /** 榜单实际占的行数（空榜也占 1 行提示），用来算主榜高度。 */
+    private int layoutEntries(String difficultyId) {
+        return Math.max(1, topEntries(difficultyId).size());
     }
 
     // ---------- 榜单翻页（每名玩家私有一份，20 秒后恢复默认页） ----------
@@ -1151,18 +1160,20 @@ public class CloudWalkManager {
             }
         }
         CloudWalkSettings.Difficulty next = enabled.get((index + 1) % enabled.size());
+        Location pageLoc = mainLocation(board, layoutEntries(next.id));
 
         TextDisplay display = null;
         if (view != null) {
             Entity entity = Bukkit.getEntity(view.entityId);
             if (entity instanceof TextDisplay existing && existing.isValid()) {
                 display = existing;
+                display.teleport(pageLoc);
             } else {
                 removePageView(p.getUniqueId());
             }
         }
         if (display == null) {
-            display = createDisplay(mainLocation(board), false);
+            display = createDisplay(pageLoc, false);
             if (display == null) {
                 return;
             }
@@ -1177,7 +1188,7 @@ public class CloudWalkManager {
             }
         }
         display.text(difficultyText(next));
-        pageViews.put(p.getUniqueId(), new PageView(display.getUniqueId(), next.id,
+        pageViews.put(p.getUniqueId(), new PageView(display.getUniqueId(), next.id, board,
                 System.currentTimeMillis() + PAGE_VIEW_MILLIS));
     }
 
@@ -1191,15 +1202,10 @@ public class CloudWalkManager {
             entity.remove();
         }
         Player p = Bukkit.getPlayer(playerId);
-        if (p != null && p.isOnline()) {
-            for (LeaderBoard board : leaderboards) {
-                if (board.entityId == null) {
-                    continue;
-                }
-                Entity base = Bukkit.getEntity(board.entityId);
-                if (base != null) {
-                    p.showEntity(plugin, base);
-                }
+        if (p != null && p.isOnline() && view.board.entityId != null) {
+            Entity base = Bukkit.getEntity(view.board.entityId);
+            if (base != null) {
+                p.showEntity(plugin, base);
             }
         }
     }
@@ -1221,6 +1227,7 @@ public class CloudWalkManager {
             }
             CloudWalkSettings.Difficulty difficulty = settings.difficulty(view.difficultyId);
             if (difficulty != null) {
+                display.teleport(mainLocation(view.board, layoutEntries(difficulty.id)));
                 display.text(difficultyText(difficulty));
             }
         }
@@ -1496,11 +1503,13 @@ public class CloudWalkManager {
     private static final class PageView {
         final UUID entityId;
         final String difficultyId;
+        final LeaderBoard board;
         final long expiresAt;
 
-        PageView(UUID entityId, String difficultyId, long expiresAt) {
+        PageView(UUID entityId, String difficultyId, LeaderBoard board, long expiresAt) {
             this.entityId = entityId;
             this.difficultyId = difficultyId;
+            this.board = board;
             this.expiresAt = expiresAt;
         }
     }
