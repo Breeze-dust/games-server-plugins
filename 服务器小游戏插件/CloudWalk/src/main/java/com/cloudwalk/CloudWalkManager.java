@@ -389,8 +389,11 @@ public class CloudWalkManager {
         p.removePotionEffect(PotionEffectType.SLOW_FALLING);
         p.setFlying(false);
 
+        // 进入时视角正对第一块：用起点到第一块的方向，而不是玩家原来的朝向
+        Direction firstDirection = path.size() > 1 ? Direction.between(start, path.get(1)) : heading;
+        float viewYaw = firstDirection == null ? yaw : firstDirection.yaw();
         Location spawn = new Location(box.world(),
-                start.x() + 0.5, start.y() + 1.0, start.z() + 0.5, yaw, 0f);
+                start.x() + 0.5, start.y() + 1.0, start.z() + 0.5, viewYaw, 0f);
         if (!p.teleport(spawn)) {
             freeLane(lane);
             Chat.send(p, "&c传送到起点失败，请稍后再试。");

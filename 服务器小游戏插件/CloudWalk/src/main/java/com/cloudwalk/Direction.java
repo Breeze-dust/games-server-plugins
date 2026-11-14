@@ -35,6 +35,16 @@ public enum Direction {
         };
     }
 
+    /** 该方向对应的原版 yaw（0=南 90=西 180=北 270=东）。 */
+    public float yaw() {
+        return switch (this) {
+            case SOUTH -> 0f;
+            case WEST -> 90f;
+            case NORTH -> 180f;
+            case EAST -> 270f;
+        };
+    }
+
     /** 玩家水平朝向（yaw）→ 最近的四个方向。原版 yaw：0=南 90=西 180=北 270=东。 */
     public static Direction fromYaw(float yaw) {
         float normalized = ((yaw % 360f) + 360f) % 360f;
