@@ -1,7 +1,6 @@
 package com.hubnpc;
 
 import com.destroystokyo.paper.SkinParts;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -214,7 +213,8 @@ final class NpcManager {
         mannequin.setAI(false);
         mannequin.setImmovable(true);
         mannequin.setSkinParts(SkinParts.allParts());
-        mannequin.setDescription(Component.empty());
+        // 传 null 才会隐藏描述行；Component.empty() 仍然会渲染成一整行空白。
+        mannequin.setDescription(null);
         mannequin.customName(Text.parse(data.displayName));
         mannequin.setCustomNameVisible(true);
         mannequin.getPersistentDataContainer().set(keyId, PersistentDataType.STRING, data.id);

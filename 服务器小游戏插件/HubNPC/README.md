@@ -82,7 +82,7 @@ NPC 右键有 400ms 防连点冷却；只处理主手。
 - `setImmovable(true)`：**不会被其他实体/玩家推挤**（NBT `immovable:1b`）
 - `setGravity(false)`、`setSilent(true)`、`setInvulnerable(true)`、`setCollidable(false)`
 - `setPersistent(true)`、`setRemoveWhenFarAway(false)`：重进服务器还在
-- `setSkinParts(allParts)`、`setDescription(空)`、`setAI(false)`
+- `setSkinParts(allParts)`、`setDescription(null)`（隐藏名字下方的描述行）、`setAI(false)`
 - 名字组件 + 可见名牌；皮肤 profile 存在实体 NBT 和 `npcs.yml` 里，重启后不用重新联网拉取。
 
 ## 皮肤联动
