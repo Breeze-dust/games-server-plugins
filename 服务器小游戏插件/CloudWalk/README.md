@@ -33,6 +33,9 @@
   命中后 +1 分、删旧块、队尾补一块。不判断 Y 速度，所以落地后立刻起跳的连跳也能正常计分。
   XZ 出界判定留了 2 格余量，站在区域最边上的方块不会误判；服务端位置校正（TeleportCause.UNKNOWN）也不会被当成传送。
 - **进入视角**：传送进跑酷时，视角会自动对准「起点 → 第一块」的方向（精确到东南西北），俯仰角归 0。
+- **随机起点**：`start.random: true` 时每次加入都会在通道区域内随机挑一个 XZ 起点（`random-y: true` 连同高度一起随机），
+  自动跳过放不下初始路径的位置（最多尝试 40 次）；默认 `false`，仍使用 `/cloudwalk setstart` 的固定起点。
+  `random-y: false` 时，高度取 `setstart` 的高度加上通道抬高量。
 - **下一块标记**：不再用粒子，改为在下一个目标方块上套一个发光的 `BlockDisplay`（固定 1.01 倍贴合真实方块，
   不会跟随玩家视线）；玩家每跳一块，标记自动移到新的下一块。
 - **新方块粒子**：每生成一个新方块，方块周围会闪 3 波亮绿色 `HAPPY_VILLAGER` 粒子，约 0.65 秒后消失。
@@ -64,7 +67,8 @@
   - 管理（OP 或 `cloudwalk.admin`）：`pos1`、`pos2`（站到对角按）、`setstart`（站到起点按，取脚下那块）、
     `setlobby`、`info`、`reload`、`reset <在线玩家>`（清全部难度）、`top place` / `top remove`（全息榜）
 - **配置**：`server/plugins/CloudWalk/config.yml`（模板 `CloudWalk/src/main/resources/config.yml`）
-  - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`
+  - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`。
+    `start.random` / `start.random-y` 控制是否随机起点（不由命令写入，可手改）
   - `lane.axis|gap|height-step|max`：通道方向、间隔、每层抬高、最多同时人数
   - `path.distances|heights|queue-length|turn-chance|special-first-blocks|blocks`（前两项是简单/中等的基础距离和共用高度）
   - `difficulties.easy|medium|hard`：名字、颜色、是否开放、`allow4-jump-up`、`allow-4-far`、`distances`、对应头衔

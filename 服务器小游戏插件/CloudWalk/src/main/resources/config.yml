@@ -19,6 +19,8 @@ start:
   x: 0
   y: 0
   z: 0
+  random: false    # true = 每次加入在通道区域内随机挑起点（XZ 随机）
+  random-y: false  # 随机起点时是否连同高度一起随机
 
 # 回大厅位置（没装 HubCore 或主城没有配置时使用；/cloudwalk setlobby）
 lobby:

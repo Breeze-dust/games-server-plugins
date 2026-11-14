@@ -75,6 +75,10 @@ public final class CloudWalkSettings {
     public int startX;
     public int startY;
     public int startZ;
+    /** true = 每次加入时在通道区域内随机挑起点（忽略 setstart 的 XZ）。 */
+    public boolean randomStart = false;
+    /** 随机起点时是否连同高度一起随机。 */
+    public boolean randomStartY = false;
 
     public Location lobby;
 
@@ -117,6 +121,8 @@ public final class CloudWalkSettings {
             s.startX = start.getInt("x");
             s.startY = start.getInt("y");
             s.startZ = start.getInt("z");
+            s.randomStart = start.getBoolean("random", false);
+            s.randomStartY = start.getBoolean("random-y", false);
         }
 
         s.lobby = readLocation(cfg.getConfigurationSection("lobby"));

@@ -228,7 +228,73 @@ public class CloudWalkManager {
     // ---------- 管理命令用的设置 ----------
 
     public boolean isConfigured() {
-        return baseBox != null && baseStart != null && baseBox.contains(baseStart);
+        if (baseBox == null) {
+            return false;
+        }
+        return settings.randomStart || (baseStart != null && baseBox.contains(baseStart));
+    }
+
+    /** 从指定起点预生成整条初始路径；放不下时返回 null。 */
+    private List<BlockPos> buildInitialPath(BlockPos start, Direction heading,
+                                            PathGenerator generator, LaneBox box) {
+        List<BlockPos> path = new ArrayList<>();
+        path.add(start);
+        Direction cursor = heading;
+        int generated = 0;
+        for (int i = 0; i < settings.queueLength; i++) {
+            BlockPos tail = path.get(path.size() - 1);
+            boolean allowSpecial = generated >= settings.specialFirstBlocks && !isSpecialJump(path);
+            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box, allowSpecial);
+            if (next == null) {
+                return null;
+            }
+            cursor = Direction.between(tail, next);
+            if (cursor == null) {
+                cursor = heading;
+            }
+            path.add(next);
+            generated++;
+        }
+        return path;
+    }
+
+    /** 在通道盒里随机挑起点，直到能放下初始路径。 */
+    private List<BlockPos> randomInitialPath(LaneBox box, Direction heading,
+                                             PathGenerator generator, int lane) {
+        int minX = box.minX() + 1;
+        int maxX = box.maxX() - 1;
+        if (maxX < minX) {
+            minX = box.minX();
+            maxX = box.maxX();
+        }
+        int minZ = box.minZ() + 1;
+        int maxZ = box.maxZ() - 1;
+        if (maxZ < minZ) {
+            minZ = box.minZ();
+            maxZ = box.maxZ();
+        }
+        int minY = box.minY() + 1;
+        int maxY = box.maxY() - 1;
+        if (maxY < minY) {
+            minY = box.minY();
+            maxY = box.maxY();
+        }
+        int preferredY = baseStart != null
+                ? baseStart.y() + lane * settings.heightStep
+                : (box.minY() + box.maxY()) / 2;
+
+        for (int attempt = 0; attempt < 40; attempt++) {
+            int x = minX + random.nextInt(maxX - minX + 1);
+            int z = minZ + random.nextInt(maxZ - minZ + 1);
+            int y = settings.randomStartY
+                    ? minY + random.nextInt(maxY - minY + 1)
+                    : Math.max(box.minY(), Math.min(box.maxY(), preferredY));
+            List<BlockPos> path = buildInitialPath(new BlockPos(x, y, z), heading, generator, box);
+            if (path != null) {
+                return path;
+            }
+        }
+        return null;
     }
 
     public void setPos1(Player p) {
@@ -356,34 +422,32 @@ public class CloudWalkManager {
         }
 
         LaneBox box = laneBox(lane);
-        BlockPos start = translatedStart(lane);
-        if (!box.contains(start)) {
-            freeLane(lane);
-            Chat.send(p, "&c起点不在跑酷区域内，请联系管理员。");
-            return;
-        }
-
         float yaw = p.getLocation().getYaw();
         Direction heading = Direction.fromYaw(yaw);
-        List<BlockPos> path = new ArrayList<>();
-        path.add(start);
-        Direction cursor = heading;
-        int generated = 0;
-        for (int i = 0; i < settings.queueLength; i++) {
-            BlockPos tail = path.get(path.size() - 1);
-            boolean allowSpecial = generated >= settings.specialFirstBlocks && !isSpecialJump(path);
-            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box, allowSpecial);
-            if (next == null) {
+
+        List<BlockPos> path;
+        if (settings.randomStart) {
+            path = randomInitialPath(box, heading, generator, lane);
+        } else {
+            BlockPos fixedStart = translatedStart(lane);
+            if (fixedStart == null || !box.contains(fixedStart)) {
                 freeLane(lane);
-                Chat.send(p, "&c这块区域放不下起始路径，请检查区域大小。");
+                Chat.send(p, "&c起点不在跑酷区域内，请联系管理员。");
                 return;
             }
-            cursor = Direction.between(tail, next);
-            if (cursor == null) {
-                cursor = heading;
-            }
-            path.add(next);
-            generated++;
+            path = buildInitialPath(fixedStart, heading, generator, box);
+        }
+        if (path == null) {
+            freeLane(lane);
+            Chat.send(p, "&c这块区域放不下起始路径，请检查区域大小。");
+            return;
+        }
+        BlockPos start = path.get(0);
+        Direction cursor = path.size() > 1
+                ? Direction.between(path.get(path.size() - 2), path.get(path.size() - 1))
+                : heading;
+        if (cursor == null) {
+            cursor = heading;
         }
 
         if (p.isInsideVehicle()) {
@@ -422,7 +486,7 @@ public class CloudWalkManager {
         ParkourSession session = new ParkourSession(id, p.getName(), lane, box, difficulty);
         session.path.addAll(path);
         session.heading = cursor;
-        session.generated = generated;
+        session.generated = path.size() - 1;
         sessions.put(id, session);
         updateGlow(session, path.get(1));
 
