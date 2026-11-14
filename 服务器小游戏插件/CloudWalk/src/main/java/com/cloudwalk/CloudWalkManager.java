@@ -1050,7 +1050,7 @@ public class CloudWalkManager {
             if (board.loc.getWorld() == null || !board.loc.isChunkLoaded()) {
                 continue;
             }
-            CloudWalkSettings.Difficulty defaultDifficulty = settings.defaultDifficulty();
+            CloudWalkSettings.Difficulty defaultDifficulty = displayDifficulty();
             Location mainLoc = mainLocation(board, settings.topSize);
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
             if (!(entity instanceof TextDisplay display)) {
@@ -1071,7 +1071,7 @@ public class CloudWalkManager {
                 display.teleport(mainLoc);
                 display.setBillboard(Display.Billboard.FIXED);
                 display.setRotation(snapYaw(board.loc.getYaw() + 180f), 0f);
-                applyLeaderboardStyle(display, settings.defaultDifficulty());
+                applyLeaderboardStyle(display, defaultDifficulty);
             }
 
             Entity footer = board.footerId == null ? null : Bukkit.getEntity(board.footerId);
@@ -1134,8 +1134,22 @@ public class CloudWalkManager {
         display.setGravity(false);
         display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
                 new Vector3f(1.3f, 1.3f, 1.3f), new Quaternionf()));
-        applyLeaderboardStyle(display, settings.defaultDifficulty());
+        applyLeaderboardStyle(display, displayDifficulty());
         return display;
+    }
+
+    /** 主榜显示哪一页：默认难度有记录就用默认，否则用第一个有记录的难度。 */
+    private CloudWalkSettings.Difficulty displayDifficulty() {
+        CloudWalkSettings.Difficulty preferred = settings.defaultDifficulty();
+        if (!topEntries(preferred.id).isEmpty()) {
+            return preferred;
+        }
+        for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
+            if (difficulty.enabled && !topEntries(difficulty.id).isEmpty()) {
+                return difficulty;
+            }
+        }
+        return preferred;
     }
 
     /** 榜单底部的点击区：只覆盖「下一页 >>>」那一行。 */
@@ -1239,9 +1253,10 @@ public class CloudWalkManager {
     }
 
     private void nextPage(Player p, LeaderBoard board) {
+        // 只翻有记录的难度页，避免切到一整页都是「空位」的空页
         List<CloudWalkSettings.Difficulty> enabled = new ArrayList<>();
         for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
-            if (difficulty.enabled) {
+            if (difficulty.enabled && !topEntries(difficulty.id).isEmpty()) {
                 enabled.add(difficulty);
             }
         }
@@ -1250,8 +1265,8 @@ public class CloudWalkManager {
         }
 
         PageView view = pageViews.get(p.getUniqueId());
-        String current = view == null ? settings.defaultDifficulty().id : view.difficultyId;
-        int index = 0;
+        String current = view == null ? displayDifficulty().id : view.difficultyId;
+        int index = -1;
         for (int i = 0; i < enabled.size(); i++) {
             if (enabled.get(i).id.equals(current)) {
                 index = i;
@@ -1326,7 +1341,8 @@ public class CloudWalkManager {
                 continue;
             }
             CloudWalkSettings.Difficulty difficulty = settings.difficulty(view.difficultyId);
-            if (difficulty == null) {
+            if (difficulty == null || topEntries(difficulty.id).isEmpty()) {
+                // 这一页被清空或已无记录：撤掉私有页，回到主榜
                 removePageView(playerId);
                 continue;
             }
