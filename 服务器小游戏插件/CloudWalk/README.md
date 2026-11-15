@@ -85,6 +85,31 @@
   **升级到多难度时，旧版单一难度的 `best.<uuid>` 会自动搬到中等难度**；同分按 `bestAt` 升序（先达成者排前）。
 - **构建 / 交付**：`.\build.ps1 -Only CloudWalk`（自动带 MiniGameLib）；
   产物 `新服务器小游戏插件/CloudWalk.jar`，**不要**把 `config.yml` 打进交付包（里面有线上区域数据）。
+
+## 用 IDEA 打包
+
+**方式一（推荐，和仓库其他插件一致）**：在 IDEA 底部的 Terminal 里运行仓库脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Only CloudWalk
+```
+
+产物是 `.build/out/CloudWalk.jar`，复制到 `新服务器小游戏插件/` 即可。脚本会自动先编 MiniGameLib，classpath、Java release、资源都和仓库约定一致。
+
+**方式二（IDEA Maven）**：`CloudWalk/pom.xml` 依赖 `com.hub:minigame-lib:1.0.1`。这个依赖不是从网上拉的，
+需要先把当前编译好的公共库装进本地 Maven 仓库：
+
+```bash
+mvn install:install-file -Dfile=.build/out/MiniGameLib.jar -DgroupId=com.hub -DartifactId=minigame-lib -Dversion=1.0.1 -Dpackaging=jar
+```
+
+然后在 IDEA 里把 `CloudWalk/pom.xml` 作为 Maven 项目加载（右键 → Add as Maven Project），
+打开右侧 Maven 面板 → `CloudWalk` → `Lifecycle` → 双击 `package`，产物在 `CloudWalk/target/CloudWalk.jar`。
+Maven 产物会多出 `META-INF/maven/...` 元数据，不影响插件运行。换电脑或清空 `.m2` 后要重新执行一次 install-file。
+
+**方式三（IDEA Artifact）**：Project Structure → Artifacts → `+` → JAR → From modules with dependencies，
+选择 `cloudwalk` 模块、Main Class 留空，Build → Build Artifacts。注意把 Paper API 和 MiniGameLib 设为 provided，
+否则会把服务端依赖一起打进去；一般直接用方式一或二。
 - **常见坑**：
   - 区域 / 起点没设置时任何人 `/cloudwalk` 都会提示未配置；`/cloudwalk info` 先看一遍。
   - 区域必须是纯空气空间；如果里面本来有方块，跑酷结束只会清掉自己放的块，原有方块不动。
