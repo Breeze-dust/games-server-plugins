@@ -47,6 +47,7 @@ public class DuelPlugin extends JavaPlugin {
                         org.bukkit.entity.Player p = Bukkit.getPlayer(id);
                         if (p != null && p.isOnline()) {
                             p.getInventory().clear();
+                            p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
                             p.setGameMode(GameMode.SURVIVAL);
                             p.setHealth(20);
                             p.setFoodLevel(20);

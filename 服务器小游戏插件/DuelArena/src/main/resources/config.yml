@@ -1,6 +1,14 @@
 # ========== 单挑 PvP 场配置（运行时由 /duel 命令写入） ==========
 arenas: {}
 
+# 每个场的 effects 段由 /duel effect（或 kit 窗口右下角）写入，示例：
+# arenas:
+#   重锤:
+#     effects:
+#       minecraft:speed:
+#         duration: 0    # 秒；0 = 整局有效
+#         amplifier: 1   # 0=I 级，1=II 级，最多 4=V 级
+
 # 决斗场上限人数（单挑 = 2 人，达到上限无法再加入）
 max-players: 2
 

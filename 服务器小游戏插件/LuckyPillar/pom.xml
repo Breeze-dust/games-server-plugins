@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>LuckyPillar</name>
-    <description>幸运之柱小游戏：柱阵、缩圈、随机幸运物品、箭雨/苦力怕雨/TNT 雨</description>
+    <description>幸运之柱小游戏：柱阵、缩圈、随机幸运物品、箭雨/苦力怕雨、终局凋零</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

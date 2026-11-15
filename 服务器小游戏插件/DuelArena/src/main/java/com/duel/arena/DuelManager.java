@@ -2,8 +2,6 @@ package com.duel.arena;
 
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
-import com.hub.util.LiveSidebar;
-import com.hub.util.StartCountdown;
 import com.hub.util.SetupMode;
 import com.hub.util.WaitCountdown;
 import com.hub.api.GameState;
@@ -14,6 +12,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
@@ -28,6 +27,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
@@ -47,21 +47,31 @@ public class DuelManager {
     public static final int BTN_SAVE = 41;
     public static final int BTN_CLEAR = 42;
     public static final int BTN_CLOSE = 43;
+    public static final int BTN_EFFECTS = 53;
+    public static final String EFFECT_GUI_PREFIX = "配置药水效果 - ";
+    private static final int EFFECT_GUI_SIZE = 54;
+    private static final int EFFECT_SLOTS = 45; // 0~44 放效果图标，最后一行放按钮
+    private static final int EFFECT_PREV = 45;
+    private static final int EFFECT_CLEAR = 48;
+    private static final int EFFECT_INFO = 49;
+    private static final int EFFECT_BACK = 50;
+    private static final int EFFECT_CLOSE = 51;
+    private static final int EFFECT_NEXT = 53;
+    private static final int[] EFFECT_DURATIONS = {0, 30, 60, 120, 300, 600};
     private static final int INVINCIBLE_SECONDS = 3;
-    private static final int COUNTDOWN_SECONDS = 3;
     private static final String SETUP_TOOL_KEY = "duel-setup-tool";
     private static final String LEAVE_BED_KEY = "duel-leave-bed";
 
     private final SetupMode setup;   // OP 建场模式（背包备份/工具发放/还原由公共库 MiniGameLib 负责）
 
     private final DuelPlugin plugin;
-    private final LiveSidebar liveSidebar;
-    private int boardTick;
     private final NamespacedKey leaveBedKey; // 退出床标记（只有本插件发的床才当道具用，玩家自己的床照常能放）
     private final Map<String, DuelArena> arenas = new LinkedHashMap<>();
     private final Map<UUID, String> playerArena = new LinkedHashMap<>();
     private final Map<String, WaitCountdown> waits = new LinkedHashMap<>(); // 场名 -> 等待室自动开局倒计时
     private final Map<UUID, String> editingKit = new LinkedHashMap<>(); // 正在编辑 kit 的 OP
+    private final Map<UUID, String> editingEffects = new LinkedHashMap<>(); // 正在编辑开局药水效果的 OP
+    private final Map<UUID, Integer> effectPages = new LinkedHashMap<>(); // OP -> 药水效果 GUI 页码
     private final Map<String, List<Location>> signLocations = new LinkedHashMap<>(); // 场名 -> 场战绩告示牌
     private final Map<String, List<Location>> joinSigns = new LinkedHashMap<>();      // 场名 -> 加入告示牌
     private final List<Location> topSigns = new ArrayList<>();                        // 总胜场榜告示牌
@@ -74,23 +84,11 @@ public class DuelManager {
 
     public DuelManager(DuelPlugin plugin) {
         this.plugin = plugin;
-        this.liveSidebar = new LiveSidebar(plugin);
         this.setup = new SetupMode(plugin, SETUP_TOOL_KEY);
         this.leaveBedKey = new NamespacedKey(plugin, LEAVE_BED_KEY);
     }
 
-    /** 有没有玩家在场（等待室也算）—— /duel reload 的判定。 */
-    public boolean hasPlayers() {
-        return !playerArena.isEmpty();
-    }
-
-    /** reload：重读 config.yml 的数值项；场地 / 告示牌等结构仍以启动时载入的为准。 */
-    public void reload() {
-        plugin.reloadConfig();
-    }
-
     public void load() {
-        startCountdown();
         // 场配置
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("arenas");
         if (sec != null) {
@@ -249,6 +247,11 @@ public class DuelManager {
                 e.setValue(newName);
             }
         }
+        for (Map.Entry<UUID, String> e : editingEffects.entrySet()) {
+            if (e.getValue().equals(oldName)) {
+                e.setValue(newName);
+            }
+        }
         for (Map.Entry<UUID, PendingSign> e : pendingSign.entrySet()) {
             if (e.getValue().arena != null && e.getValue().arena.equals(oldName)) {
                 e.setValue(new PendingSign(e.getValue().type, newName));
@@ -305,7 +308,6 @@ public class DuelManager {
         HubAPI.setArena("决斗", a.getName(),
                 fighting ? GameState.PLAYING : GameState.WAITING, a.getQueue().size(),
                 fighting ? "对战中" : null);
-        HubAPI.setArenaSpectator("决斗", a.getName(), a.getLobbyPoint());
     }
 
     // ---------- 配置模式（道具快速配置；背包备份/工具发放/还原由 MiniGameLib 的 SetupMode 负责） ----------
@@ -364,6 +366,12 @@ public class DuelManager {
                         openKitEditor(p, a);
                     }
                 }
+                case "effect" -> {
+                    // 单挑专属：酿造台工具打开开局药水效果窗口
+                    if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+                        openEffectEditor(p, a);
+                    }
+                }
                 default -> {
                 }
             }
@@ -397,12 +405,14 @@ public class DuelManager {
                 SetupMode.Tool.right(Material.PAPER, "save",
                         "&6保存场", "&7右键=保存当前配置"),
                 SetupMode.Tool.right(Material.BARRIER, "exit",
-                        "&c退出配置模式", "&7右键=结束配置并恢复背包")
+                        "&c退出配置模式", "&7右键=结束配置并恢复背包"),
+                SetupMode.Tool.right(Material.BREWING_STAND, "effect",
+                        "&d药水效果", "&7右键=配置开局给双方的效果")
         ), setupHandler);
         Chat.send(p, "&a已进入 &e" + arenaName + "&a 的配置模式：");
         Chat.send(p, "&b木棍&7 左键=pos1 右键=pos2 圈范围");
         Chat.send(p, "&e金锄头&7 右键=出生点1 左键方块=出生点2（以你站位为准）");
-        Chat.send(p, "&a绿宝石&7 物品配置窗口  &6纸&7 保存  &c屏障&7 退出");
+        Chat.send(p, "&a绿宝石&7 物品配置窗口  &d酿造台&7 开局药水效果  &6纸&7 保存  &c屏障&7 退出");
         return true;
     }
 
@@ -526,7 +536,12 @@ public class DuelManager {
         com.hub.api.HubAPI.announceJoin(plugin.getName(), p.getName(), arenaName); // 全服公屏播报（带场名）
         HubAPI.setGame(id, "决斗");
         refreshJoinSigns();
-        updateWaitCountdown(a);
+        // 满人直接开战：不再走 WaitCountdown 的 3 秒「即将开始」倒数（开局仍有 3 秒无敌读秒；OP 在队列里仍由纸手动开）。
+        if (max <= 2 && a.getQueue().size() >= 2 && !hasOpQueued(a)) {
+            startFight(a);
+        } else {
+            updateWaitCountdown(a);
+        }
         reportArena(a);
         return true;
     }
@@ -575,8 +590,8 @@ public class DuelManager {
         org.bukkit.inventory.ItemStack bed = new org.bukkit.inventory.ItemStack(org.bukkit.Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {
-            meta.displayName(Chat.noItalic(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
-                    .deserialize("&c退出游戏 &7(右键)")));
+            meta.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize("&c退出游戏 &7(右键)"));
             meta.getPersistentDataContainer().set(leaveBedKey, PersistentDataType.BYTE, (byte) 1);
             bed.setItemMeta(meta);
         }
@@ -602,8 +617,8 @@ public class DuelManager {
         org.bukkit.inventory.ItemStack paper = new org.bukkit.inventory.ItemStack(org.bukkit.Material.PAPER);
         var meta = paper.getItemMeta();
         if (meta != null) {
-            meta.displayName(Chat.noItalic(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
-                    .deserialize("&a&l开始游戏 &7(右键)")));
+            meta.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
+                    .deserialize("&a&l开始游戏 &7(右键)"));
             paper.setItemMeta(meta);
         }
         p.getInventory().setItem(4, paper);
@@ -622,7 +637,18 @@ public class DuelManager {
         startFight(a);
     }
 
-    /** 该场的等待倒计时（每场一份；OP 暂停/人数不足取消/满人 3 秒/达标 30 秒的规则在公共库）。 */
+    /** 队列里是否有 OP（有则保留手动开始，不自动开战）。 */
+    private boolean hasOpQueued(DuelArena a) {
+        for (UUID id : a.getQueue()) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOp()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 该场的等待倒计时（每场一份；OP 暂停/人数不足取消/达标 30 秒的规则在公共库；满 2 人时由 join 直接开战，不走满人 3 秒，但开局 3 秒无敌读秒仍保留）。 */
     private WaitCountdown wait(DuelArena a) {
         return waits.computeIfAbsent(a.getName(), n -> new WaitCountdown(plugin, new WaitCountdown.Host() {
             @Override
@@ -643,13 +669,7 @@ public class DuelManager {
             @Override
             public boolean hasOpQueued() {
                 // 保留 OP 手动开始：OP 在队列中时暂停自动倒计时
-                for (UUID id : a.getQueue()) {
-                    Player p = Bukkit.getPlayer(id);
-                    if (p != null && p.isOp()) {
-                        return true;
-                    }
-                }
-                return false;
+                return DuelManager.this.hasOpQueued(a);
             }
 
             @Override
@@ -690,16 +710,7 @@ public class DuelManager {
         }
     }
 
-    /** 倒计时后开战。 */
-    private StartCountdown startCountdown;
-
-    private StartCountdown startCountdown() {
-        if (startCountdown == null) {
-            startCountdown = new StartCountdown(plugin);
-        }
-        return startCountdown;
-    }
-
+    /** 开战（满人直接开 / OP 用纸手动开；无开局读秒）。 */
     private void startFight(DuelArena a) {
         cancelWait(a);
         if (a.getQueue().size() < 2 || a.getState() == DuelArena.State.FIGHTING) {
@@ -707,15 +718,13 @@ public class DuelManager {
         }
         UUID f1 = a.getQueue().get(0);
         UUID f2 = a.getQueue().get(1);
-        if (startCountdown().begin(a.getName(), new ArrayList<>(a.getQueue()), () -> startFight(a))) {
-            return;
-        }
         a.getQueue().clear();
         a.setFighter1(f1);
         a.setFighter2(f2);
         a.setState(DuelArena.State.FIGHTING);
         a.setFightStartMs(System.currentTimeMillis());
         reportArena(a);
+        refreshJoinSigns(); // 满人直接开战时，加入牌要立刻从「等待」变「对战中」
         // 对战开始：tab 从 [等待中] 变为 [已加入]
         HubAPI.setPlaying(f1, "决斗");
         HubAPI.setPlaying(f2, "决斗");
@@ -734,7 +743,7 @@ public class DuelManager {
         // 战斗守护：兜底强制无敌期站在原地、出界拉回出生点
         startFightWatchdog(a);
 
-        // 屏幕中间 3/2/1 倒计时，结束后解除无敌
+        // 保留开局 3 秒无敌读秒：传送到出生点后玩家不能动，屏幕 3/2/1，结束后解除无敌
         cancelCountdown(a);
         BukkitTask countdown = Bukkit.getScheduler().runTaskTimer(plugin, new Runnable() {
             int left = INVINCIBLE_SECONDS;
@@ -776,7 +785,7 @@ public class DuelManager {
         }
     }
 
-    /** 备战：清背包、给 kit、传送出生点、回满状态。 */
+    /** 备战：清背包、给 kit、应用开局药水效果、传送出生点、回满状态。 */
     private void prepareFighter(DuelArena a, UUID id, Location spawn) {
         Player p = Bukkit.getPlayer(id);
         if (p == null || !p.isOnline()) {
@@ -787,6 +796,7 @@ public class DuelManager {
         if (!a.getKit().isEmpty()) {
             a.getKit().apply(p);
         }
+        a.applyEffects(p); // 场地配置的开局药水效果
         p.setGameMode(GameMode.SURVIVAL);
         p.setHealth(20);
         p.setFoodLevel(20);
@@ -812,28 +822,7 @@ public class DuelManager {
     }
 
     /** 结束对战：记录胜场、恢复双方、刷新告示牌。 */
-    private void updateLiveBoard(DuelArena a) {
-        if (++boardTick % 20 != 0) {
-            return;
-        }
-        List<UUID> players = new ArrayList<>();
-        List<LiveSidebar.Line> lines = new ArrayList<>();
-        for (UUID id : new UUID[]{a.getFighter1(), a.getFighter2()}) {
-            if (id == null) {
-                continue;
-            }
-            Player p = Bukkit.getPlayer(id);
-            if (p == null || !p.isOnline()) {
-                continue;
-            }
-            players.add(id);
-            lines.add(new LiveSidebar.Line("§e" + p.getName(), (int) Math.ceil(p.getHealth())));
-        }
-        liveSidebar.update("duel:" + a.getName(), "&c&l单挑 · 血量", players, lines);
-    }
-
     private void endFight(DuelArena a, UUID winnerId) {
-        liveSidebar.hide("duel:" + a.getName());
         UUID f1 = a.getFighter1();
         UUID f2 = a.getFighter2();
         Player w = winnerId == null ? null : Bukkit.getPlayer(winnerId);
@@ -844,8 +833,8 @@ public class DuelManager {
             addWin(a.getName(), winnerId);
             String loserName = winnerId.equals(f1) ? (l2 == null ? "?" : l2.getName())
                     : (l1 == null ? "?" : l1.getName());
-            // 只发给本场玩家（大厅/其他场看不到局内播报）
-            broadcastToArena(a, "&6[" + a.getName() + "] &e" + w.getName() + "&a 击败了 &e" + loserName + "&a！");
+            // 全服公告（原来只发给场内玩家），格式：[场地名] 胜者 击败了 败者！
+            Chat.broadcast("&6[" + a.getName() + "] &e" + w.getName() + "&a 击败了 &e" + loserName + "&a！");
             Chat.title(w, "&a胜利！", "&f你赢得了这场对决");
             if (l1 != null && l1.getUniqueId().equals(winnerId)) {
                 Chat.title(l2 == null ? w : l2, "&c失败", "&f再接再厉");
@@ -917,7 +906,7 @@ public class DuelManager {
         return null;
     }
 
-    /** 玩家是否处于无敌倒计时中（战斗开始后 3 秒内）。 */
+    /** 玩家是否处于开局无敌读秒中（战斗开始后 3 秒内）。 */
     public boolean invincible(UUID id) {
         String name = playerArena.get(id);
         if (name == null) {
@@ -936,7 +925,6 @@ public class DuelManager {
                 stopFightWatchdog(a);
                 return;
             }
-            updateLiveBoard(a);
             for (UUID id : new UUID[]{a.getFighter1(), a.getFighter2()}) {
                 if (id == null) {
                     continue;
@@ -1055,6 +1043,7 @@ public class DuelManager {
         if (name == null) {
             return;
         }
+        p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType())); // 别把开局效果带回主城/下次登录
         DuelArena a = arenas.get(name);
         if (a == null) {
             return;
@@ -1147,17 +1136,25 @@ public class DuelManager {
         inv.setItem(50, btn(Material.LIME_STAINED_GLASS_PANE, "&a此配置两位玩家共用", ""));
         inv.setItem(51, btn(Material.GRAY_STAINED_GLASS_PANE, "", ""));
         inv.setItem(52, btn(Material.GRAY_STAINED_GLASS_PANE, "", ""));
-        inv.setItem(53, btn(Material.GRAY_STAINED_GLASS_PANE, "", ""));
+        inv.setItem(BTN_EFFECTS, btn(Material.BREWING_STAND, "&d药水效果",
+                "&7点击配置开局给双方的效果",
+                "&7当前：" + effectSummary(a)));
         op.openInventory(inv);
         editingKit.put(op.getUniqueId(), a.getName());
     }
 
-    private ItemStack btn(Material m, String name, String lore) {
+    private ItemStack btn(Material m, String name, String... loreLines) {
         ItemStack it = new ItemStack(m);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
-            meta.displayName(Chat.noItalic(Chat.color(name)));
-            meta.lore(List.of(Chat.color(lore)));
+            meta.displayName(Chat.color(name));
+            if (loreLines.length > 0) {
+                List<Component> lore = new ArrayList<>();
+                for (String line : loreLines) {
+                    lore.add(Chat.color(line));
+                }
+                meta.lore(lore);
+            }
             it.setItemMeta(meta);
         }
         return it;
@@ -1165,6 +1162,16 @@ public class DuelManager {
 
     /** GUI 点击处理：按钮操作 / 记录物品。 */
     public void handleKitClick(Player p, Inventory inv, int slot) {
+        if (slot == BTN_EFFECTS) {
+            String name = editingKit.get(p.getUniqueId());
+            DuelArena a = name == null ? null : arenas.get(name);
+            if (a == null) {
+                Chat.send(p, "&c场不存在，请重新打开物品配置。");
+                return;
+            }
+            openEffectEditor(p, a);
+            return;
+        }
         if (slot > BTN_CLOSE) {
             return; // 装饰标签格
         }
@@ -1209,6 +1216,194 @@ public class DuelManager {
         saveAll(); // kit 修改立即落盘，防止重启丢失
         p.closeInventory();
         Chat.send(p, "&a已保存 &e" + a.getName() + "&a 的物品配置（" + (kit.isEmpty() ? "空配置" : "含装备/物品") + "）。");
+    }
+
+    // ---------- 开局药水效果 GUI ----------
+
+    /** 打开某个场的开局药水效果窗口（从物品配置右下角或 /duel effect 进入）。 */
+    public void openEffectEditor(Player op, DuelArena a) {
+        editingEffects.put(op.getUniqueId(), a.getName());
+        effectPages.put(op.getUniqueId(), 0);
+        Inventory inv = Bukkit.createInventory(null, EFFECT_GUI_SIZE, Chat.color(EFFECT_GUI_PREFIX + a.getName()));
+        renderEffectEditor(op, a, 0, inv);
+        op.openInventory(inv);
+    }
+
+    /** 玩家关闭效果窗口（ESC / 切换窗口）时清掉会话。 */
+    public void closeEffectEditor(Player p) {
+        editingEffects.remove(p.getUniqueId());
+        effectPages.remove(p.getUniqueId());
+    }
+
+    private void renderEffectEditor(Player p, DuelArena a, int page, Inventory inv) {
+        List<PotionEffectType> types = effectTypes();
+        int pages = Math.max(1, (types.size() + EFFECT_SLOTS - 1) / EFFECT_SLOTS);
+        page = Math.max(0, Math.min(page, pages - 1));
+        effectPages.put(p.getUniqueId(), page);
+
+        inv.clear();
+        int start = page * EFFECT_SLOTS;
+        for (int i = 0; i < EFFECT_SLOTS; i++) {
+            int index = start + i;
+            if (index >= types.size()) {
+                inv.setItem(i, btn(Material.GRAY_STAINED_GLASS_PANE, "&8", ""));
+                continue;
+            }
+            PotionEffectType type = types.get(index);
+            DuelArena.EffectSpec spec = a.getEffect(type);
+            boolean active = spec != null;
+            List<String> lore = new ArrayList<>();
+            lore.add("&7ID：&f" + type.getKey());
+            if (active) {
+                lore.add("&7等级：&e" + roman(spec.amplifier() + 1) + " &7(amplifier " + spec.amplifier() + ")");
+                lore.add("&7持续：&e" + durationText(spec.durationSeconds()));
+                lore.add("&7左键：&c移除");
+                lore.add("&7右键：&e提升等级（V 后回到 I）");
+                lore.add("&7Shift+右键：&e切换持续时间");
+            } else {
+                lore.add("&7左键：&a添加（默认 I 级 / 整局）");
+                lore.add("&7右键：&a添加并提升等级");
+            }
+            inv.setItem(i, btn(active ? Material.POTION : Material.GLASS_BOTTLE,
+                    (active ? "&a" : "&7") + effectDisplayName(type),
+                    lore.toArray(new String[0])));
+        }
+
+        // 最后一行按钮
+        inv.setItem(EFFECT_PREV, btn(Material.ARROW, "&e上一页", "&7第 " + (page + 1) + "/" + pages + " 页"));
+        inv.setItem(EFFECT_CLEAR, btn(Material.REDSTONE_BLOCK, "&c清空全部效果", "&7点击移除该场所有开局效果"));
+        inv.setItem(EFFECT_INFO, btn(Material.BOOK, "&6药水效果说明",
+                "&7开局时发给双方，持续到对局结束",
+                "&7持续时间 &e0 秒 &7= 整局有效",
+                "&7改完立即保存，无需再点保存"));
+        inv.setItem(EFFECT_BACK, btn(Material.EMERALD, "&a返回物品配置", "&7回到 Kit 编辑窗口"));
+        inv.setItem(EFFECT_CLOSE, btn(Material.BARRIER, "&7关闭", "&7效果已自动保存"));
+        inv.setItem(46, btn(Material.GRAY_STAINED_GLASS_PANE, "", ""));
+        inv.setItem(47, btn(Material.GRAY_STAINED_GLASS_PANE, "", ""));
+        inv.setItem(52, btn(Material.GRAY_STAINED_GLASS_PANE, "", ""));
+        inv.setItem(EFFECT_NEXT, btn(Material.ARROW, "&e下一页", "&7第 " + (page + 1) + "/" + pages + " 页"));
+    }
+
+    /** 效果窗口点击：图标增删/改等级/改时长，底部翻页与清空。 */
+    public void handleEffectClick(Player p, Inventory inv, int slot, boolean rightClick, boolean shiftClick) {
+        String name = editingEffects.get(p.getUniqueId());
+        DuelArena a = name == null ? null : arenas.get(name);
+        if (a == null) {
+            closeEffectEditor(p);
+            p.closeInventory();
+            return;
+        }
+        int page = effectPages.getOrDefault(p.getUniqueId(), 0);
+        if (slot >= 0 && slot < EFFECT_SLOTS) {
+            List<PotionEffectType> types = effectTypes();
+            int index = page * EFFECT_SLOTS + slot;
+            if (index >= 0 && index < types.size()) {
+                PotionEffectType type = types.get(index);
+                DuelArena.EffectSpec spec = a.getEffect(type);
+                if (!rightClick) {
+                    if (spec == null) {
+                        a.setEffect(type, 0, 0);
+                        Chat.actionBar(p, "&a已添加 &e" + effectDisplayName(type) + " &7(I / 整局)");
+                    } else {
+                        a.removeEffect(type);
+                        Chat.actionBar(p, "&c已移除 &e" + effectDisplayName(type));
+                    }
+                } else if (spec == null) {
+                    a.setEffect(type, 0, 1);
+                    Chat.actionBar(p, "&a已添加 &e" + effectDisplayName(type) + " &7(II / 整局)");
+                } else if (shiftClick) {
+                    int next = nextDuration(spec.durationSeconds());
+                    a.setEffect(type, next, spec.amplifier());
+                    Chat.actionBar(p, "&e" + effectDisplayName(type) + " &7持续：&f" + durationText(next));
+                } else {
+                    int nextAmp = (spec.amplifier() + 1) % 5;
+                    a.setEffect(type, spec.durationSeconds(), nextAmp);
+                    Chat.actionBar(p, "&e" + effectDisplayName(type) + " &7等级：&f" + roman(nextAmp + 1));
+                }
+                saveAll();
+                renderEffectEditor(p, a, page, inv);
+            }
+            return;
+        }
+        switch (slot) {
+            case EFFECT_PREV -> renderEffectEditor(p, a, page - 1, inv);
+            case EFFECT_NEXT -> renderEffectEditor(p, a, page + 1, inv);
+            case EFFECT_CLEAR -> {
+                a.clearEffects();
+                saveAll();
+                renderEffectEditor(p, a, page, inv);
+                Chat.actionBar(p, "&c已清空该场的开局药水效果。");
+            }
+            case EFFECT_BACK -> {
+                closeEffectEditor(p);
+                openKitEditor(p, a);
+            }
+            case EFFECT_CLOSE -> {
+                closeEffectEditor(p);
+                p.closeInventory();
+                Chat.send(p, "&7已关闭药水效果配置（已自动保存）。");
+            }
+            default -> {
+            }
+        }
+    }
+
+    /** 可选效果类型：排除瞬间效果（瞬间治疗/伤害没有持续形态，加到开局里没意义）。 */
+    private List<PotionEffectType> effectTypes() {
+        List<PotionEffectType> out = new ArrayList<>();
+        for (PotionEffectType type : Registry.EFFECT) {
+            if (type != null && !type.isInstant()) {
+                out.add(type);
+            }
+        }
+        out.sort(Comparator.comparing(t -> t.getKey().getKey()));
+        return out;
+    }
+
+    /** 效果中文/英文显示名（取注册键，避免依赖客户端语言）。 */
+    private String effectDisplayName(PotionEffectType type) {
+        String key = type.getKey().getKey().replace('_', ' ');
+        if (key.isEmpty()) {
+            return "?";
+        }
+        return Character.toUpperCase(key.charAt(0)) + key.substring(1);
+    }
+
+    private String roman(int level) {
+        return switch (level) {
+            case 1 -> "I";
+            case 2 -> "II";
+            case 3 -> "III";
+            case 4 -> "IV";
+            case 5 -> "V";
+            default -> String.valueOf(level);
+        };
+    }
+
+    private String durationText(int seconds) {
+        return seconds <= 0 ? "整局" : seconds + " 秒";
+    }
+
+    private int nextDuration(int current) {
+        for (int i = 0; i < EFFECT_DURATIONS.length; i++) {
+            if (EFFECT_DURATIONS[i] == current) {
+                return EFFECT_DURATIONS[(i + 1) % EFFECT_DURATIONS.length];
+            }
+        }
+        return EFFECT_DURATIONS[0];
+    }
+
+    /** 该场已配置效果的一行摘要（给窗口按钮 / /duel info 用）。 */
+    public String effectSummary(DuelArena a) {
+        if (a.getEffects().isEmpty()) {
+            return "无（不加效果）";
+        }
+        List<String> parts = new ArrayList<>();
+        for (DuelArena.EffectSpec e : a.getEffects()) {
+            parts.add(effectDisplayName(e.type()) + " " + roman(e.amplifier() + 1)
+                    + "/" + durationText(e.durationSeconds()));
+        }
+        return String.join("、", parts);
     }
 
     // ---------- 告示牌 ----------
@@ -1417,7 +1612,7 @@ public class DuelManager {
         for (UUID id : new ArrayList<>(a.getQueue())) {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
-                Chat.sendTitled(p, msg);
+                Chat.send(p, msg);
             }
         }
         for (UUID id : new UUID[]{a.getFighter1(), a.getFighter2()}) {
@@ -1426,7 +1621,7 @@ public class DuelManager {
             }
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
-                Chat.sendTitled(p, msg);
+                Chat.send(p, msg);
             }
         }
     }

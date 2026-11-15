@@ -19,6 +19,8 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import com.duel.arena.DuelArena;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -38,7 +40,7 @@ public class DuelListener implements Listener {
         this.plugin = plugin;
     }
 
-    /** 对战中玩家离开范围：拉回出生点；无敌倒计时内禁止移动（可转头）。 */
+    /** 对战中玩家离开范围：拉回出生点；开局无敌读秒内禁止移动（可转头）。 */
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
         Player p = event.getPlayer();
@@ -47,7 +49,7 @@ public class DuelListener implements Listener {
             return;
         }
         DuelManager m = plugin.getManager();
-        // 无敌倒计时内：禁止移动，强制拉回出生点
+        // 开局 3 秒无敌读秒内：禁止移动，强制拉回出生点
         if (m.invincible(p.getUniqueId())) {
             Location spawn = m.getFighterSpawn(p.getUniqueId());
             if (spawn != null) {
@@ -83,7 +85,7 @@ public class DuelListener implements Listener {
         }
         if (!a.contains(event.getTo())) {
             if (m.invincible(p.getUniqueId())) {
-                event.setCancelled(true); // 无敌倒计时内：保护，禁止传送离开
+                event.setCancelled(true); // 无敌读秒内：保护，禁止传送离开
             } else {
                 m.handleOutOfBounds(p, event.getTo());
             }
@@ -286,6 +288,15 @@ public class DuelListener implements Listener {
             return;
         }
         String title = PlainTextComponentSerializer.plainText().serialize(event.getView().title());
+        if (title.startsWith(DuelManager.EFFECT_GUI_PREFIX)) {
+            // 效果窗口只读：所有点击都吃掉，避免把图标拿走
+            event.setCancelled(true);
+            if (event.getClickedInventory() != null && event.getClickedInventory() == event.getView().getTopInventory()) {
+                plugin.getManager().handleEffectClick(p, event.getInventory(), event.getSlot(),
+                        event.isRightClick(), event.isShiftClick());
+            }
+            return;
+        }
         if (!title.startsWith("配置物品 - ")) {
             return;
         }
@@ -296,6 +307,27 @@ public class DuelListener implements Listener {
         if (slot >= DuelManager.BTN_SAVE) {
             event.setCancelled(true);
             plugin.getManager().handleKitClick(p, event.getInventory(), slot);
+        }
+    }
+
+    /** 效果窗口禁止拖物品进去（只读窗口）。 */
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        String title = PlainTextComponentSerializer.plainText().serialize(event.getView().title());
+        if (title.startsWith(DuelManager.EFFECT_GUI_PREFIX)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** 关闭效果窗口时清掉编辑会话（ESC 也生效）。 */
+    @EventHandler
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player p)) {
+            return;
+        }
+        String title = PlainTextComponentSerializer.plainText().serialize(event.getView().title());
+        if (title.startsWith(DuelManager.EFFECT_GUI_PREFIX)) {
+            plugin.getManager().closeEffectEditor(p);
         }
     }
 

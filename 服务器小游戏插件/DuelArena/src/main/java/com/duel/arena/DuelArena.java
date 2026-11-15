@@ -1,18 +1,45 @@
 package com.duel.arena;
 
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-/** 单个单挑场：范围（不允许离开）、两个出生点、共用物品配置、运行时对战状态。 */
+/** 单个单挑场：范围（不允许离开）、两个出生点、共用物品配置、开局药水效果、运行时对战状态。 */
 public class DuelArena {
 
     public enum State {
         WAITING,   // 等待玩家加入
         FIGHTING   // 对战中
+    }
+
+    /** 一条开局药水效果：durationSeconds = 0 表示整局有效。 */
+    public record EffectSpec(PotionEffectType type, int durationSeconds, int amplifier) {
+
+        /** 整局有效的真实时长（30 分钟，远长于任何一场单挑）。 */
+        private static final int WHOLE_FIGHT_TICKS = 20 * 60 * 30;
+
+        public int durationTicks() {
+            return durationSeconds <= 0 ? WHOLE_FIGHT_TICKS : durationSeconds * 20;
+        }
+
+        public EffectSpec withAmplifier(int value) {
+            return new EffectSpec(type, durationSeconds, value);
+        }
+
+        public EffectSpec withDurationSeconds(int value) {
+            return new EffectSpec(type, value, amplifier);
+        }
     }
 
     private String name;
@@ -22,6 +49,7 @@ public class DuelArena {
     private Location manualLobby;
     private Location spawn2;
     private Kit kit = new Kit();
+    private final Map<PotionEffectType, EffectSpec> effects = new LinkedHashMap<>();
 
     // 运行时状态（不持久化）
     private State state = State.WAITING;
@@ -81,6 +109,40 @@ public class DuelArena {
 
     public void setKit(Kit kit) {
         this.kit = kit;
+    }
+
+    // ---------- 开局药水效果 ----------
+
+    /** 已配置的开局药水效果（按配置顺序）。 */
+    public Collection<EffectSpec> getEffects() {
+        return effects.values();
+    }
+
+    public EffectSpec getEffect(PotionEffectType type) {
+        return effects.get(type);
+    }
+
+    public boolean hasEffect(PotionEffectType type) {
+        return effects.containsKey(type);
+    }
+
+    public void setEffect(PotionEffectType type, int durationSeconds, int amplifier) {
+        effects.put(type, new EffectSpec(type, Math.max(0, durationSeconds), Math.max(0, amplifier)));
+    }
+
+    public void removeEffect(PotionEffectType type) {
+        effects.remove(type);
+    }
+
+    public void clearEffects() {
+        effects.clear();
+    }
+
+    /** 开局发给玩家（调用前应已清空旧效果）。 */
+    public void applyEffects(Player p) {
+        for (EffectSpec e : effects.values()) {
+            p.addPotionEffect(new PotionEffect(e.type(), e.durationTicks(), e.amplifier(), false, true, true));
+        }
     }
 
     /** 配置是否齐全（范围 + 两个出生点）。 */
@@ -187,6 +249,16 @@ public class DuelArena {
         sec.set("manual-lobby", manualLobby);
         sec.set("spawn2", spawn2);
         kit.save(sec.createSection("kit"));
+        if (effects.isEmpty()) {
+            sec.set("effects", null);
+        } else {
+            ConfigurationSection eff = sec.createSection("effects");
+            for (EffectSpec e : effects.values()) {
+                ConfigurationSection s = eff.createSection(e.type().getKey().toString());
+                s.set("duration", e.durationSeconds());
+                s.set("amplifier", e.amplifier());
+            }
+        }
     }
 
     /** 从配置段读取。 */
@@ -198,6 +270,34 @@ public class DuelArena {
         a.manualLobby = (Location) sec.get("manual-lobby");
         a.spawn2 = (Location) sec.get("spawn2");
         a.kit = Kit.load(sec.getConfigurationSection("kit"));
+        ConfigurationSection eff = sec.getConfigurationSection("effects");
+        if (eff != null) {
+            for (String key : eff.getKeys(false)) {
+                PotionEffectType type = effectType(key);
+                if (type == null) {
+                    continue;
+                }
+                ConfigurationSection s = eff.getConfigurationSection(key);
+                int duration = s == null ? 0 : Math.max(0, s.getInt("duration", 0));
+                int amplifier = s == null ? 0 : Math.max(0, s.getInt("amplifier", 0));
+                a.effects.put(type, new EffectSpec(type, duration, amplifier));
+            }
+        }
         return a;
+    }
+
+    /** 配置里的效果键 → PotionEffectType（兼容带/不带 minecraft: 前缀）。 */
+    private static PotionEffectType effectType(String key) {
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        try {
+            NamespacedKey nk = key.contains(":")
+                    ? NamespacedKey.fromString(key)
+                    : NamespacedKey.minecraft(key);
+            return nk == null ? null : Registry.EFFECT.get(nk);
+        } catch (IllegalArgumentException ex) {
+            return null; // 配置里写了非法效果 ID：跳过，别让整个场加载失败
+        }
     }
 }

@@ -2,15 +2,16 @@
 
 > 速查卡（AI 先读这里，别先读源码）
 
-- **一句话职责**：单挑 PvP 小游戏：每个场固定 2 人排队配对，凑满自动倒计时开局，两名玩家共用一套 OP 配的 Kit，胜场写进玩家记录并渲染到场战绩牌／加入牌／总胜场榜告示牌。
+- **一句话职责**：单挑 PvP 小游戏：每个场固定 2 人排队配对，凑满立即开局，两名玩家共用一套 OP 配的 Kit 和该场的开局药水效果，胜场写进玩家记录并渲染到场战绩牌／加入牌／总胜场榜告示牌。
   - 加入提示：对局内播「`玩家名` 加入了决斗场（N/2）」（`DuelManager#join`），**全服公屏**播「`[单挑 PvP][场名] 玩家名 加入了游戏`」——场名靠 `HubAPI.announceJoin(plugin.getName(), name, arenaName)` 三参数版带出来（没场名的游戏用两参数版）。
     - 公屏那行的游戏名/颜色取自 **HubCore 的 `config.yml` `games` 段**（`name: 单挑 PvP`、`alias: 决斗`、`color: c`），不是插件名；改中文名/颜色改那份配置即可。`plugin.yml` 里的 `minigame: {name: 单挑 PvP}` 段负责建"插件名 `DuelArena` → 显示名"的映射（`HubCore/GameRegistry`）；**少了这个段，传 `plugin.getName()` 的播报会兜底成 `[DuelArena]`**（jar 文件名 = 插件名，别改）。
-- **入口 / 主流程**：`DuelArena/src/main/java/com/duel/arena/DuelPlugin.java#onEnable` → `DuelManager#load`（读 config 的 arenas/signs/joinsigns/topsigns + 战绩）；玩家 `/duel join` → `DuelManager#join` → 公共库 `WaitCountdown`（该场 2 人起自动开局；**OP 在队列里时自动倒计时暂停**，OP 用开局纸手动开）→ `DuelManager#startFight`（3 秒无敌读秒）→ `handleDeath` → `endFight` 结算（`addWin` 立即写盘、双方自动离场、刷告示牌）；关服 `DuelPlugin#onDisable` → `saveAll()` 回写 config.yml。
+- **入口 / 主流程**：`DuelArena/src/main/java/com/duel/arena/DuelPlugin.java#onEnable` → `DuelManager#load`（读 config 的 arenas/signs/joinsigns/topsigns + 战绩）；玩家 `/duel join` → `DuelManager#join` → 满 2 人直接 `DuelManager#startFight`（不再等「3s 后自动开始」，但**保留开局 3 秒无敌读秒**；OP 在队列里时仍用开局纸手动开）→ `handleDeath` → `endFight` 结算（`addWin` 立即写盘、双方自动离场、刷告示牌）；关服 `DuelPlugin#onDisable` → `saveAll()` 回写 config.yml。
 - **命令**：`/duel …`（别名 `/pvp`、`/1v1`；命令级权限 `duel.use`（默认所有人），管理子命令要 OP 或权限节点 `duel.admin`）
   - 玩家：`join <场名>`、`leave`、`list`、`stats [玩家]`、`help`；`stats reset` 要 OP 或 `duel.admin`（清空全部战绩）
-  - 管理：`create <场名>`、`edit <场名>`、`setup <场名>`（发配置道具：木棍圈范围、金锄头定出生点、绿宝石配物品、纸保存、屏障退出）、`setup-exit`、`pos1`/`pos2`/`spawn1`/`spawn2`/`lobby`、`kit`、`save`、`remove <场名>`、`rename <旧场名> <新场名>`、`info <场名>`、`sign <场名>`、`joinsign <场名>`、`topsign`
+  - 管理：`create <场名>`、`edit <场名>`、`setup <场名>`（发配置道具：木棍圈范围、金锄头定出生点、绿宝石配物品、酿造台配药水效果、纸保存、屏障退出）、`setup-exit`、`pos1`/`pos2`/`spawn1`/`spawn2`/`lobby`、`kit`、`effect`（开局药水效果，也可从 `setup` 的酿造台或 `kit` 窗口右下角进入）、`save`、`remove <场名>`、`rename <旧场名> <新场名>`、`info <场名>`、`sign <场名>`、`joinsign <场名>`、`topsign`
 - **配置**：`server/plugins/DuelArena/config.yml`（源码里的 `DuelArena/src/main/resources/config.yml` 只是模板）
   - `arenas.<场名>.pos1/pos2/spawn1/spawn2/manual-lobby/kit`：场范围、两个出生点、等待点（可省，默认范围中心上方）、两人共用的 Kit（ItemStack 序列化）
+  - `arenas.<场名>.effects.<效果ID>`：开局发给双方的药水效果，`duration`（秒，0=整局）与 `amplifier`（0=I，1=II…）；由 `/duel effect` 或 `kit` 窗口右下角的「药水效果」按钮写入
   - `signs.<世界,方块X,Y,Z> = <场名>`（场战绩牌）、`joinsigns.<…> = <场名>`（加入牌）、`topsigns.<…> = true`（总胜场榜）
   - `max-players`：模板里是 2；线上 config.yml 没有这个键 → 走代码默认 2
   - 场地算"已配置"的条件是 `DuelArena#isReady()`：pos1+pos2+spawn1+spawn2 都不为空
@@ -48,7 +49,7 @@
   1. `D:\BuildBattle\build.bat -Deploy` 后重启：控制台应出现 `DuelArena 已启用` 与 `已加载 N 个决斗场`（当前应为 2）。
   2. 游戏内 `/duel list`：应列出 `重锤 [WAITING] 已配置 (等待 0/2)`、`相扑 …`；缺 pos/出生点的场会显示 `未配置`。
   3. `/duel stats`：打印自己的总胜场与分场胜场（迁移前 `data.yml` 里有 test1/重锤/相扑 三场旧数据）。
-  4. 两人 `/duel join 重锤`（或右键加入牌）：满 2 人后自动倒计时开局；开局 3 秒无敌（屏幕 3/2/1，此时移动会被拉回出生点），之后能互相造成伤害；用 Kit 自带的副手风弹炸地面应能把人推飞。
+  4. 两人 `/duel join 重锤`（或右键加入牌）：第 2 人加入的瞬间直接开局，不再有「3s 后自动开始」；开局仍有 3 秒无敌（屏幕 3/2/1，此时移动会被拉回出生点），结束后即可移动、互相造成伤害；用 Kit 自带的副手风弹炸地面应能把人推飞。先在 `/duel effect` 里加一条效果（如 Speed II），开局后双方应带该效果。
   5. 一方死亡／出界／退出后：`/duel stats <胜者>` 总胜场 +1，场战绩牌与总榜牌刷新；`/duel stats reset` 后告示牌显示"暂无战绩"。
   6. 关服后确认 `server/plugins/DuelArena/config.yml` 已写回 arenas/signs/joinsigns/topsigns，且 `server/plugins/MiniGameLib/players.yml` 出现 `games.duel.wins`（首次迁移会打日志 `已迁移 data.yml -> players.yml [duel]`）。
 - **未确认 / TODO**：

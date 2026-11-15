@@ -2,14 +2,17 @@ package com.luckypillar;
 
 import com.hub.util.Chat;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /** /lp 命令（别名 /lpz、/lucky）。 */
@@ -214,8 +217,68 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
                 Chat.send(sender, "&a配置已重新载入：物品类别权重 &e"
                         + LuckyPillarLoot.weightSummary() + "&a，附魔率 &e"
                         + Math.round(LuckyPillarLoot.enchantChance() * 100) + "%&a，附魔上限 &e"
-                        + LuckyPillarLoot.enchantMaxLevel() + "&a 级。");
+                        + LuckyPillarLoot.enchantMaxLevel() + "&a 级，已禁用 &e"
+                        + LuckyPillarLoot.bannedMaterials().size() + "&a 种物品。");
                 Chat.send(sender, "&7数值项即时生效（下一件掉落就按新权重）；场地改动仍需重启。");
+                return true;
+            }
+            case "ban", "banitem" -> {
+                if (!admin) { noPerm(sender); return true; }
+                Material target = resolveTarget(sender, args, "ban");
+                if (target == null) {
+                    return true;
+                }
+                if (m.banItem(target)) {
+                    Chat.send(sender, "&a已禁用 &e" + target.name()
+                            + "&a：以后不会再抽到，已写入 config.yml（物品池剩 &e"
+                            + LuckyPillarLoot.poolSize() + "&a 件）。");
+                } else {
+                    Chat.send(sender, "&e" + target.name() + "&c 已经在黑名单里了。");
+                }
+                int purged = m.purgeBannedFromMatches(target);
+                if (purged > 0) {
+                    Chat.send(sender, "&7并从在场玩家的背包里清掉 &e" + purged + "&7 个。");
+                }
+                return true;
+            }
+            case "unban", "unbanitem" -> {
+                if (!admin) { noPerm(sender); return true; }
+                Material target = resolveTarget(sender, args, "unban");
+                if (target == null) {
+                    return true;
+                }
+                if (m.unbanItem(target)) {
+                    Chat.send(sender, "&a已解除禁用 &e" + target.name()
+                            + "&a：它会重新回到随机池（config.yml 已更新）。");
+                } else {
+                    Chat.send(sender, "&e" + target.name() + "&c 不在黑名单里。");
+                }
+                return true;
+            }
+            case "banlist" -> {
+                if (!admin) { noPerm(sender); return true; }
+                List<Material> banned = m.bannedItems();
+                if (banned.isEmpty()) {
+                    Chat.send(sender, "&7黑名单是空的。OP 可以 &e/lp ban&7 禁用手上的物品。");
+                    return true;
+                }
+                Chat.send(sender, "&5已禁用 &e" + banned.size() + "&5 种物品：");
+                StringBuilder line = new StringBuilder("&f");
+                for (Material material : banned) {
+                    String name = material.name();
+                    if (line.length() + name.length() + 4 > 64) {
+                        Chat.send(sender, line.toString());
+                        line = new StringBuilder("&f");
+                    }
+                    if (line.length() > 2) {
+                        line.append("&7, &f");
+                    }
+                    line.append(name);
+                }
+                if (line.length() > 2) {
+                    Chat.send(sender, line.toString());
+                }
+                Chat.send(sender, "&7解除：&e/lp unban&7（手上物品）或 &e/lp unban <材料名>&7；名单在 config.yml 的 &eloot-banned-items&7。");
                 return true;
             }
             case "help" -> help(sender);
@@ -235,8 +298,35 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/lp center&f / &e/lp lobby&f 用当前位置设点  &e/lp save&f 保存  &e/lp preview&f 预览柱阵");
             Chat.send(sender, "&e/lp start&f 开局（≥min-players 人）  &e/lp stop&f 强制结束  &e/lp stats reset&f 清空冠军记录");
             Chat.send(sender, "&e/lp reload&f 重载配置（loot-weight-* 等数值项即时生效，场内有人也可用）");
+            Chat.send(sender, "&e/lp ban [材料]&f 禁用手上物品（写入 config，以后不会再抽到）");
+            Chat.send(sender, "&e/lp unban [材料]&f 解除禁用  &e/lp banlist&f 查看黑名单");
         }
         Chat.send(sender, "&7游戏里每一步都有动作栏提示；场地只要两个点，柱阵按人数自动生成。");
+    }
+
+    /**
+     * /lp ban、/lp unban 的目标：带参数就按材料名解析（控制台也能用），
+     * 不带参数就取执行者主手上的物品。
+     */
+    private Material resolveTarget(CommandSender sender, String[] args, String command) {
+        if (args.length >= 2) {
+            Material material = Material.matchMaterial(args[1]);
+            if (material == null || material.isAir() || !material.isItem()) {
+                Chat.send(sender, "&c未知物品：&e" + args[1] + "&c（写英文材料名，如 TRIDENT / MACE / FISHING_ROD）");
+                return null;
+            }
+            return material;
+        }
+        if (!(sender instanceof Player p)) {
+            Chat.send(sender, "&c控制台请写：&e/lp " + command + " <材料名>");
+            return null;
+        }
+        ItemStack hand = p.getInventory().getItemInMainHand();
+        if (hand == null || hand.getType().isAir()) {
+            Chat.send(sender, "&c你主手上没有物品；也可以写 &e/lp " + command + " <材料名>。");
+            return null;
+        }
+        return hand.getType();
     }
 
     private void noPerm(CommandSender sender) {
@@ -251,7 +341,8 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
             List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "stats", "help"));
             if (admin) {
                 subs.addAll(List.of("create", "remove", "rename", "setup", "setup-exit",
-                        "center", "lobby", "save", "preview", "start", "stop", "reload"));
+                        "center", "lobby", "save", "preview", "start", "stop", "reload",
+                        "ban", "unban", "banlist"));
             }
             subs.stream().filter(s -> s.startsWith(args[0].toLowerCase())).forEach(out::add);
         } else if (args.length == 2) {
@@ -267,6 +358,19 @@ public class LuckyPillarCommand implements CommandExecutor, TabCompleter {
                         .map(Player::getName)
                         .filter(n -> n.toLowerCase().startsWith(args[1].toLowerCase()))
                         .collect(Collectors.toList()));
+            } else if (sub.equals("ban") || sub.equals("banitem") || sub.equals("unban") || sub.equals("unbanitem")) {
+                boolean banning = sub.equals("ban") || sub.equals("banitem");
+                String prefix = args[1].toLowerCase(Locale.ROOT);
+                for (Material material : Material.values()) {
+                    if (material == null || material.isLegacy() || !material.isItem()
+                            || LuckyPillarLoot.isBanned(material) == banning) {
+                        continue; // ban 只补未禁用的；unban 只补已禁用的
+                    }
+                    String name = material.name();
+                    if (name.toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                        out.add(name);
+                    }
+                }
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("rename")) {
             out.addAll(plugin.getManager().getArenas().keySet().stream()

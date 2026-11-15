@@ -3,7 +3,6 @@ package com.luckypillar;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -19,7 +18,6 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -30,11 +28,12 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 /**
- * 事件监听：死亡/掉线淘汰、圈外与虚空兜底、苦力怕爆炸只伤人不破方块、PvP 开关、
+ * 事件监听：死亡/掉线淘汰、圈外与虚空兜底、苦力怕摔落免伤、PvP 开关、
  * 圈外方块判定（玩家放的方块/流体）、配置模式道具、等待室退出道具。
  * <p>
- * <b>爆炸拦截铁律</b>（AGENTS.md §5-5）：{@code HIGHEST} 拦截必须先判「本世界 + 本场对局」，
- * 否则会吃掉别的小游戏（例如单挑的风弹）的爆炸。
+ * <b>爆炸不再由本插件拦截</b>：苦力怕和终局凋零都要能拆方块（2026-11-14 需求），
+ * 因此 {@code LuckyPillarListener} 里没有 {@code EntityExplodeEvent} 处理器；
+ * 爆炸范围以外的游戏由它们自己的世界判定保护。
  */
 public class LuckyPillarListener implements Listener {
 
@@ -83,24 +82,7 @@ public class LuckyPillarListener implements Listener {
         plugin.getManager().handleJoin(event.getPlayer());
     }
 
-    /**
-     * 苦力怕爆炸：清空方块列表（只伤人不破方块，设计稿 §4、§0-5）。
-     * TNT 雨要炸方块，这里不拦；但仍先判世界，绝不碰别的小游戏。
-     */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onExplode(EntityExplodeEvent event) {
-        if (!(event.getEntity() instanceof Creeper)) {
-            return;
-        }
-        LuckyPillarArena a = plugin.getManager().runningArenaIn(event.getLocation().getWorld());
-        if (a == null) {
-            return; // 不是本世界 / 不是本场对局：原样放行
-        }
-        event.blockList().clear();
-        event.setYield(0f);
-    }
-
-    /** 苦力怕雨从 30 格落下：取消它们自己的摔落伤害，否则落地就摔死炸不出来。 */
+    /** 苦力怕雨从高空落下：取消它们自己的摔落伤害，否则落地就摔死炸不出来。 */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onFallDamage(EntityDamageEvent event) {
         if (event.getCause() != EntityDamageEvent.DamageCause.FALL) {

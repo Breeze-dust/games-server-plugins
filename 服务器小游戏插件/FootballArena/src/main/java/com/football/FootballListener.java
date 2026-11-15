@@ -13,6 +13,9 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -34,7 +37,10 @@ public class FootballListener implements Listener {
         this.plugin = plugin;
     }
 
-    /** 左键挥动 = 踢球（击球 / 挑高靴 / 开球靴，必须拿在主手）。 */
+    /**
+     * 左键挥动 = 踢球。对局中任何物品（含空手）都按"击球"效果踢，不再需要专门的球鞋；
+     * 只有开球阶段拿开球靴才走开球流程（力度由靴子档位决定）。
+     */
     @EventHandler
     public void onSwing(PlayerAnimationEvent event) {
         if (event.getAnimationType() != PlayerAnimationType.ARM_SWING) {
@@ -42,15 +48,8 @@ public class FootballListener implements Listener {
         }
         Player p = event.getPlayer();
         FootballItems.Tag tag = plugin.getManager().items().tag(p.getInventory().getItemInMainHand());
-        if (tag == null) {
-            return;
-        }
-        switch (tag.kind()) {
-            case KICK_FORWARD, KICK_VERTICAL, KICKOFF ->
-                    plugin.getManager().handleKick(p, tag.kind(), tag.power());
-            default -> {
-            }
-        }
+        int kickoffPower = tag != null && tag.kind() == FootballItems.Kind.KICKOFF ? tag.power() : 0;
+        plugin.getManager().handleKick(p, kickoffPower);
     }
 
     /** 右键道具：冲刺 / 高跳 / 选队 / 退出 / OP 开始纸。 */
@@ -110,9 +109,43 @@ public class FootballListener implements Listener {
     /** 带标记的功能道具不能丢弃（防止背包里没有退出床/队旗后卡住）。 */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onDrop(PlayerDropItemEvent event) {
-        if (plugin.getManager().items().tag(event.getItemDrop().getItemStack()) != null) {
+        FootballItems.Tag tag = plugin.getManager().items().tag(event.getItemDrop().getItemStack());
+        if (tag != null) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage("§c足球道具不能丢弃！");
+            event.getPlayer().sendMessage(tag.kind() == FootballItems.Kind.JERSEY
+                    ? "§c队服不能丢弃！" : "§c足球道具不能丢弃！");
+        }
+    }
+
+    /**
+     * 最后一格的「队服」是锁死的展示道具：右键、Shift 点、拖拽、数字键/副手交换都不能把它穿上或挪走。
+     * 只认 PDC 标记（{@link FootballItems#isJerseyItem}），身上那件没标记的队服不受影响。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onJerseyClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player p)) {
+            return;
+        }
+        FootballItems items = plugin.getManager().items();
+        boolean locked = items.isJerseyItem(event.getCurrentItem()) || items.isJerseyItem(event.getCursor());
+        if (!locked && event.getHotbarButton() >= 0) {
+            locked = items.isJerseyItem(p.getInventory().getItem(event.getHotbarButton()));
+        }
+        if (!locked && event.getClick() == ClickType.SWAP_OFFHAND) {
+            locked = items.isJerseyItem(p.getInventory().getItemInOffHand());
+        }
+        if (locked) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** 拖拽同理：拿着队服拖不动，也不能把它拖进胸甲位。 */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onJerseyDrag(InventoryDragEvent event) {
+        FootballItems items = plugin.getManager().items();
+        if (items.isJerseyItem(event.getOldCursor())
+                || event.getNewItems().values().stream().anyMatch(items::isJerseyItem)) {
+            event.setCancelled(true);
         }
     }
 

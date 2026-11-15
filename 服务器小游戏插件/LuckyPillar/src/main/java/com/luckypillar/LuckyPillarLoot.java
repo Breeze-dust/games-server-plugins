@@ -4,12 +4,15 @@ import org.bukkit.Material;
 import org.bukkit.Registry;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.potion.PotionType;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -21,12 +24,13 @@ import java.util.Set;
 /**
  * 「任意物品」随机池（纯静态，无状态）。
  * <p>
- * 设计稿 §5：没有硬性权重表，每次随机给 1 件物品；排除「崩服/作弊」「过强」「刷怪蛋」三类，
+ * 设计稿 §5：每次随机给 1 件物品；排除「崩服/作弊」「过强」物品，
  * 另外对「纯材料 / 装饰」和「能放置但踩不住的方块（旗帜、火把…）」降权（正常 4 : 低价值 1）。
  * 水桶、岩浆桶明确保留（可以用来杀人或自杀，属于玩法）。
  * <p>
- * 现在物品按 <b>武器 / 工具 / 装备 / 方块 / 其他</b> 五类分配概率：
+ * 现在物品按 <b>武器 / 工具 / 装备 / 方块 / 食物 / 生物蛋 / 其他</b> 七类分配概率：
  * 先按 config 里的类别权重抽一个类别，再在该类别里按「正常 4 : 低价值 1」抽具体物品。
+ * 生物蛋里排除了凋零 / 末影龙 / 监守者（会直接拆服或秒人）。
  * 武器/工具/装备抽中后仍按 {@code loot-enchant-chance} 追加低等级附魔。
  * <p>
  * 要调池子只改本文件顶部三张常量表 + {@link #buildPool()} 的过滤条件，不用碰 Manager。
@@ -39,6 +43,8 @@ public final class LuckyPillarLoot {
         TOOL("工具"),
         ARMOR("装备"),
         BLOCK("方块"),
+        FOOD("食物"),
+        SPAWN_EGG("生物蛋"),
         OTHER("其他");
 
         public final String label;
@@ -73,7 +79,11 @@ public final class LuckyPillarLoot {
             Material.TOTEM_OF_UNDYING,
             Material.ENCHANTED_GOLDEN_APPLE,
             Material.END_CRYSTAL,
-            Material.RESPAWN_ANCHOR);
+            Material.RESPAWN_ANCHOR,
+            // 生物蛋：这三个会直接把对局打成灾难，单独排除；其余蛋按 SPAWN_EGG 类别抽
+            Material.WITHER_SPAWN_EGG,
+            Material.ENDER_DRAGON_SPAWN_EGG,
+            Material.WARDEN_SPAWN_EGG);
 
     /** 药水随机效果池：抽到 POTION 时从这里随机一种（设计稿 §11-4，增删只改这里）。 */
     private static final List<PotionType> POTION_POOL = List.of(
@@ -108,6 +118,12 @@ public final class LuckyPillarLoot {
     /** 权重：正常物品 4，低价值物品 1（见 {@link #isLowValue(Material)}）。 */
     private static final int WEIGHT_NORMAL = 4;
     private static final int WEIGHT_LOW = 1;
+
+    /** 一次性物品：三叉戟 / 重锤 / 钓鱼竿，耐久上限改成 1（用一次就碎）。 */
+    private static final Set<Material> ONE_USE = EnumSet.of(
+            Material.TRIDENT, Material.MACE, Material.FISHING_ROD);
+    /** 一次性物品的最大耐久。 */
+    private static final int ONE_USE_DURABILITY = 1;
 
     /** 武器 / 工具 / 装备：按名字后缀识别（木/石/铁/金/钻石/下界合金 各档都覆盖）。 */
     private static final String[] WEAPON_SUFFIX = {"_SWORD"};
@@ -150,11 +166,14 @@ public final class LuckyPillarLoot {
 
     private static final Random RANDOM = new Random();
 
-    /** 物品池（Material 全集过滤后的结果，类加载时算一次）。 */
-    private static final List<Material> POOL = Collections.unmodifiableList(buildPool());
+    /** /lp ban 的黑名单（Material 级别，随 config 的 loot-banned-items 落盘）。 */
+    private static final Set<Material> BANNED = EnumSet.noneOf(Material.class);
 
-    /** 每个类别一份子池（与权重一一对应，类加载时算一次）。 */
-    private static final Map<Category, Bucket> BUCKETS = buildBuckets();
+    /** 物品池（Material 全集过滤后的结果；禁用一个物品后会重建）。 */
+    private static List<Material> POOL = Collections.unmodifiableList(buildPool());
+
+    /** 每个类别一份子池（与权重一一对应；禁用一个物品后会重建）。 */
+    private static Map<Category, Bucket> BUCKETS = buildBuckets();
 
     /** 类别权重（与 {@link Category#values()} 一一对应；Manager 从 config 读入）。 */
     private static final double[] CATEGORY_WEIGHTS = defaultWeights();
@@ -177,6 +196,63 @@ public final class LuckyPillarLoot {
     /** 物品池大小（日志 / 自检用）。 */
     public static int poolSize() {
         return POOL.size();
+    }
+
+    /** 这个物品是不是已经被 /lp ban 禁用了。 */
+    public static boolean isBanned(Material material) {
+        return material != null && BANNED.contains(material);
+    }
+
+    /** 当前黑名单（按名字排序，只读副本；/lp banlist 用）。 */
+    public static List<Material> bannedMaterials() {
+        List<Material> list = new ArrayList<>(BANNED);
+        list.sort(Comparator.comparing(Material::name));
+        return list;
+    }
+
+    /**
+     * 禁用一个物品：从随机池里彻底剔除，并重建类别子池。
+     *
+     * @return 是否真的发生了变化（本来就被禁 → false）
+     */
+    public static boolean ban(Material material) {
+        if (material == null || material.isAir() || !material.isItem() || !BANNED.add(material)) {
+            return false;
+        }
+        rebuildPool();
+        return true;
+    }
+
+    /**
+     * 解除禁用：重新回到随机池。
+     *
+     * @return 是否真的发生了变化（本来就没被禁 → false）
+     */
+    public static boolean unban(Material material) {
+        if (material == null || !BANNED.remove(material)) {
+            return false;
+        }
+        rebuildPool();
+        return true;
+    }
+
+    /** 用 config.yml 里的 loot-banned-items 重置黑名单（load / reload 共用）。 */
+    public static void setBannedMaterials(Collection<Material> materials) {
+        BANNED.clear();
+        if (materials != null) {
+            for (Material material : materials) {
+                if (material != null && !material.isAir() && material.isItem()) {
+                    BANNED.add(material);
+                }
+            }
+        }
+        rebuildPool();
+    }
+
+    /** 黑名单变化后重建物品池与五类子池。 */
+    private static void rebuildPool() {
+        POOL = Collections.unmodifiableList(buildPool());
+        BUCKETS = buildBuckets();
     }
 
     /** 低价值（降权）物品数（日志 / 调参用）。 */
@@ -234,7 +310,8 @@ public final class LuckyPillarLoot {
         ItemStack item = bucket == null || bucket.items().isEmpty()
                 ? byMaterial(POOL.get(RANDOM.nextInt(POOL.size())))
                 : byMaterial(pick(bucket));
-        if (isGearCategory(category) && RANDOM.nextDouble() < enchantChance) {
+        if (isGearCategory(category) && !ONE_USE.contains(item.getType())
+                && RANDOM.nextDouble() < enchantChance) {
             try {
                 enchantLow(item);
             } catch (Throwable ignored) {
@@ -266,12 +343,13 @@ public final class LuckyPillarLoot {
 
     /**
      * 由 {@code LuckyPillarManager#load} 从 config.yml 读入。
-     * 权重为相对值（负数按 0 处理；全 0 时退回默认 25/20/10/25/20）；
+     * 权重为相对值（负数按 0 处理；全 0 时退回默认 25/20/10/25/10/5/20）；
      * 附魔率非法值收敛到 0~1，等级收敛到 1~3。
      */
-    public static void configure(double weapon, double tool, double armor, double block, double other,
+    public static void configure(double weapon, double tool, double armor, double block,
+                                 double food, double spawnEgg, double other,
                                  double enchantChance, int enchantMaxLevel) {
-        double[] weights = {weapon, tool, armor, block, other};
+        double[] weights = {weapon, tool, armor, block, food, spawnEgg, other};
         double sum = 0;
         for (int i = 0; i < weights.length; i++) {
             if (Double.isNaN(weights[i]) || weights[i] < 0) {
@@ -294,6 +372,9 @@ public final class LuckyPillarLoot {
         if (m == null) {
             return Category.OTHER;
         }
+        if (m.name().endsWith("_SPAWN_EGG")) {
+            return Category.SPAWN_EGG;
+        }
         if (WEAPON_EXTRA.contains(m) || endsWithAny(m, WEAPON_SUFFIX)) {
             return Category.WEAPON;
         }
@@ -302,6 +383,13 @@ public final class LuckyPillarLoot {
         }
         if (ARMOR_EXTRA.contains(m) || endsWithAny(m, ARMOR_SUFFIX)) {
             return Category.ARMOR;
+        }
+        try {
+            if (m.isEdible()) {
+                return Category.FOOD;
+            }
+        } catch (Throwable ignored) {
+            // 查询失败就按方块/其他继续判断
         }
         try {
             if (m.isBlock()) {
@@ -329,6 +417,9 @@ public final class LuckyPillarLoot {
 
     /** 给一件装备挂 1 个随机低等级附魔（只挑「能附在这件东西上」且不是诅咒的）。 */
     private static void enchantLow(ItemStack item) {
+        if (ONE_USE.contains(item.getType())) {
+            return; // 一次性物品别挂耐久/保护类附魔，否则「只能用一次」会被打破
+        }
         List<Enchantment> all = allEnchants();
         if (all.isEmpty()) {
             return;
@@ -375,7 +466,8 @@ public final class LuckyPillarLoot {
     }
 
     private static double[] defaultWeights() {
-        return new double[]{25, 20, 10, 25, 20};
+        // 顺序必须与 Category.values() 一致：武器 / 工具 / 装备 / 方块 / 食物 / 生物蛋 / 其他
+        return new double[]{25, 20, 10, 25, 10, 5, 20};
     }
 
     private static double sumWeights() {
@@ -471,10 +563,27 @@ public final class LuckyPillarLoot {
             } else if (material == Material.ENCHANTED_BOOK) {
                 randomizeBook(item);
             }
+            applyOneUseDurability(item);
         } catch (Throwable ignored) {
             // 单件物品加工失败就退回原物品，绝不能因为一件物品把整局打断
         }
         return item;
+    }
+
+    /**
+     * 三叉戟 / 重锤 / 钓鱼竿：耐久上限改成 1（物品栏里就是「1 点耐久」），
+     * 用一次就碎，不会再回到随机池之外的地方。
+     */
+    private static void applyOneUseDurability(ItemStack item) {
+        if (!ONE_USE.contains(item.getType())) {
+            return;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta instanceof Damageable damageable) {
+            damageable.setMaxDamage(ONE_USE_DURABILITY);
+            damageable.setDamage(0);
+            item.setItemMeta(damageable);
+        }
     }
 
     private static void randomizePotion(ItemStack item) {
@@ -521,12 +630,10 @@ public final class LuckyPillarLoot {
             if (m == null || m.isAir() || m.isLegacy() || !m.isItem()) {
                 continue;
             }
-            if (BLACKLIST_ABUSE.contains(m) || BLACKLIST_OP.contains(m)) {
+            if (BANNED.contains(m) || BLACKLIST_ABUSE.contains(m) || BLACKLIST_OP.contains(m)) {
                 continue;
             }
-            if (m.name().endsWith("_SPAWN_EGG")) {
-                continue; // 刷怪蛋全部排除
-            }
+            // 刷怪蛋保留（SPAWN_EGG 类别；凋零/末影龙/监守者蛋在 BLACKLIST_OP 里排除）
             list.add(m);
         }
         return list;

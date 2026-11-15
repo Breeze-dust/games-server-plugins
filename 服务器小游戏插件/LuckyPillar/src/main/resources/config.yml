@@ -9,35 +9,40 @@ max-players: 12
 pillar-depth: 30           # 柱子总高度（柱顶向下多少格）；改大时中心点 Y 要跟着抬高，柱底别扎进地面
 pillar-spacing: 16         # 相邻柱水平间距（固定 16 = 谁也跳不过去）
 ring-radius: 0             # 0 = 按 人数*间距/2π 自动算（clamp 5~32）；>0 = 固定半径
-center-platform-radius: 1  # 中心平台半径（1 = 3x3 草方块，铺在柱底高度）；0 = 不铺
+# 地板：每局随机 草方块 / 基岩 / 粘液块 / 空气（空气 = 不铺），铺在柱底高度、盖到每根柱子底
 
 # 缩圈（世界边境）
 shrink-start-gap: 20       # 开局圈半径 = 柱环半径 + 这个值：柱子在圈内约 20 格处（0 = 贴住柱子）
 shrink-delay-seconds: 60   # 开局后多少秒才开始缩圈（这段时间圈不动，先给玩家捡东西）
 shrink-total-seconds: 0    # 0 = 45 + 10*人数
-shrink-target-radius: 2    # 缩到 2 = 圈内只剩约 5x5 空地（没台子，自己搭），之后冻结边境进终局
+shrink-target-radius: 2    # 缩到 2 = 圈内只剩约 5x5 空地，之后冻结边境进终局（缩圈只扣血、不拆方块）
 out-of-zone-damage: 1      # 圈外每秒侵蚀伤害（点）
 out-of-zone-grace-seconds: 3   # 出圈多少秒后才开始掉血
 
 # 事件
 loot-interval: 2           # 每多少秒每人 1 件随机物品
-# 物品类别权重：相对值，按比例分配（例：25/20/10/25/20 = 四种 25%/20%/10%/25%/20%）
-# 先按权重抽类别，再在该类别里抽具体物品；全填 0 时退回默认 25/20/10/25/20
+# 物品类别权重：相对值，按比例分配（默认 25/20/10/25/10/5/20 = 七类）
+# 先按权重抽类别，再在该类别里抽具体物品；全填 0 时退回默认 25/20/10/25/10/5/20
 loot-weight-weapon: 25     # 武器：剑 / 弓 / 弩 / 三叉戟 / 重锤
 loot-weight-tool: 20       # 工具：镐 / 斧 / 锹 / 锄 / 剪刀 / 鱼竿 / 打火石
 loot-weight-armor: 10      # 装备：头盔 / 胸甲 / 护腿 / 靴 / 盾
 loot-weight-block: 25      # 方块：所有可放置的方块
-loot-weight-other: 20      # 其他：食物 / 药水 / 材料 / 桶 等
+loot-weight-food: 10       # 食物：面包 / 熟肉 / 苹果 / 金苹果 / 蛋糕 等可食用物品
+loot-weight-spawn-egg: 5   # 生物蛋：随机生物蛋（凋零/末影龙/监守者蛋已排除）
+loot-weight-other: 20      # 其他：药水 / 材料 / 桶 等
 loot-enchant-chance: 0.35  # 武器/工具/装备再带 1 个随机低等级附魔的概率（0~1）
 loot-enchant-max-level: 1  # 附魔等级上限（1 = 只有 I 级；2 = 最多 II 级，上限 3）
+# 物品黑名单：/lp ban 禁用手上物品（或 /lp ban <材料名>），/lp unban 解除，/lp banlist 查看。
+# 被禁物品不会再进随机池；命令会立即把名单写回本文件。也可以直接填英文材料名，如 [TRIDENT, MACE]。
+loot-banned-items: []
+loot-bossbar: true         # 顶部 Boss 血条显示「下次物品」倒计时（进度条）；false = 关闭
 disaster-interval: 22      # 天灾池（箭雨 / 苦力怕雨）间隔秒数
+disaster-countdown-seconds: 5  # 天灾开始前多少秒预警 + 倒计时（0 = 不预警，到点直接开打；必须小于间隔）
 arena-difficulty: NORMAL   # 对局时强制该世界难度（PEACEFUL 会被自动改成 NORMAL；否则苦力怕一生成就被清掉）
 pvp: true                  # 场内玩家互伤开关（世界 world_lp 也要 pvp: true）
 
-# 终局
-final-tnt-interval: 2.5    # TNT 雨基础间隔（秒），存活人少时自动压缩到 1.2s 下限
+# 终局（缩圈到目标半径后边境冻结，圆心、柱子半高的位置刷一只凋零；不再下 TNT 雨）
 final-max-seconds: 120     # 终局封顶时长，到点按血量排名结算
-final-tnt-fuse: 20         # TNT 引信（tick）
 
 # 场地（/lp save 写入，只有两个点）
 arenas: {}

@@ -184,23 +184,35 @@ public class FootballArena {
 
     /** 点在哪个队的球门里（RED=红队守的门）。都不在返回 null。 */
     public Team goalAt(Location loc) {
-        if (inBox(loc, goalRedPos1, goalRedPos2)) {
+        return goalAt(loc, 0.0);
+    }
+
+    /**
+     * 同上，但把球门范围在水平方向放宽 expand（垂直方向不放宽，避免球从横梁上方"进球"）。
+     * 边界墙判定用：球心离门线还差一个球半径时也放行，否则球会先被隐形墙弹回、永远进不了门。
+     */
+    public Team goalAt(Location loc, double expand) {
+        if (inBox(loc, goalRedPos1, goalRedPos2, expand)) {
             return Team.RED;
         }
-        if (inBox(loc, goalBluePos1, goalBluePos2)) {
+        if (inBox(loc, goalBluePos1, goalBluePos2, expand)) {
             return Team.BLUE;
         }
         return null;
     }
 
     private static boolean inBox(Location loc, Location a, Location b) {
+        return inBox(loc, a, b, 0.0);
+    }
+
+    private static boolean inBox(Location loc, Location a, Location b, double expand) {
         if (loc == null || a == null || b == null || a.getWorld() == null
                 || !a.getWorld().equals(loc.getWorld())) {
             return false;
         }
-        return loc.getX() >= Math.min(a.getX(), b.getX()) && loc.getX() <= Math.max(a.getX(), b.getX())
+        return loc.getX() >= Math.min(a.getX(), b.getX()) - expand && loc.getX() <= Math.max(a.getX(), b.getX()) + expand
                 && loc.getY() >= Math.min(a.getY(), b.getY()) && loc.getY() <= Math.max(a.getY(), b.getY())
-                && loc.getZ() >= Math.min(a.getZ(), b.getZ()) && loc.getZ() <= Math.max(a.getZ(), b.getZ());
+                && loc.getZ() >= Math.min(a.getZ(), b.getZ()) - expand && loc.getZ() <= Math.max(a.getZ(), b.getZ()) + expand;
     }
 
     public State getState() {
@@ -328,11 +340,14 @@ public class FootballArena {
         this.matchTotalSeconds = matchTotalSeconds;
     }
 
-    /** 重置对局运行时数据（开赛与结算时调用）。 */
+    /**
+     * 重置对局运行时数据（开赛与结算时调用）。
+     * <p>
+     * 不清空 teamRed/teamBlue：等待期玩家右键选的队要保留到开赛分队（2026-11-15 修）；
+     * 结算后需要清队时单独调 {@link #clearTeams()}。
+     */
     public void resetMatch() {
         phase = Phase.KICKOFF;
-        teamRed.clear();
-        teamBlue.clear();
         scoreRed = 0;
         scoreBlue = 0;
         lastTouch = null;
@@ -340,6 +355,12 @@ public class FootballArena {
         goldenGoal = false;
         matchEndMs = 0L;
         matchTotalSeconds = 0;
+    }
+
+    /** 清空两队成员（结算完、发完胜场后调用）。 */
+    public void clearTeams() {
+        teamRed.clear();
+        teamBlue.clear();
     }
 
     /** 保存（Location 直接序列化，与其它游戏一致）。 */

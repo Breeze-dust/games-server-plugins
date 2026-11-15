@@ -9,6 +9,7 @@ import com.hub.util.Top3;
 import com.hub.util.StartCountdown;
 import com.hub.util.SetupMode;
 import com.hub.util.WaitCountdown;
+import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
@@ -26,7 +27,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.TNTPrimed;
+import org.bukkit.entity.Wither;
 import org.bukkit.event.block.Action;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -39,17 +40,19 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * 幸运之柱核心：状态机、开局生成柱阵、世界边境缩圈、天灾调度、结算、播报文案（设计稿 §1、§3、§4、§6）。
  * <p>
  * 一局：等待（公共库 WaitCountdown）→ 开局（清场、按人数生成柱阵、传送、空背包）→ 缩圈期
- * → 终局 TNT 雨 → 结算 8 秒 → 回主城。
+ * → 终局刷一只凋零 → 结算 8 秒 → 回主城。
  */
 public class LuckyPillarManager {
 
@@ -60,8 +63,14 @@ public class LuckyPillarManager {
     private static final double ARROW_RAIN_DAMAGE = 4.0;
     /** 箭矢在场内存活多少 tick 后强制清理（"命中/落地后消失"的兜底）。 */
     private static final int ARROW_LIFE_TICKS = 200;
-    /** 苦力怕雨的引信（tick）：从 +30 格落下约 30 tick 落地，留一点余量在地上炸。 */
+    /** 苦力怕雨：从玩家头顶多少格落下（比原来的 8 格高，看得见下落过程）。 */
+    private static final int CREEPER_SPAWN_HEIGHT = 20;
+    /** 苦力怕落地后离玩家多少格内才点火激活（3D 距离，约 2~3 格）。 */
+    private static final double CREEPER_ACTIVATE_RANGE = 4.0;
+    /** 苦力怕被激活后的引信（tick）：约 2 秒，够玩家听到「嘶——」再跑开。 */
     private static final int CREEPER_FUSE_TICKS = 40;
+    /** 苦力怕从落地算起最多活多久（tick）；一直贴不到玩家就到点清掉，免得圈里越积越多。 */
+    private static final int CREEPER_MAX_LIFE_TICKS = 20 * 15;
     /** 分批清场每 tick 检查多少方块（约 9000 → 12 人场 0.5 秒内清完）。 */
     private static final int CLEAR_BUDGET_PER_TICK = 9000;
     /** 结算展示秒数（设计稿 §1）。 */
@@ -85,7 +94,7 @@ public class LuckyPillarManager {
             "&c💥 苦力怕雨！&7 它们摔不死，还专挑你脚边炸。",
             "&c💥 天降苦力怕！&7 听见「嘶——」的时候，你只剩两秒。",
             "&c💥 苦力怕雨！&7 一群不请自来的绿色房客，炸完还不赔方块。",
-            "&c💥 苦力怕雨来了！&7 它们不拆方块，只拆你。",
+            "&c💥 苦力怕雨来了！&7 它们连方块一起拆，别站在柱顶发呆。",
     };
 
     private final LuckyPillarPlugin plugin;
@@ -100,8 +109,6 @@ public class LuckyPillarManager {
     private final Map<String, Difficulty> difficulties = new LinkedHashMap<>();
     /** 命令/配置模式层"正在编辑的场"（命令里的 center/lobby/save/start/stop 用得上）。 */
     private final Map<UUID, String> editing = new LinkedHashMap<>();
-    /** 圈外方块被吃掉时的低频音效节流（场名 -> 上次播放时刻）。 */
-    private final Map<String, Long> lastCrumble = new LinkedHashMap<>();
 
     /** 公共库：OP 建场模式（备份背包/工具/还原）。 */
     private final SetupMode setup;
@@ -126,13 +133,25 @@ public class LuckyPillarManager {
         configureLoot();
     }
 
-    /** 从 config.yml 读入物品类别权重 + 附魔参数（load / reload 共用）。 */
+    /** 从 config.yml 读入物品类别权重 + 附魔参数 + 禁用物品（load / reload 共用）。 */
     private void configureLoot() {
+        Set<Material> banned = new LinkedHashSet<>();
+        for (String raw : plugin.getConfig().getStringList("loot-banned-items")) {
+            Material material = raw == null ? null : Material.matchMaterial(raw.trim());
+            if (material == null || material.isAir() || !material.isItem()) {
+                plugin.getLogger().warning("config.yml 的 loot-banned-items 里有无效物品：" + raw);
+                continue;
+            }
+            banned.add(material);
+        }
+        LuckyPillarLoot.setBannedMaterials(banned);
         LuckyPillarLoot.configure(
                 plugin.getConfig().getDouble("loot-weight-weapon", 25),
                 plugin.getConfig().getDouble("loot-weight-tool", 20),
                 plugin.getConfig().getDouble("loot-weight-armor", 10),
                 plugin.getConfig().getDouble("loot-weight-block", 25),
+                plugin.getConfig().getDouble("loot-weight-food", 10),
+                plugin.getConfig().getDouble("loot-weight-spawn-egg", 5),
                 plugin.getConfig().getDouble("loot-weight-other", 20),
                 plugin.getConfig().getDouble("loot-enchant-chance", 0.35),
                 plugin.getConfig().getInt("loot-enchant-max-level", 1));
@@ -158,7 +177,8 @@ public class LuckyPillarManager {
                 + "武器/工具/装备 " + LuckyPillarLoot.gearCount() + " 件；类别权重 "
                 + LuckyPillarLoot.weightSummary()
                 + "；附魔率 " + Math.round(LuckyPillarLoot.enchantChance() * 100) + "%，附魔上限 "
-                + LuckyPillarLoot.enchantMaxLevel() + " 级）。");
+                + LuckyPillarLoot.enchantMaxLevel() + " 级；已禁用 "
+                + LuckyPillarLoot.bannedMaterials().size() + " 种物品）。");
 
         // 启动后把已有场地上报给 HubCore 中央菜单（延迟等 HubCore 就绪）
         Bukkit.getScheduler().runTaskLater(plugin, this::reportAllArenas, 40L);
@@ -168,6 +188,9 @@ public class LuckyPillarManager {
     /** 关服：取消所有任务、还原边境、清场、落盘。 */
     public void shutdown() {
         liveSidebar.hideAll();
+        if (startCountdown != null) {
+            startCountdown.cancelAll();
+        }
         if (voidTask != null) {
             voidTask.cancel();
             voidTask = null;
@@ -176,6 +199,9 @@ public class LuckyPillarManager {
             if (a.getState() == LuckyPillarArena.State.WAITING) {
                 continue;
             }
+            stopLootBar(a);
+            a.setPendingDisasterCreeper(null);
+            a.setDisasterCountdownLeft(0);
             MatchTasks t = tasks.get(a.getName());
             if (t != null) {
                 t.cancelAll();
@@ -412,6 +438,7 @@ public class LuckyPillarManager {
         }
         LuckyPillarArena a = arenas.get(name);
         if (a != null) {
+            hideLootBar(a, p);
             boolean wasAlive = a.getPlayers().remove(id);
             a.getEliminated().remove(id);
             a.getElimOrder().remove(id);
@@ -445,6 +472,7 @@ public class LuckyPillarManager {
         if (a == null) {
             return;
         }
+        hideLootBar(a, p);
         boolean wasAlive = a.getPlayers().contains(id);
         a.getPlayers().remove(id);
         a.getEliminated().remove(id);
@@ -550,10 +578,6 @@ public class LuckyPillarManager {
             plugin.getLogger().info("忽略开局请求：" + a.getName() + " 状态是 " + a.getState() + "。");
             return false;
         }
-        if (startCountdown().begin(a.getName(), online.stream().map(Player::getUniqueId).toList(),
-                () -> startMatch(a, online.stream().filter(Player::isOnline).toList()))) {
-            return true;
-        }
         MatchTasks t = tasksFor(a);
         t.cancelAll();
         cancelWait(a);
@@ -578,19 +602,16 @@ public class LuckyPillarManager {
         double spacing = plugin.getConfig().getDouble("pillar-spacing", 16);
         double fixed = plugin.getConfig().getDouble("ring-radius", 0);
         double startGap = Math.max(0.0, plugin.getConfig().getDouble("shrink-start-gap", 8));
-        int platform = plugin.getConfig().getInt("center-platform-radius",
-                LuckyPillarArena.DEFAULT_PLATFORM_RADIUS);
-        int pillars = a.generate(n, depth, spacing, fixed, startGap, platform);
+        int pillars = a.generate(n, depth, spacing, fixed, startGap);
         a.setClean(false);
 
-        long now = System.currentTimeMillis();
         double seconds = plugin.getConfig().getDouble("shrink-total-seconds", 0);
         if (seconds <= 0) {
             seconds = 45 + 10.0 * n;
         }
+        final double totalSeconds = seconds;
         int delaySeconds = Math.max(0, plugin.getConfig().getInt("shrink-delay-seconds", 15));
-        a.beginShrink(now, delaySeconds * 1000L, (long) (seconds * 1000L),
-                plugin.getConfig().getDouble("shrink-target-radius", 2));
+        double targetRadius = plugin.getConfig().getDouble("shrink-target-radius", 2);
         a.setState(LuckyPillarArena.State.RUNNING);
 
         // 传送：一人一根柱顶（柱数 = 开局人数，不多不少）
@@ -599,14 +620,16 @@ public class LuckyPillarManager {
             Player p = online.get(i);
             resetPlayer(p);
             if (!tops.isEmpty()) {
-                p.teleport(tops.get(Math.min(i, tops.size() - 1)));
+                // 传送时就先把朝向摆向圆心，倒计时里的锁视角是逐 tick 保持这个方向
+                Location top = tops.get(Math.min(i, tops.size() - 1)).clone();
+                aimLocation(top, a.getCenter());
+                p.teleport(top);
             }
             HubAPI.setPlaying(p.getUniqueId(), GAME);
         }
 
         applyBorder(a);
         applyCombatDifficulty(a);
-        startTasks(a, gen);
         reportArena(a);
 
         plugin.getLogger().info("开局：" + a.getName() + "（" + n + " 人，" + pillars + " 根柱，环半径 "
@@ -617,16 +640,108 @@ public class LuckyPillarManager {
         broadcast(a, "&6&l========== 幸运之柱 ==========");
         broadcast(a, "&e" + n + "&f 人，&e" + pillars + "&f 根哭泣黑曜石柱，间距 &e"
                 + (int) spacing + "&f 格——跳不过去。");
+        broadcast(a, "&f本局地板：&e" + a.getFloorType().label + "&f（铺在柱底、一直盖到每根柱子底）。");
         broadcast(a, "&f空手开局：每 &e" + plugin.getConfig().getInt("loot-interval", 2)
                 + "&f 秒每人一件随机物品，类别概率 &b" + LuckyPillarLoot.weightSummary()
                 + "&f（武器/工具/装备可能带低阶附魔）。");
         if (delaySeconds > 0) {
-            broadcast(a, "&c世界边境将在 &e" + delaySeconds + "&c 秒后开始收缩，&f圈外方块会被吃掉，掉下去即淘汰。");
+            broadcast(a, "&c世界边境将在 &e" + delaySeconds + "&c 秒后开始收缩，&f圈外会持续扣血，掉下去即淘汰。");
         } else {
-            broadcast(a, "&c世界边境开始收缩，&f圈外方块会被吃掉，掉下去即淘汰。");
+            broadcast(a, "&c世界边境开始收缩，&f圈外会持续扣血，掉下去即淘汰。");
         }
-        titleToAll(online, "&5&l幸运之柱", "&7空手开局 · 每 2 秒一件幸运物品", 2);
+        // 柱顶就位后才开始倒计时：倒计时期间锁视角看圆心，倒计时结束才真正开跑（出物品/缩圈/天灾）
+        startLookLock(a, gen);
+        List<UUID> ids = online.stream().map(Player::getUniqueId).toList();
+        if (!startCountdown().begin(a.getName(), ids,
+                () -> beginRound(a, gen, delaySeconds, totalSeconds, targetRadius))) {
+            beginRound(a, gen, delaySeconds, totalSeconds, targetRadius);
+        }
         return true;
+    }
+
+    /**
+     * 倒计时结束（或未启用倒计时）：放开视角，开始缩圈计时与局内任务。
+     * <p>倒计时期间玩家已站在柱顶、视角被锁向圆心；这里只负责"真正开跑"。
+     */
+    private void beginRound(LuckyPillarArena a, long gen, int delaySeconds, double seconds, double targetRadius) {
+        if (a.getMatch() != gen || a.getState() != LuckyPillarArena.State.RUNNING) {
+            return;
+        }
+        cancelLook(a);
+        a.beginShrink(System.currentTimeMillis(), delaySeconds * 1000L, (long) (seconds * 1000L), targetRadius);
+        startTasks(a, gen);
+        titleToAll(onlinePlayers(a), "&5&l幸运之柱", "&7空手开局 · 每 2 秒一件幸运物品", 2);
+    }
+
+    /** 开局倒计时期间：每 tick 把在场玩家的视角掰向圆心（柱子围成的中心）。 */
+    private void startLookLock(LuckyPillarArena a, long gen) {
+        MatchTasks t = tasksFor(a);
+        cancelLook(t);
+        Location target = a.getCenter();
+        if (target == null) {
+            return;
+        }
+        t.look = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (a.getMatch() != gen || a.getState() != LuckyPillarArena.State.RUNNING) {
+                cancelLook(t);
+                return;
+            }
+            for (UUID id : new ArrayList<>(a.getPlayers())) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline()) {
+                    lookAtCenter(p, target);
+                }
+            }
+        }, 1L, 1L);
+    }
+
+    private void cancelLook(LuckyPillarArena a) {
+        MatchTasks t = tasks.get(a.getName());
+        if (t != null) {
+            cancelLook(t);
+        }
+    }
+
+    private void cancelLook(MatchTasks t) {
+        if (t.look != null) {
+            t.look.cancel();
+            t.look = null;
+        }
+    }
+
+    /** 把坐标点的 yaw/pitch 摆向 target（按站立时眼睛高度 ≈ 脚 + 1.62 格算）。 */
+    private void aimLocation(Location from, Location target) {
+        if (from == null || target == null || target.getWorld() == null) {
+            return;
+        }
+        double eyeY = from.getY() + 1.62;
+        double dx = target.getX() - from.getX();
+        double dy = target.getY() - eyeY;
+        double dz = target.getZ() - from.getZ();
+        double horizontal = Math.sqrt(dx * dx + dz * dz);
+        if (horizontal < 0.01 && Math.abs(dy) < 0.01) {
+            return;
+        }
+        from.setYaw((float) Math.toDegrees(Math.atan2(-dx, dz)));
+        from.setPitch((float) Math.toDegrees(-Math.atan2(dy, horizontal)));
+    }
+
+    /** 把玩家视线转向 target（用眼睛位置到目标的方向算 yaw/pitch）。 */
+    private void lookAtCenter(Player p, Location target) {
+        if (target == null || target.getWorld() == null || !p.getWorld().equals(target.getWorld())) {
+            return;
+        }
+        Location eye = p.getEyeLocation();
+        double dx = target.getX() - eye.getX();
+        double dy = target.getY() - eye.getY();
+        double dz = target.getZ() - eye.getZ();
+        double horizontal = Math.sqrt(dx * dx + dz * dz);
+        if (horizontal < 0.01 && Math.abs(dy) < 0.01) {
+            return;
+        }
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = (float) Math.toDegrees(-Math.atan2(dy, horizontal));
+        p.setRotation(yaw, pitch);
     }
 
     /** OP 强制停止（不结算冠军）。 */
@@ -641,7 +756,13 @@ public class LuckyPillarManager {
             return false;
         }
         MatchTasks t = tasksFor(a);
+        stopLootBar(a);
+        a.setPendingDisasterCreeper(null);
+        a.setDisasterCountdownLeft(0);
         t.cancelAll();
+        if (startCountdown != null) {
+            startCountdown.cancel(a.getName());
+        }
         broadcast(a, "&c本局已被管理员终止。");
         restoreBorder(a);
         restoreDifficulty(a);
@@ -663,11 +784,14 @@ public class LuckyPillarManager {
     private void startTasks(LuckyPillarArena a, long gen) {
         MatchTasks t = tasksFor(a);
         int loot = Math.max(1, plugin.getConfig().getInt("loot-interval", 2));
+        a.setNextLootMs(System.currentTimeMillis() + loot * 1000L);
         t.loot = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!guarded(a, gen)) {
                 t.cancelGameplay();
                 return;
             }
+            // 先重置计时再发物品：Boss 条从满格重新开始，和下一次物品对齐
+            a.setNextLootMs(System.currentTimeMillis() + loot * 1000L);
             for (UUID id : new ArrayList<>(a.getPlayers())) {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null && p.isOnline()) {
@@ -676,14 +800,24 @@ public class LuckyPillarManager {
             }
         }, loot * 20L, loot * 20L);
 
+        if (plugin.getConfig().getBoolean("loot-bossbar", true)) {
+            startLootBar(a, gen, loot);
+        } else {
+            stopLootBar(a);
+        }
+
         int disaster = Math.max(5, plugin.getConfig().getInt("disaster-interval", 22));
+        int countdown = Math.max(0, plugin.getConfig().getInt("disaster-countdown-seconds", 5));
+        // 倒计时必须比事件间隔短，否则第一波会在开局瞬间就报警
+        final int warnSeconds = Math.min(countdown, disaster - 1);
+        long firstWarn = Math.max(0, disaster - warnSeconds) * 20L;
         t.disaster = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!guarded(a, gen)) {
                 t.cancelGameplay();
                 return;
             }
-            disasterRound(a);
-        }, disaster * 20L, disaster * 20L);
+            beginDisasterCountdown(a, gen, warnSeconds);
+        }, firstWarn, disaster * 20L);
 
         t.second = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!guarded(a, gen)) {
@@ -693,15 +827,200 @@ public class LuckyPillarManager {
             onSecond(a, gen);
         }, 20L, 20L);
 
-        t.trim = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (!guarded(a, gen)) {
-                t.cancelGameplay();
-                return;
-            }
-            onTrim(a);
-        }, 5L, 5L);
-
         startVoidTask();
+    }
+
+    /** 创建并显示「下次物品」Boss 条；进度条从 1（刚计时）走到 0（马上发物品）。 */
+    private void startLootBar(LuckyPillarArena a, long gen, int lootSeconds) {
+        stopLootBar(a); // 清掉上一局可能残留的条
+        MatchTasks t = tasksFor(a);
+        t.lootBar = BossBar.bossBar(Chat.color("&e🎁 下次物品 &f" + lootSeconds + ".0s"),
+                1.0f, BossBar.Color.GREEN, BossBar.Overlay.PROGRESS);
+        t.lootBarTitle = null;
+        showLootBar(a);
+        t.bossBar = Bukkit.getScheduler().runTaskTimer(plugin,
+                () -> updateLootBar(a, gen, lootSeconds), 1L, 1L);
+    }
+
+    private void updateLootBar(LuckyPillarArena a, long gen, int lootSeconds) {
+        if (!guarded(a, gen)) {
+            return; // endMatch / finish 会负责取消任务并隐藏
+        }
+        MatchTasks t = tasks.get(a.getName());
+        if (t == null || t.lootBar == null) {
+            return;
+        }
+        long intervalMs = Math.max(1L, lootSeconds * 1000L);
+        long remaining = Math.max(0L, a.getNextLootMs() - System.currentTimeMillis());
+        float progress = (float) Math.max(0.0, Math.min(1.0, remaining / (double) intervalMs));
+        t.lootBar.progress(progress);
+        BossBar.Color color = progress > 0.5f ? BossBar.Color.GREEN
+                : progress > 0.2f ? BossBar.Color.YELLOW : BossBar.Color.RED;
+        if (t.lootBar.color() != color) {
+            t.lootBar.color(color);
+        }
+        String title = lootBarTitle(a, remaining);
+        if (!title.equals(t.lootBarTitle)) {
+            t.lootBar.name(Chat.color(title));
+            t.lootBarTitle = title;
+        }
+    }
+
+    /** Boss 条文案：平时只显示下次物品；天灾倒计时期间把天灾剩余秒数也塞进去（不改进度条含义）。 */
+    private String lootBarTitle(LuckyPillarArena a, long remainingMs) {
+        String seconds = String.format(Locale.ROOT, "%.1fs", remainingMs / 1000.0);
+        int eventLeft = a.getDisasterCountdownLeft();
+        if (eventLeft <= 0) {
+            return "&e🎁 下次物品 &f" + seconds;
+        }
+        // 倒计时期间标题会变长，缩短成「⚠ 苦力怕雨 5s | 🎁 1.2s」，避免后半截被裁掉
+        String type = Boolean.TRUE.equals(a.getPendingDisasterCreeper()) ? "苦力怕雨" : "箭雨";
+        return "&c⚠ " + type + " &f" + eventLeft + "s &8| &e🎁 &f" + seconds;
+    }
+
+    /** 把 Boss 条显示给存活玩家（已淘汰的旁观者隐藏）。 */
+    private void showLootBar(LuckyPillarArena a) {
+        MatchTasks t = tasks.get(a.getName());
+        if (t == null || t.lootBar == null) {
+            return;
+        }
+        for (UUID id : new ArrayList<>(a.getPlayers())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.showBossBar(t.lootBar);
+            }
+        }
+        for (UUID id : new ArrayList<>(a.getEliminated())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.hideBossBar(t.lootBar);
+            }
+        }
+    }
+
+    private void hideLootBar(LuckyPillarArena a, Player p) {
+        MatchTasks t = tasks.get(a.getName());
+        if (t != null && t.lootBar != null && p != null) {
+            p.hideBossBar(t.lootBar);
+        }
+    }
+
+    /** 停掉并隐藏本场的 Boss 条（结算 / 停止 / 关服）。 */
+    private void stopLootBar(LuckyPillarArena a) {
+        MatchTasks t = tasks.get(a.getName());
+        if (t == null) {
+            return;
+        }
+        if (t.bossBar != null) {
+            t.bossBar.cancel();
+            t.bossBar = null;
+        }
+        if (t.lootBar != null) {
+            for (UUID id : new ArrayList<>(a.getPlayers())) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline()) {
+                    p.hideBossBar(t.lootBar);
+                }
+            }
+            for (UUID id : new ArrayList<>(a.getEliminated())) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline()) {
+                    p.hideBossBar(t.lootBar);
+                }
+            }
+            t.lootBar = null;
+            t.lootBarTitle = null;
+        }
+    }
+
+    /**
+     * 天灾倒计时：先公屏警告，再每秒动作栏 + Boss 条倒计时，时间到才真正落箭 / 落苦力怕。
+     * <p>倒计时 0 秒时直接开打（老行为）。
+     */
+    private void beginDisasterCountdown(LuckyPillarArena a, long gen, int seconds) {
+        if (!guarded(a, gen)) {
+            return;
+        }
+        MatchTasks t = tasksFor(a);
+        cancelDisasterTasks(t);
+        if (seconds <= 0) {
+            fireDisaster(a, gen, RANDOM.nextBoolean());
+            return;
+        }
+        boolean creeper = RANDOM.nextBoolean();
+        a.setPendingDisasterCreeper(creeper);
+        a.setDisasterCountdownLeft(seconds);
+        String type = creeper ? "苦力怕雨" : "箭雨";
+        broadcast(a, "&e&l⚠ &c" + type + " &f将在 &e" + seconds + "&f 秒后降临，注意头顶！");
+        World w = a.getWorld();
+        if (w != null) {
+            w.playSound(a.getCenter(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 0.7f);
+        }
+        t.disasterWarn = Bukkit.getScheduler().runTaskTimer(plugin, new Runnable() {
+            private int left = seconds;
+
+            @Override
+            public void run() {
+                if (!guarded(a, gen)) {
+                    cancelDisasterTasks(t);
+                    return;
+                }
+                if (left <= 0) {
+                    // 只取消自己；同一 tick 的 disasterFire 还要执行
+                    if (t.disasterWarn != null) {
+                        t.disasterWarn.cancel();
+                        t.disasterWarn = null;
+                    }
+                    return;
+                }
+                a.setDisasterCountdownLeft(left);
+                for (UUID id : arenaAudience(a)) {
+                    Player p = Bukkit.getPlayer(id);
+                    if (p != null && p.isOnline()) {
+                        Chat.actionBar(p, "&c⚠ " + type + " &f" + left + "s");
+                        if (left <= 3) {
+                            p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.4f);
+                        }
+                    }
+                }
+                left--;
+            }
+        }, 0L, 20L);
+        t.disasterFire = Bukkit.getScheduler().runTaskLater(plugin,
+                () -> fireDisaster(a, gen, creeper), seconds * 20L);
+    }
+
+    private void fireDisaster(LuckyPillarArena a, long gen, boolean creeper) {
+        if (!guarded(a, gen)) {
+            return;
+        }
+        a.setPendingDisasterCreeper(null);
+        a.setDisasterCountdownLeft(0);
+        cancelDisasterTasks(tasksFor(a));
+        int alive = Math.max(1, a.getPlayers().size());
+        if (creeper) {
+            creeperRain(a, alive);
+        } else {
+            arrowRain(a, alive);
+        }
+    }
+
+    private void cancelDisasterTasks(MatchTasks t) {
+        if (t.disasterWarn != null) {
+            t.disasterWarn.cancel();
+            t.disasterWarn = null;
+        }
+        if (t.disasterFire != null) {
+            t.disasterFire.cancel();
+            t.disasterFire = null;
+        }
+    }
+
+    /** 本场所有还连着的玩家（存活 + 已淘汰旁观），用于动作栏倒计时。 */
+    private List<UUID> arenaAudience(LuckyPillarArena a) {
+        List<UUID> ids = new ArrayList<>(a.getPlayers());
+        ids.addAll(a.getEliminated());
+        return ids;
     }
 
     /** 每秒：同步边境墙 + 圈外侵蚀（设计稿 §3）。 */
@@ -755,46 +1074,22 @@ public class LuckyPillarManager {
         liveSidebar.update("luckypillar:" + a.getName(), "&6&l幸运之柱 · 存活", online, lines);
     }
 
-    /** 每 5 tick：圈外方块被吃掉（设计稿 §3）。 */
-    private void onTrim(LuckyPillarArena a) {
-        long now = System.currentTimeMillis();
-        if (!a.isFinalPhase()) {
-            a.setRadius(a.radiusAt(now));
-        }
-        int removed = a.trimOutside(a.getRadius());
-        World w = a.getWorld();
-        if (removed > 0 && w != null) {
-            long stamp = System.currentTimeMillis();
-            Long last = lastCrumble.get(a.getName());
-            if (last == null || stamp - last >= 900L) { // 低频音效：最多约 1 秒响一次
-                lastCrumble.put(a.getName(), stamp);
-                w.playSound(a.getCenter(), Sound.BLOCK_STONE_BREAK, 0.35f, 0.5f);
-            }
-        }
-    }
-
-    /** 天灾池：箭雨 / 苦力怕雨，每次随机抽一种（设计稿 §4）。 */
-    private void disasterRound(LuckyPillarArena a) {
-        int alive = Math.max(1, a.getPlayers().size());
-        if (RANDOM.nextBoolean()) {
-            arrowRain(a, alive);
-        } else {
-            creeperRain(a, alive);
-        }
-    }
-
     /**
-     * 天灾落点：75% 落在随机存活玩家头顶附近（±1.5 格水平偏移），25% 落在圈内随机点。
+     * 天灾落点：75% 落在随机存活玩家头顶附近，25% 落在圈内随机点。
      * <p>原来全部随机撒在整圈里——圈半径 20+ 时玩家站的那点面积占比极小，实战里几乎永远砸不到人。
+     *
+     * @param spread 玩家头顶落点的水平偏移半径（箭雨 1.5 格；苦力怕用 0.0，直接落在玩家正上方，
+     *               否则偏出去会从 1×1 柱顶掉到柱子底下、在地上炸，看着就像"没落下来"）
      */
-    private Location disasterSpawn(LuckyPillarArena a, List<Player> targets, int abovePlayer, int fallbackAboveCenter) {
+    private Location disasterSpawn(LuckyPillarArena a, List<Player> targets, int abovePlayer,
+                                   int fallbackAboveCenter, double spread) {
         if (!targets.isEmpty() && RANDOM.nextDouble() < 0.75) {
             Player t = targets.get(RANDOM.nextInt(targets.size()));
             Location base = t.getLocation();
             return new Location(base.getWorld(),
-                    base.getX() + RANDOM.nextDouble() * 3.0 - 1.5,
+                    base.getX() + RANDOM.nextDouble() * spread * 2.0 - spread,
                     base.getY() + abovePlayer,
-                    base.getZ() + RANDOM.nextDouble() * 3.0 - 1.5);
+                    base.getZ() + RANDOM.nextDouble() * spread * 2.0 - spread);
         }
         return randomInCircle(a, fallbackAboveCenter);
     }
@@ -805,10 +1100,13 @@ public class LuckyPillarManager {
             return;
         }
         broadcast(a, ARROW_LINES[RANDOM.nextInt(ARROW_LINES.length)]);
-        List<Player> targets = onlinePlayers(a);
-        int count = Math.min(20, 8 + alive);
+        // 每波箭数在基础值 75%~100% 之间随机（不再是固定值）
+        int base = Math.min(48, 18 + 12 * alive);
+        int min = Math.max(8, base * 3 / 4);
+        int count = min + RANDOM.nextInt(base - min + 1);
         for (int i = 0; i < count; i++) {
-            Location loc = disasterSpawn(a, targets, 16, LuckyPillarArena.BOX_ABOVE);
+            // 箭雨完全随机撒在圈内：不再对准玩家头顶；高度也随机 12~22 格
+            Location loc = randomInCircle(a, 12 + RANDOM.nextInt(11));
             if (loc == null) {
                 continue;
             }
@@ -831,29 +1129,133 @@ public class LuckyPillarManager {
         if (w == null) {
             return;
         }
+        // 服务器/世界若是和平难度，生成出来的怪下一 tick 就会被服务端清掉（玩家只听到播报、
+        // 看不到苦力怕落地）。每次雨前再确认一次难度，不依赖开局那一次设置。
+        ensureCombatDifficulty(w);
         broadcast(a, CREEPER_LINES[RANDOM.nextInt(CREEPER_LINES.length)]);
         List<Player> targets = onlinePlayers(a);
-        int count = Math.min(8, 3 + alive / 3);
+        // 每波苦力怕数量在基础值 ±1 之间随机（2~8 只）
+        int base = Math.min(8, 3 + alive / 3);
+        int count = Math.max(2, Math.min(8, base - 1 + RANDOM.nextInt(3)));
+        List<Creeper> spawned = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            Location loc = disasterSpawn(a, targets, 8, LuckyPillarArena.BOX_ABOVE);
+            // 0.0 偏移 = 正对玩家头顶：1×1 柱顶只有正上方才落得上去
+            Location loc = disasterSpawn(a, targets, CREEPER_SPAWN_HEIGHT,
+                    LuckyPillarArena.BOX_ABOVE, 0.0);
             if (loc == null) {
                 continue;
             }
+            // 提前加载落点区块，避免 spawn 在未加载区块里静默失败
+            w.getChunkAt(loc);
             Creeper creeper = w.spawn(loc, Creeper.class);
-            creeper.setPowered(false);
-            // 1.21+ 的 setFuseTicks 不允许超过 maxFuseTicks（默认 30），要先抬上限，否则抛
-            // IllegalArgumentException: ticks > maxFuseTicks（实测踩过）
-            if (creeper.getMaxFuseTicks() < CREEPER_FUSE_TICKS) {
-                creeper.setMaxFuseTicks(CREEPER_FUSE_TICKS);
+            if (creeper == null) {
+                plugin.getLogger().warning("苦力怕雨：世界 " + w.getName()
+                        + " 生成苦力怕失败（可能被别的插件拦截了 CreatureSpawnEvent）。");
+                continue;
             }
-            creeper.setIgnited(true);
-            creeper.setFuseTicks(CREEPER_FUSE_TICKS);
+            creeper.setPowered(false);
+            creeper.setPersistent(true);
+            creeper.setRemoveWhenFarAway(false);
+            creeper.setGravity(true);
+            // 给一个向下的初速度：即使 AI 在落地前没接管，也一定会往下掉
+            creeper.setVelocity(new Vector(0, -0.4, 0));
+            // 引信上限先抬到 2 秒（默认 30 tick），真正点火在落地靠近玩家时（见 watchCreeperActivation）。
+            creeper.setMaxFuseTicks(CREEPER_FUSE_TICKS);
+            // 关键：**生成时不点火**。原来生成当 tick 就 setIgnited(true)，引信在半空/落地瞬间
+            // 就走完了，表现就是「掉到玩家脚边立刻爆」，没有「嘶——」的预警。
+            // 也**不能 setAI(false) 让它「安静下落」**：26.2 的 LivingEntity#aiStep 在
+            // isEffectiveAi() 为 false 时连 travel() 都不调，noAI 的苦力怕会挂在半空不掉。
+            // 真正「落地 + 身边有人」的判定和点引信交给 watchCreeperActivation。
             a.trackEntity(creeper);
+            spawned.add(creeper);
+        }
+        if (!spawned.isEmpty()) {
+            watchCreeperActivation(a, a.getMatch(), spawned);
         }
         w.playSound(a.getCenter(), Sound.ENTITY_CREEPER_PRIMED, 0.8f, 1.0f);
     }
 
-    /** 终局：边境冻结 + TNT 雨（设计稿 §1、§4）。 */
+    /**
+     * 苦力怕雨的「靠近玩家才激活」：每 2 tick 检查一遍本波还活着的苦力怕。
+     * <ul>
+     *   <li>还在半空：不点火，等落地再判断（不会在半空中就把引信走完）；</li>
+     *   <li>落地 + {@link #CREEPER_ACTIVATE_RANGE} 格内有存活玩家：点火，引信从 0 走到
+     *       {@link #CREEPER_FUSE_TICKS}，玩家能听见「嘶——」并有约 2 秒跑开；</li>
+     *   <li>落地但附近没人：保持原版 AI 让它自己追人；{@link #CREEPER_MAX_LIFE_TICKS}
+     *       内还没贴到玩家就移走，避免圈里堆一地不炸的苦力怕。</li>
+     * </ul>
+     * 本波苦力怕全部炸掉/清掉后任务自己取消，不会常驻。
+     */
+    private void watchCreeperActivation(LuckyPillarArena a, long gen, List<Creeper> creepers) {
+        MatchTasks t = tasksFor(a);
+        BukkitTask[] self = new BukkitTask[1];
+        Runnable tick = () -> {
+            if (!guarded(a, gen)) {
+                cancelCreeperWatcher(t, self[0]);
+                return;
+            }
+            List<Player> alive = onlinePlayers(a);
+            int pending = 0;
+            for (Creeper creeper : creepers) {
+                if (creeper == null || !creeper.isValid() || creeper.isDead() || creeper.isIgnited()) {
+                    continue; // 已炸 / 已经点着：引信交给原版自己走
+                }
+                if (creeper.getTicksLived() > CREEPER_MAX_LIFE_TICKS) {
+                    creeper.remove();
+                    continue;
+                }
+                pending++;
+                if (!creeper.isOnGround()) {
+                    continue; // 还在下落，等落地再判断
+                }
+                Player near = nearestPlayer(alive, creeper.getLocation(), CREEPER_ACTIVATE_RANGE);
+                if (near != null) {
+                    igniteCreeper(creeper);
+                }
+            }
+            if (pending == 0) {
+                cancelCreeperWatcher(t, self[0]);
+            }
+        };
+        self[0] = Bukkit.getScheduler().runTaskTimer(plugin, tick, 2L, 2L);
+        t.creeperWatchers.add(self[0]);
+    }
+
+    /**
+     * 给苦力怕点引信。Paper 的 {@code setFuseTicks} 写的是**当前膨胀值 swell**，不是「剩余引信」；
+     * 所以先抬 {@code maxSwell} 上限，再把当前值归 0，让它自己从 0 数到上限（2026-11-13 实测根因）。
+     */
+    private void igniteCreeper(Creeper creeper) {
+        creeper.setMaxFuseTicks(CREEPER_FUSE_TICKS);
+        creeper.setFuseTicks(0);
+        creeper.setIgnited(true);
+    }
+
+    private void cancelCreeperWatcher(MatchTasks t, BukkitTask task) {
+        if (task != null) {
+            task.cancel();
+            t.creeperWatchers.remove(task);
+        }
+    }
+
+    /** 离 loc 最近的存活玩家（3D 距离在 range 内才算）。 */
+    private Player nearestPlayer(List<Player> players, Location loc, double range) {
+        Player best = null;
+        double bestSq = range * range;
+        for (Player p : players) {
+            if (p == null || !p.isOnline() || p.isDead() || !p.getWorld().equals(loc.getWorld())) {
+                continue;
+            }
+            double d = p.getLocation().distanceSquared(loc);
+            if (d <= bestSq) {
+                bestSq = d;
+                best = p;
+            }
+        }
+        return best;
+    }
+
+    /** 终局：边境冻结 + 刷新一只凋零（不再下 TNT 雨）。 */
     private void enterFinal(LuckyPillarArena a, long gen) {
         long now = System.currentTimeMillis();
         a.enterFinal(now, a.getPlayers().size());
@@ -866,63 +1268,66 @@ public class LuckyPillarManager {
             t.disaster.cancel();
             t.disaster = null;
         }
-        broadcast(a, "&c&l终局！&f 边境已冻结，&cTNT 雨&f 开始——中心柱底有 3×3 草台，柱顶的落脚点自己搭。");
-        titleToAll(onlinePlayers(a), "&c&l终局", "&7TNT 雨开始 · 自己搭台", 2);
-        if (w != null) {
-            w.playSound(a.getCenter(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1.0f);
-        }
-        a.setNextWaveMs(now);
-        t.finalWave = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+        cancelDisasterTasks(t);
+        a.setPendingDisasterCreeper(null);
+        a.setDisasterCountdownLeft(0);
+        broadcast(a, "&c&l终局！&f 边境已冻结，&5&l凋零&f 降临——它会拆方块，也会追着你炸，自己找地方躲。");
+        titleToAll(onlinePlayers(a), "&c&l终局", "&5凋零降临 · 小心它拆台", 3);
+        spawnWither(a);
+        // 没有 TNT 雨了，只保留终局封顶计时：到点按剩余人数 / 血量结算
+        t.finalTimer = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!guarded(a, gen)) {
                 t.cancelGameplay();
                 return;
             }
-            long time = System.currentTimeMillis();
             long limit = Math.max(10, plugin.getConfig().getInt("final-max-seconds", 120)) * 1000L;
-            if (time - a.getFinalStartMs() > limit) {
+            if (System.currentTimeMillis() - a.getFinalStartMs() > limit) {
                 settleByRank(a);
-                return;
             }
-            if (time < a.getNextWaveMs()) {
-                return;
-            }
-            tntWave(a);
-            a.setNextWaveMs(time + (long) (tntIntervalSeconds(a) * 1000L));
-        }, 10L, 10L);
+        }, 20L, 20L);
         reportArena(a);
     }
 
-    /** TNT 雨间隔：存活人少时压缩（设计稿 §4 "每波 1.2~3 s（按存活人数压缩）"）。 */
-    private double tntIntervalSeconds(LuckyPillarArena a) {
-        double base = plugin.getConfig().getDouble("final-tnt-interval", 2.5);
-        int alive = Math.max(1, a.getPlayers().size());
-        double scaled = base * alive / Math.max(1.0, a.getFinalEnterAlive());
-        return Math.max(1.2, Math.min(base, scaled));
-    }
-
-    private void tntWave(LuckyPillarArena a) {
+    /** 终局刷一只凋零：中心上方，锁定最近的存活玩家。 */
+    private void spawnWither(LuckyPillarArena a) {
         World w = a.getWorld();
-        if (w == null) {
+        if (w == null || a.getCenter() == null) {
             return;
         }
-        int fuse = Math.max(5, plugin.getConfig().getInt("final-tnt-fuse", 20));
-        int count = 1 + RANDOM.nextInt(2);
-        int bx = a.getCenter().getBlockX();
-        int bz = a.getCenter().getBlockZ();
-        for (int i = 0; i < count; i++) {
-            int x = bx + RANDOM.nextInt(3) - 1; // 3×3 上方落下
-            int z = bz + RANDOM.nextInt(3) - 1;
-            Location loc = new Location(w, x + 0.5, a.getCenter().getBlockY() + 8, z + 0.5);
-            TNTPrimed tnt = w.spawn(loc, TNTPrimed.class);
-            tnt.setFuseTicks(fuse);
-            a.trackEntity(tnt);
+        ensureCombatDifficulty(w);
+        // 刷在柱子中间：x/z 取圆心（z 轴中间），y 取柱子半高，而不是悬在柱顶上方
+        int midY = a.getCenter().getBlockY() - Math.max(1, a.getPillarDepth()) / 2;
+        Location loc = new Location(w, a.circleX(), midY, a.circleZ());
+        Wither wither = w.spawn(loc, Wither.class);
+        if (wither == null) {
+            plugin.getLogger().warning("终局：世界 " + w.getName()
+                    + " 生成凋零失败（可能被别的插件拦截了 CreatureSpawnEvent）。");
+            return;
         }
+        wither.customName(Chat.color("&5&l凋零"));
+        wither.setCustomNameVisible(true);
+        wither.setPersistent(true);
+        wither.setRemoveWhenFarAway(false);
+        wither.setAI(true);
+        // 一开始就锁定最近的存活玩家，避免它在圈里乱飞
+        Player nearest = null;
+        double best = Double.MAX_VALUE;
         for (UUID id : new ArrayList<>(a.getPlayers())) {
             Player p = Bukkit.getPlayer(id);
-            if (p != null && p.isOnline()) {
-                Chat.actionBar(p, "&c💣 TNT 雨！&7 别在一块方块上站太久。");
+            if (p == null || !p.isOnline() || !p.getWorld().equals(w)) {
+                continue;
+            }
+            double dist = p.getLocation().distanceSquared(loc);
+            if (dist < best) {
+                best = dist;
+                nearest = p;
             }
         }
+        if (nearest != null) {
+            wither.setTarget(nearest);
+        }
+        a.trackEntity(wither);
+        w.playSound(a.getCenter(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.8f);
     }
 
     /** 终局封顶：按剩余人数 / 血量排名结算（设计稿 §13）。 */
@@ -1011,6 +1416,7 @@ public class LuckyPillarManager {
         a.getEliminated().add(id);
         a.getElimOrder().add(id);
         a.getOutSince().remove(id);
+        hideLootBar(a, p);
         // **不要在这里 HubAPI.clearGame**：清掉游戏状态后 HubCore 会认为他"已在大厅"，
         // 他死的下一 tick 再走 PlayerRespawnEvent 时 HubCore 直接 teleportToLobby →
         // 人被拉回主城（旁观就没了）。淘汰的人继续挂在游戏里（tab 仍显示在场），
@@ -1040,8 +1446,12 @@ public class LuckyPillarManager {
             return;
         }
         liveSidebar.hide("luckypillar:" + a.getName());
+        stopLootBar(a);
         long gen = a.getMatch();
         a.setState(LuckyPillarArena.State.ENDING);
+        a.removeBoss();
+        a.setPendingDisasterCreeper(null);
+        a.setDisasterCountdownLeft(0);
         MatchTasks t = tasksFor(a);
         t.cancelGameplay();
         restoreBorder(a);
@@ -1104,6 +1514,9 @@ public class LuckyPillarManager {
             return;
         }
         liveSidebar.hide("luckypillar:" + a.getName());
+        stopLootBar(a);
+        a.setPendingDisasterCreeper(null);
+        a.setDisasterCountdownLeft(0);
         List<UUID> all = new ArrayList<>(a.getPlayers());
         all.addAll(a.getEliminated());
         for (UUID id : all) {
@@ -1193,6 +1606,94 @@ public class LuckyPillarManager {
         }
     }
 
+    // ---------- 物品黑名单（/lp ban） ----------
+
+    /** 禁用一种物品并立刻写回 config.yml；返回是否真的新禁用了。 */
+    public boolean banItem(Material material) {
+        if (!LuckyPillarLoot.ban(material)) {
+            return false;
+        }
+        saveBannedItems();
+        plugin.getLogger().info("已禁用物品 " + material.name() + "（物品池剩 " + LuckyPillarLoot.poolSize()
+                + " 件，黑名单 " + LuckyPillarLoot.bannedMaterials().size() + " 种）。");
+        return true;
+    }
+
+    /** 解除禁用并写回 config.yml；返回是否真的从黑名单里移除了。 */
+    public boolean unbanItem(Material material) {
+        if (!LuckyPillarLoot.unban(material)) {
+            return false;
+        }
+        saveBannedItems();
+        plugin.getLogger().info("已解除禁用物品 " + material.name() + "（物品池 " + LuckyPillarLoot.poolSize()
+                + " 件，黑名单 " + LuckyPillarLoot.bannedMaterials().size() + " 种）。");
+        return true;
+    }
+
+    /** 当前黑名单（/lp banlist 用）。 */
+    public List<Material> bannedItems() {
+        return LuckyPillarLoot.bannedMaterials();
+    }
+
+    /**
+     * 把某种物品从「本插件场内的玩家」背包里清掉（含护甲/副手/光标），
+     * 让 /lp ban 不只是影响以后的掉落。返回清掉的物品个数。
+     */
+    public int purgeBannedFromMatches(Material material) {
+        if (material == null) {
+            return 0;
+        }
+        int removed = 0;
+        for (UUID id : new ArrayList<>(playerArena.keySet())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline()) {
+                continue;
+            }
+            var inventory = p.getInventory();
+            for (int slot = 0; slot < inventory.getSize(); slot++) {
+                ItemStack stack = inventory.getItem(slot);
+                if (stack != null && stack.getType() == material) {
+                    removed += stack.getAmount();
+                    inventory.setItem(slot, null);
+                }
+            }
+            ItemStack offhand = inventory.getItemInOffHand();
+            if (offhand != null && offhand.getType() == material) {
+                removed += offhand.getAmount();
+                inventory.setItemInOffHand(null);
+            }
+            ItemStack[] armor = inventory.getArmorContents();
+            boolean armorChanged = false;
+            for (int i = 0; i < armor.length; i++) {
+                if (armor[i] != null && armor[i].getType() == material) {
+                    removed += armor[i].getAmount();
+                    armor[i] = null;
+                    armorChanged = true;
+                }
+            }
+            if (armorChanged) {
+                inventory.setArmorContents(armor);
+            }
+            ItemStack cursor = p.getItemOnCursor();
+            if (cursor != null && cursor.getType() == material) {
+                removed += cursor.getAmount();
+                p.setItemOnCursor(null);
+            }
+        }
+        return removed;
+    }
+
+    /** 把当前黑名单写回 config.yml（显式写注释，删空也保留 loot-banned-items: []）。 */
+    private void saveBannedItems() {
+        List<String> names = LuckyPillarLoot.bannedMaterials().stream().map(Material::name).toList();
+        var config = plugin.getConfig();
+        config.set("loot-banned-items", names);
+        config.setComments("loot-banned-items", List.of(
+                "物品黑名单：/lp ban 禁用手上物品（或 /lp ban <材料名>），/lp unban 解除。",
+                "被禁物品不会再进随机池；命令会立即把这份名单写回本文件。"));
+        plugin.saveConfig();
+    }
+
     // ---------- 世界边境 ----------
 
     private void applyBorder(LuckyPillarArena a) {
@@ -1239,11 +1740,7 @@ public class LuckyPillarManager {
      * 服务器默认 {@code difficulty=peaceful} 时，插件生成的苦力怕会在下一 tick 被服务端直接清掉，
      * 玩家只听到开场白、看不到怪也炸不到人；箭雨/苦力怕雨因此「没生效」。局末还原开赛前难度。
      */
-    private void applyCombatDifficulty(LuckyPillarArena a) {
-        World w = a.getWorld();
-        if (w == null) {
-            return;
-        }
+    private Difficulty combatDifficulty() {
         Difficulty target;
         String diff = plugin.getConfig().getString("arena-difficulty", "NORMAL");
         try {
@@ -1251,13 +1748,29 @@ public class LuckyPillarManager {
         } catch (IllegalArgumentException ex) {
             target = Difficulty.NORMAL;
         }
-        if (target == Difficulty.PEACEFUL) {
-            target = Difficulty.NORMAL; // 和平难度会直接清掉苦力怕
+        return target == Difficulty.PEACEFUL ? Difficulty.NORMAL : target; // 和平难度会直接清掉苦力怕
+    }
+
+    /** 把世界难度抬到对局难度；每次苦力怕雨前都会再确认一次。 */
+    private void ensureCombatDifficulty(World w) {
+        if (w == null) {
+            return;
         }
-        difficulties.putIfAbsent(w.getName(), w.getDifficulty());
+        Difficulty target = combatDifficulty();
         if (w.getDifficulty() != target) {
             w.setDifficulty(target);
+            plugin.getLogger().info("幸运之柱：世界 " + w.getName() + " 难度临时设为 " + target
+                    + "（和平难度会把苦力怕直接清掉）。");
         }
+    }
+
+    private void applyCombatDifficulty(LuckyPillarArena a) {
+        World w = a.getWorld();
+        if (w == null) {
+            return;
+        }
+        difficulties.putIfAbsent(w.getName(), w.getDifficulty());
+        ensureCombatDifficulty(w);
     }
 
     private void restoreDifficulty(LuckyPillarArena a) {
@@ -1583,7 +2096,7 @@ public class LuckyPillarManager {
         a.trackBlock(block);
     }
 
-    /** 本局实体（箭/苦力怕/TNT）判定，用于取消苦力怕摔落伤害。 */
+    /** 本局实体（箭/苦力怕/凋零）判定，用于取消苦力怕摔落伤害。 */
     public boolean isTrackedEntity(org.bukkit.entity.Entity entity) {
         if (entity == null) {
             return false;
@@ -1683,24 +2196,43 @@ public class LuckyPillarManager {
     private static final class MatchTasks {
         BukkitTask loot;
         BukkitTask second;
-        BukkitTask trim;
         BukkitTask disaster;
-        BukkitTask finalWave;
+        BukkitTask finalTimer;
         BukkitTask settle;
         BukkitTask clear;
+        BukkitTask look;
+        /** 天灾倒计时的每秒提示 / 到点开打。 */
+        BukkitTask disasterWarn;
+        BukkitTask disasterFire;
+        /** 苦力怕「落地靠近玩家才点火」的观察任务（每波一个，清完自己取消）。 */
+        final List<BukkitTask> creeperWatchers = new ArrayList<>();
+        /** 下次物品 Boss 条（每 tick 刷新进度）。 */
+        BukkitTask bossBar;
+        BossBar lootBar;
+        String lootBarTitle;
 
         /** 只取消"对局玩法"任务，保留结算与清场任务。 */
         void cancelGameplay() {
-            for (BukkitTask t : new BukkitTask[]{loot, second, trim, disaster, finalWave}) {
+            for (BukkitTask t : new BukkitTask[]{loot, second, disaster, finalTimer,
+                    disasterWarn, disasterFire, bossBar}) {
                 if (t != null) {
                     t.cancel();
                 }
             }
+            for (BukkitTask t : creeperWatchers) {
+                if (t != null) {
+                    t.cancel();
+                }
+            }
+            creeperWatchers.clear();
             loot = null;
             second = null;
-            trim = null;
             disaster = null;
-            finalWave = null;
+            finalTimer = null;
+            disasterWarn = null;
+            disasterFire = null;
+            bossBar = null;
+            // lootBar 故意不清：由 LuckyPillarManager#stopLootBar 统一 hide 后再置空
         }
 
         void cancelAll() {
@@ -1712,6 +2244,10 @@ public class LuckyPillarManager {
             if (clear != null) {
                 clear.cancel();
                 clear = null;
+            }
+            if (look != null) {
+                look.cancel();
+                look = null;
             }
         }
     }

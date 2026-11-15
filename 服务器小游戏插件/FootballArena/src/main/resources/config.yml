@@ -18,23 +18,22 @@ sprint-seconds: 5
 sprint-cooldown: 5
 jump-cooldown: 5
 
-# 球（自定义物理：重力/阻力/反弹/滚动摩擦，撞墙按法线反射）
+# 球（自定义物理：重力/阻力/反弹/滚动摩擦，撞方块按法线反射）
+#      到 pos1/pos2 的水平边界会被隐形墙按 bounce 弹回（球门区域不设墙），没有出界
 ball:
   material: BLACK_CONCRETE   # 球的方块材质（BlockDisplay 整块渲染，必须是方块类，非方块回退白色混凝土）
   scale: 0.7                 # 球的视觉大小（= 方块边长，方块居中在球心；碰撞半径恒等于 scale/2）
   gravity: 0.08              # 每 tick 下落加速度
   drag: 0.985                # 空中水平阻力（每 tick 衰减系数）
   ground-friction: 0.86      # 落地反弹后的水平衰减（滚动摩擦）
-  bounce: 0.6                # 撞墙/落地反弹系数
-  push-speed: 0.32           # 球员身体带球时给球的水平速度（撞人挡球也靠它）
+  bounce: 0.6                # 撞墙/落地/场地边界反弹系数
   rest-speed: 0.05           # 低于该速度视为静止
 
-# 踢球（左键，需把鞋拿在主手）
+# 踢球（左键；任何物品或空手都能踢，开球阶段用开球靴）
 kick:
   range: 3.0                 # 踢球判定距离（离球心）
   forward-power: 1.0        # 击球：水平初速
   forward-lift: 0.45         # 击球：垂直初速（普通踢球弧线，最高点约到玩家眼睛高度）
-  vertical-power: 0.95       # 挑高靴：垂直初速（纯垂直击飞）
   kickoff-min-power: 0.6     # 开球力度 1 的水平初速
   kickoff-max-power: 2.2     # 力度映射上限（旧 8 档刻度的 8 档；现只发 1~4 档，数值与旧版一致）
   kickoff-lift-ratio: 0.45   # 开球垂直初速 = 水平初速 x 该比例（力度越大越高越远）
@@ -42,7 +41,7 @@ kick:
 # 场地（在游戏里用 /fb setup <场名> 的道具配置，不要手写）
 # arenas:
 #   <场名>:
-#     pos1 / pos2            # 场地范围（出界判定）
+#     pos1 / pos2            # 场地范围（水平边界 = 球的反弹墙）
 #     center                 # 开球点（球放在这里）
 #     lobby                  # 等待点（可省，默认用 center）
 #     spawn-red / spawn-blue # 两队出生点（进球后全员重置）

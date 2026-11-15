@@ -11,6 +11,8 @@ import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import java.util.function.Predicate;
+
 /**
  * 足球本体：一个 BlockDisplay 展示 + 自写的方块碰撞物理（服务端每 2 tick 推进一次）。
  * 球不使用原版实体物理（展示实体不能被"踢"），速度/重力/反弹全部自己算：
@@ -28,6 +30,13 @@ public class FootballBall {
 
     public FootballBall(FootballPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /**
+     * 场地水平边界（隐形墙）：球心越过 min/max 时按反弹系数弹回。
+     * goalZone 命中的点不设墙——球门区域要让球飞过门线，进球判定仍由 FootballManager 先做。
+     */
+    public record Boundary(double minX, double maxX, double minZ, double maxZ, Predicate<Location> goalZone) {
     }
 
     /** 在开球点生成/重生球（旧实体先清掉）。material 必须是方块材质。 */
@@ -105,8 +114,9 @@ public class FootballBall {
         return velocity.clone();
     }
 
-    /** 物理推进一步（period=两次调用的 tick 数）。 */
-    public void step(int period, double gravity, double drag, double bounce, double groundFriction, double restSpeed) {
+    /** 物理推进一步（period=两次调用的 tick 数）。boundary 为场地水平隐形墙（可空）。 */
+    public void step(int period, double gravity, double drag, double bounce, double groundFriction, double restSpeed,
+                     Boundary boundary) {
         if (display == null || !display.isValid()) {
             return;
         }
@@ -183,6 +193,9 @@ public class FootballBall {
             }
         }
 
+        // 场地边界（隐形墙）：到边线就反弹，不再判出界
+        applyBoundary(next, boundary, bounce);
+
         // 静止收敛
         if (velocity.lengthSquared() < restSpeed * restSpeed) {
             velocity.setX(0);
@@ -194,6 +207,54 @@ public class FootballBall {
         display.setTeleportDuration(2);
         display.setInterpolationDelay(0);
         display.setInterpolationDuration(2);
+    }
+
+    /**
+     * 场地边界反弹：球心碰到边线时夹回线内，并把朝外的水平速度按 bounce 反向。
+     * 边界在 manager 侧已经扣掉球半径（球的边缘贴线），球门区域不设墙（见 Boundary#goalZone）。
+     */
+    private void applyBoundary(Location next, Boundary b, double bounce) {
+        if (b == null || next == null) {
+            return;
+        }
+        if (b.goalZone() != null && b.goalZone().test(next)) {
+            return; // 球门区域：放行，让球能越过门线
+        }
+        boolean bounced = false;
+        if (b.maxX() - b.minX() > radius * 2) {
+            if (next.getX() < b.minX()) {
+                next.setX(b.minX());
+                if (velocity.getX() < 0) {
+                    velocity.setX(-velocity.getX() * bounce);
+                    bounced = true;
+                }
+            } else if (next.getX() > b.maxX()) {
+                next.setX(b.maxX());
+                if (velocity.getX() > 0) {
+                    velocity.setX(-velocity.getX() * bounce);
+                    bounced = true;
+                }
+            }
+        }
+        if (b.maxZ() - b.minZ() > radius * 2) {
+            if (next.getZ() < b.minZ()) {
+                next.setZ(b.minZ());
+                if (velocity.getZ() < 0) {
+                    velocity.setZ(-velocity.getZ() * bounce);
+                    bounced = true;
+                }
+            } else if (next.getZ() > b.maxZ()) {
+                next.setZ(b.maxZ());
+                if (velocity.getZ() > 0) {
+                    velocity.setZ(-velocity.getZ() * bounce);
+                    bounced = true;
+                }
+            }
+        }
+        World w = next.getWorld();
+        if (bounced && w != null) {
+            w.playSound(next, org.bukkit.Sound.BLOCK_STONE_STEP, 0.4f, 1.2f);
+        }
     }
 
     /**

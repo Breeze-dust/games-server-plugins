@@ -148,6 +148,15 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
                 m.openKitEditor(p, a);
                 return true;
             }
+            case "effect" -> {
+                if (!requireAdmin(sender, admin)) return true;
+                Player p = asPlayer(sender);
+                if (p == null) return true;
+                DuelArena a = editing(p);
+                if (a == null) return true;
+                m.openEffectEditor(p, a);
+                return true;
+            }
             case "save" -> {
                 if (!requireAdmin(sender, admin)) return true;
                 if (!(sender instanceof Player p)) return true;
@@ -199,6 +208,7 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
                 Chat.send(sender, "&7出生点1：&f" + (a.getSpawn1() == null ? "?" : shortLoc(a.getSpawn1())));
                 Chat.send(sender, "&7出生点2：&f" + (a.getSpawn2() == null ? "?" : shortLoc(a.getSpawn2())));
                 Chat.send(sender, "&7物品配置：&f" + (a.getKit().isEmpty() ? "空（/duel kit 配置）" : "已配置"));
+                Chat.send(sender, "&7开局药水效果：&f" + m.effectSummary(a));
                 Chat.send(sender, "&7状态：&f" + a.getState().name() + " 等待 " + a.getQueue().size() + "/2");
                 return true;
             }
@@ -301,16 +311,6 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
                 Chat.send(sender, "&7分场胜场：&f" + (per.isEmpty() ? "无" : String.join("  ", per)));
                 return true;
             }
-            case "reload" -> {
-                if (!requireAdmin(sender, admin)) return true;
-                if (m.hasPlayers()) {
-                    Chat.send(sender, "&c有玩家在场，不能重载配置。");
-                    return true;
-                }
-                m.reload();
-                Chat.send(sender, "&a配置已重新载入（数值项生效；场地改动仍需重启）。");
-                return true;
-            }
             case "help", "?" -> help(sender);
             default -> Chat.send(sender, "&c未知子命令。输入 /duel help 查看帮助。");
         }
@@ -342,10 +342,11 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&6-- OP 管理 --");
             Chat.send(sender, "&e/duel create <场名>&f 创建场");
             Chat.send(sender, "&e/duel edit <场名>&f 进入该场编辑状态（命令配置）");
-            Chat.send(sender, "&e/duel setup <场名>&f 进入配置模式（发道具：木棍圈范围、金锄头定出生点、绿宝石配物品、纸保存、屏障退出）");
+            Chat.send(sender, "&e/duel setup <场名>&f 进入配置模式（发道具：木棍圈范围、金锄头定出生点、绿宝石配物品、酿造台配药水效果、纸保存、屏障退出）");
             Chat.send(sender, "&e/duel pos1 &f/&e pos2&f 圈范围（站在两个对角）");
             Chat.send(sender, "&e/duel spawn1 &f/&e spawn2&f 设置两个出生点  &e/duel lobby&f 等待点");
             Chat.send(sender, "&e/duel kit&f 打开物品配置窗口（两位玩家共用）");
+            Chat.send(sender, "&e/duel effect&f 配置开局药水效果（也可在物品窗口右下角进入）");
             Chat.send(sender, "&e/duel save&f 保存当前编辑的场");
             Chat.send(sender, "&e/duel remove <场名>&f 删除场");
             Chat.send(sender, "&e/duel rename <旧名> <新名>&f 场地改名（同步菜单与告示牌）");
@@ -389,7 +390,7 @@ public class DuelCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "stats"));
             if (admin) {
-                subs.addAll(List.of("create", "edit", "rename", "setup", "setup-exit", "pos1", "pos2", "spawn1", "spawn2", "lobby", "kit", "save", "reload", "remove", "info", "sign", "joinsign", "topsign"));
+                subs.addAll(List.of("create", "edit", "rename", "setup", "setup-exit", "pos1", "pos2", "spawn1", "spawn2", "lobby", "kit", "effect", "save", "remove", "info", "sign", "joinsign", "topsign"));
             }
             String cur = args[0].toLowerCase();
             for (String s : subs) {
