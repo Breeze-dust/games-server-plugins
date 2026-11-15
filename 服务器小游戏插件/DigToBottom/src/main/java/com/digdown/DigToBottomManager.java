@@ -111,6 +111,15 @@ public class DigToBottomManager {
         data = PlayerStats.load(NAMESPACE, new File(plugin.getDataFolder(), "data.yml"));
         debugBreak = plugin.getConfig().getBoolean("debug-break-logs", true);
         plugin.getLogger().info("已载入 " + arenas.size() + " 个场。");
+        // 实际人数上限 = min(坑位数, max-players)：坑位是实打实的柱子，改配置也坐不下更多
+        int globalMax = Math.max(1, plugin.getConfig().getInt("max-players", 8));
+        for (DigToBottomArena a : arenas.values()) {
+            if (a.getLanes() < globalMax) {
+                plugin.getLogger().info("场 " + a.getName() + " 坑位数 " + a.getLanes()
+                        + " 小于 max-players " + globalMax + "，实际最多只能进 " + a.getLanes()
+                        + " 人；想扩容请 /dig lanes " + globalMax + " 后重新 /dig build。");
+            }
+        }
         warnSpawnProtection();
 
         // 等 HubCore 注册表准备好后再上报，避免首启时游戏名还没登记
@@ -137,6 +146,9 @@ public class DigToBottomManager {
 
     /** 把 arenas 段整体写回 config.yml（其余全局配置保持内存里的值）。 */
     public void saveAll() {
+        // 先重读磁盘上的配置：面板里手改的全局项（max-players 等）不能被内存里的旧值写回去。
+        // 以前关服时 shutdown -> saveAll 会把旧值覆盖回 config.yml，改了人数重启后等于没改。
+        plugin.reloadConfig();
         plugin.getConfig().set("arenas", null);
         ConfigurationSection sec = plugin.getConfig().createSection("arenas");
         for (DigToBottomArena a : arenas.values()) {
@@ -537,9 +549,14 @@ public class DigToBottomManager {
             msg(p, "&c柱高配置改过了（场内玻璃还是 &e" + a.getBuiltHeight() + " &c格），请 OP 重新 &e/dig build&c。");
             return false;
         }
-        int max = Math.max(1, Math.min(a.getLanes(), plugin.getConfig().getInt("max-players", 8)));
+        int globalMax = Math.max(1, plugin.getConfig().getInt("max-players", 8));
+        int max = Math.max(1, Math.min(a.getLanes(), globalMax));
         if (a.totalPlayers() >= max) {
-            msg(p, "&c人数已满（坑位 &e" + a.getLanes() + "&c，人数上限 &e" + max + "&c）。");
+            msg(p, "&c人数已满（坑位 &e" + a.getLanes() + "&c，全局上限 &e" + globalMax
+                    + "&c，实际 &e" + max + "&c）。");
+            if (a.getLanes() < globalMax && p.isOp()) {
+                msg(p, "&7坑位数挡住了人数：&e/dig lanes " + globalMax + "&7 后重新 &e/dig build&7。");
+            }
             return false;
         }
         playerArena.put(id, arenaName);

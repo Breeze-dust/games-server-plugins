@@ -218,10 +218,14 @@ public class DigToBottomCommand implements CommandExecutor, TabCompleter {
                     Chat.send(sender, "&7暂无场。");
                     return true;
                 }
+                int globalMax = Math.max(1, plugin.getConfig().getInt("max-players", 8));
                 for (DigToBottomArena a : m.getArenas().values()) {
+                    int cap = Math.max(1, Math.min(a.getLanes(), globalMax));
                     Chat.send(sender, "&e" + a.getName() + " &f[" + a.getState().name() + "] "
                             + (a.isReady() ? "&a已建好" : a.isBuilt() ? "&c缺等待点" : "&c未建场")
                             + " &7" + a.totalPlayers() + "人 &7坑位=" + a.getLanes() + " 半径=" + a.getRadius()
+                            + " &7人数上限=" + cap
+                            + (a.getLanes() < globalMax ? "&c（坑位不足，/dig lanes " + globalMax + " 后 /dig build）" : "")
                             + (a.isBuilt() && a.getBuiltHeight() != m.height() ? " &c柱高不一致，需 /dig build" : ""));
                 }
                 return true;

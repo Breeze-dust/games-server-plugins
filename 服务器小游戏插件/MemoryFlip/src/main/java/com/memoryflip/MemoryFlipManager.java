@@ -509,6 +509,7 @@ public final class MemoryFlipManager {
         Collections.shuffle(boards, gameRandom);
         List<UUID> order = new ArrayList<>(playing);
         Collections.shuffle(order, gameRandom);
+        Set<UUID> claimed = new HashSet<>();
         int index = 0;
         for (UUID id : order) {
             Player p = Bukkit.getPlayer(id);
@@ -516,7 +517,7 @@ public final class MemoryFlipManager {
                 continue;
             }
             MemoryFlipArena.Board board = boards.get(index++);
-            PlayState st = prepareBoard(id, board, index - 1, gameRandom);
+            PlayState st = prepareBoard(id, board, index - 1, gameRandom, claimed);
             if (st == null) {
                 continue;
             }
@@ -540,7 +541,8 @@ public final class MemoryFlipManager {
         gameTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickGame, 20L, 20L);
     }
 
-    private PlayState prepareBoard(UUID id, MemoryFlipArena.Board board, int boardIndex, Random gameRandom) {
+    private PlayState prepareBoard(UUID id, MemoryFlipArena.Board board, int boardIndex, Random gameRandom,
+                                   Set<UUID> claimed) {
         PlayState st = new PlayState();
         st.boardIndex = boardIndex;
         int total = boardRows() * boardCols();
@@ -552,20 +554,38 @@ public final class MemoryFlipManager {
             plugin.getLogger().warning("翻牌墙 " + boardIndex
                     + " 的存档位置有重复，请重新 /memory build 建场。");
         }
-        Set<UUID> used = new HashSet<>();
-        int repaired = 0;
+        // 先载入牌位所在区块：区块没加载时 framesAt 找不到展示框，会被误判成"缺框"再补一个，
+        // 同一格于是出现两个框——玩家看到的是那个没人管的空框，点它毫无反应。
         for (Location loc : board.frames) {
+            if (loc.getWorld() != null) {
+                loc.getWorld().getChunkAt(loc);
+            }
+        }
+        int repaired = 0;
+        int duplicates = 0;
+        for (Location loc : board.frames) {
+            List<ItemFrame> found = arena.framesAt(loc);
             ItemFrame frame = null;
-            for (ItemFrame candidate : arena.framesAt(loc)) {
-                if (used.add(candidate.getUniqueId())) {
+            for (ItemFrame candidate : found) {
+                if (claimed.add(candidate.getUniqueId())) {
                     frame = candidate;
                     break;
                 }
             }
+            // 同一格多出来的展示框（旧版本遗留、或以前区块没加载时补出来的）一律清掉，
+            // 否则它会盖住真正在用的那一面，玩家点到它就是"地图消失、点了没反应"。
+            for (ItemFrame candidate : found) {
+                if (candidate == frame || claimed.contains(candidate.getUniqueId())) {
+                    continue;
+                }
+                candidate.setItem(new ItemStack(Material.AIR));
+                candidate.remove();
+                duplicates++;
+            }
             if (frame == null) {
                 frame = spawnFrame(loc, board.stand);
                 if (frame != null) {
-                    used.add(frame.getUniqueId());
+                    claimed.add(frame.getUniqueId());
                     repaired++;
                 }
             }
@@ -580,6 +600,9 @@ public final class MemoryFlipManager {
         }
         if (repaired > 0) {
             plugin.getLogger().info("翻牌墙 " + boardIndex + " 补齐了 " + repaired + " 个展示框。");
+        }
+        if (duplicates > 0) {
+            plugin.getLogger().info("翻牌墙 " + boardIndex + " 清理了 " + duplicates + " 个重复展示框。");
         }
         if (st.frames.size() < total) {
             plugin.getLogger().warning("翻牌墙牌位不足（" + st.frames.size() + "/" + total

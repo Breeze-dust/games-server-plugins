@@ -14,6 +14,10 @@
 - **命令**：`/dig`（别名 `dgb` / `digdown`）—— 玩家：`join <场名>`、`leave`、`list`、`stats [玩家]`、`help`；管理（`isOp()` 或权限节点 `dig.admin`）：`create`、`edit`、`remove`、`rename`、`center`、`lobby`、`spectator`、`lanes`、`radius`、`build`、`save`、`start [场名]`（不带场名 = 当前 `/dig edit` 的场；控制台必须带场名）、`debug`、`stats reset`。
 - **配置**：`server/plugins/DigToBottom/config.yml`（源码模板 `DigToBottom/src/main/resources/config.yml`）——
   `min-players`（默认 1）、`max-players`（默认 8，实际人数上限 = min(坑位数, 这个值)）、`countdown-seconds`（默认 3）、`game-seconds`（默认 180）、`shorten-seconds`（默认 20）、`debug-break-logs`（默认 true，诊断用，平时可设 false）、`pillar.height`（默认 60）、`pillar.materials.wood/pickaxe/shovel`（三个方块池，随机时合并使用）。
+  - **改人数**：只想放宽排队上限就到面板改 `max-players` 再重启（`/dig reload` 也行）；**坑位数不够时它不会生效**——
+    实际能进的人数永远是 `min(坑位数, max-players)`，要更多人得 OP 跑 `/dig lanes <人数>` 再 `/dig build`。
+    `/dig list` 会显示「人数上限」并在坑位不足时提示；启动日志也会打印哪个场被坑位卡住。
+  - 面板/手改 `config.yml` 的全局项不会被插件写回旧值（`saveAll` 先 `reloadConfig` 再只重写 `arenas` 段）。
 - **每局规则**：
   - 柱体高度 = `pillar.height`；材料池先洗牌循环再整体洗一次，**同一局所有玩家柱子完全一样**，尽量每种方块都用上，且相邻两层不重复。
   - 开局 3 秒（可配）内**不能移动、不能挖方块**，但工具已发放；倒计时结束才正式计时。
