@@ -109,6 +109,8 @@ public final class DonorAnvilMenu {
         lore.add(Text.parse("&7然后点击右侧命名牌两次确认").decoration(TextDecoration.ITALIC, false));
         lore.add(Text.parse("&8渐变写法 &7{FF0000>00FF00}称号 &8可多段")
                 .decoration(TextDecoration.ITALIC, false));
+        lore.add(Text.parse("&8渐变里可用格式码（乱码/粗体/斜体/下划线/删除线），颜色码不生效")
+                .decoration(TextDecoration.ITALIC, false));
         lore.add(Text.parse("&8最多 " + MAX_LENGTH + " 个字符，支持 &颜色代码")
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);

@@ -1,11 +1,14 @@
 package com.example.playertitles.util;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
@@ -57,11 +60,11 @@ public final class Text {
         return parse((color == null ? "" : color) + (raw == null ? "" : raw));
     }
 
-    /** 称号名称的纯文本（去掉渐变语法和颜色代码），用于预填和“名称没变”判断。 */
+    /** 称号名称的纯文本（去掉渐变语法和颜色/格式代码），用于预填和“名称没变”判断。 */
     public static String titlePlain(String raw) {
         Gradient gradient = parseGradient(raw);
         if (gradient != null) {
-            return gradient.text().trim();
+            return PlainTextComponentSerializer.plainText().serialize(gradient.render()).trim();
         }
         return PlainTextComponentSerializer.plainText().serialize(parse(raw)).trim();
     }
@@ -106,22 +109,79 @@ public final class Text {
     /** 已解析的渐变：文字 + 一组颜色，按字符逐个插值。 */
     public record Gradient(String text, List<Integer> colors) {
 
+        /** 渐变正文里的一个可见字符及其格式（&k&l&o&n&m 生效；&r 清空）。 */
+        private record StyledChar(int codePoint, Set<TextDecoration> decorations) {
+        }
+
         public Component render() {
-            int[] codePoints = text.codePoints().toArray();
-            if (codePoints.length == 0) {
+            List<StyledChar> chars = styledChars();
+            if (chars.isEmpty()) {
                 return Component.empty();
             }
             Component result = Component.empty();
-            for (int i = 0; i < codePoints.length; i++) {
-                double t = codePoints.length == 1 ? 0.0 : (double) i / (codePoints.length - 1);
+            for (int i = 0; i < chars.size(); i++) {
+                StyledChar styled = chars.get(i);
+                double t = chars.size() == 1 ? 0.0 : (double) i / (chars.size() - 1);
                 double scaled = t * (colors.size() - 1);
                 int index = Math.min((int) Math.floor(scaled), colors.size() - 2);
                 int rgb = lerp(colors.get(index), colors.get(index + 1), scaled - index);
-                result = result.append(Component.text(
-                        new String(Character.toChars(codePoints[i])),
-                        TextColor.color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF)));
+                Component part = Component.text(
+                        new String(Character.toChars(styled.codePoint())),
+                        TextColor.color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF));
+                for (TextDecoration decoration : styled.decorations()) {
+                    part = part.decorate(decoration);
+                }
+                result = result.append(part);
             }
             return result;
+        }
+
+        /**
+         * 把正文拆成可见字符：格式代码只改变后续字符的样式，本身不占位；
+         * 颜色码（&c、&#RRGGBB）在渐变里不生效，直接丢掉（颜色由渐变决定）。
+         * 渐变按可见字符数均分，所以代码不影响取色。
+         */
+        private List<StyledChar> styledChars() {
+            List<StyledChar> out = new ArrayList<>();
+            EnumSet<TextDecoration> active = EnumSet.noneOf(TextDecoration.class);
+            int i = 0;
+            while (i < text.length()) {
+                if (text.charAt(i) == '&' && i + 1 < text.length()) {
+                    char code = Character.toLowerCase(text.charAt(i + 1));
+                    TextDecoration decoration = switch (code) {
+                        case 'k' -> TextDecoration.OBFUSCATED;
+                        case 'l' -> TextDecoration.BOLD;
+                        case 'o' -> TextDecoration.ITALIC;
+                        case 'n' -> TextDecoration.UNDERLINED;
+                        case 'm' -> TextDecoration.STRIKETHROUGH;
+                        default -> null;
+                    };
+                    if (decoration != null) {
+                        active.add(decoration);
+                        i += 2;
+                        continue;
+                    }
+                    if (code == 'r') {
+                        active.clear();
+                        i += 2;
+                        continue;
+                    }
+                    if (COLORS.indexOf(code) >= 0) {
+                        i += 2;
+                        continue;
+                    }
+                    if (code == '#' && i + 7 < text.length()
+                            && text.substring(i + 2, i + 8).matches("[0-9a-fA-F]{6}")) {
+                        i += 8;
+                        continue;
+                    }
+                    // 不是认识的代码：& 按普通字符处理
+                }
+                int cp = text.codePointAt(i);
+                out.add(new StyledChar(cp, active.isEmpty() ? Set.of() : EnumSet.copyOf(active)));
+                i += Character.charCount(cp);
+            }
+            return out;
         }
 
         private static int lerp(int from, int to, double t) {
