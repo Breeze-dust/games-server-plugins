@@ -104,7 +104,8 @@ public class CloudWalkManager {
         generators.clear();
         for (CloudWalkSettings.Difficulty difficulty : settings.difficulties) {
             generators.put(difficulty.id, new PathGenerator(difficulty.distances, settings.heights,
-                    difficulty.allow4JumpUp, settings.turnChance));
+                    difficulty.allow4JumpUp, difficulty.allow4Far, settings.turnChance,
+                    difficulty.fourFarChance));
         }
         playerBlocks.clear();
         ensureLaneArray();
@@ -368,7 +369,9 @@ public class CloudWalkManager {
                     .append(difficulty.name)
                     .append(difficulty.enabled ? "" : "(未开放)")
                     .append("&7 距离").append(Arrays.toString(difficulty.distances))
-                    .append(difficulty.allow4JumpUp ? "(含4+上升)" : "");
+                    .append(difficulty.allow4JumpUp ? "(含4+上升)" : "")
+                    .append(difficulty.allow4Far
+                            ? "(四格跳 " + Math.round(difficulty.fourFarChance * 100) + "%)" : "");
         }
         out.add("&b难度：" + difficultyLine);
         out.add("&b生成：&f高度 " + Arrays.toString(settings.heights)
@@ -687,7 +690,7 @@ public class CloudWalkManager {
                 + " &8· &6最高 &e" + bestScore(s.playerId, s.difficulty.id);
     }
 
-    /** 上一跳是不是「水平 4 + 上升」（三远一高）。 */
+    /** 上一跳是不是特殊跳（三远一高：水平 4 + 上升；或四格跳：水平 5）。 */
     private static boolean isSpecialJump(List<BlockPos> path) {
         if (path.size() < 2) {
             return false;
@@ -695,7 +698,7 @@ public class CloudWalkManager {
         BlockPos previous = path.get(path.size() - 2);
         BlockPos tail = path.get(path.size() - 1);
         int distance = Math.abs(tail.x() - previous.x()) + Math.abs(tail.z() - previous.z());
-        return distance == 4 && tail.y() > previous.y();
+        return distance >= 5 || (distance == 4 && tail.y() > previous.y());
     }
 
     // ---------- 通道 ----------

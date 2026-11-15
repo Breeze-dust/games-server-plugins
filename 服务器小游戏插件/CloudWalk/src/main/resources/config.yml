@@ -86,6 +86,8 @@ path:
 # medium= 在 easy 基础上加入「空 3 格 + 上升 1 格」
 # hard  = 暂未开放
 # allow-4-far: true 时额外加入距离 5（空 4 格）；原版跳不到，留给跳跃提升，默认关闭
+# four-far-chance: 每次生成时尝试四格跳的概率（0~1）
+# 三远一高和四格跳都不会连续出现，也不会出现在开局前 special-first-blocks 块里
 difficulties:
   easy:
     name: 简单
@@ -104,6 +106,7 @@ difficulties:
     enabled: true
     allow4-jump-up: true
     allow-4-far: false   # 预留：改成 true 后加入距离 5（空 4 格）
+    four-far-chance: 0.15 # 每次生成尝试四格跳的概率（仅 allow-4-far: true 时生效）
     distances: [3, 4]
     title-id: cloudwalk_super_bridge
     title-name: 超级搭路
@@ -115,6 +118,7 @@ difficulties:
     enabled: false
     allow4-jump-up: true
     allow-4-far: true
+    four-far-chance: 0.25
     distances: [3, 4]
     title-id: cloudwalk_hard_bridge
     title-name: 云端宗师
