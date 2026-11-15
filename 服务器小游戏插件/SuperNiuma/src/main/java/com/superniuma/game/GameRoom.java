@@ -23,6 +23,9 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -88,6 +91,10 @@ public final class GameRoom {
     private Scoreboard scoreboard;
     private Team noCollision;
     private BukkitTask task;
+    private BossBar bossBar;
+    private Phase bossBarPhase;
+    private int bossBarTotalTicks = -1;
+    private int bossBarLastSeconds = -1;
 
     private Phase phase = Phase.WAITING;
     private int phaseTicks;
@@ -294,6 +301,9 @@ public final class GameRoom {
             return;
         }
         participants.remove(participant);
+        if (bossBar != null) {
+            bossBar.removePlayer(player);
+        }
         PlacementSession session = sessions.remove(player.getUniqueId());
         if (session != null) {
             plugin.mechanismManager().clearPreview(session);
@@ -1267,6 +1277,7 @@ public final class GameRoom {
         ending = true;
         phase = Phase.ENDED;
         plugin.startCountdown().cancel("room:" + id);
+        hideBossBar();
         if (task != null) {
             task.cancel();
             task = null;
@@ -1477,6 +1488,11 @@ public final class GameRoom {
         if (ending) {
             return;
         }
+        tickPhase();
+        updateBossBar();
+    }
+
+    private void tickPhase() {
         switch (phase) {
             case SELECTING -> {
                 phaseTicks--;
@@ -1549,6 +1565,80 @@ public final class GameRoom {
             default -> {
             }
         }
+    }
+
+    /** 每个进行中的阶段都在 boss 血条上显示剩余时间。 */
+    private void updateBossBar() {
+        Phase current = phase;
+        if (current != Phase.SELECTING && current != Phase.PLACING
+                && current != Phase.STARTING && current != Phase.RUNNING
+                && current != Phase.SCORING) {
+            hideBossBar();
+            return;
+        }
+        if (bossBar == null) {
+            bossBar = Bukkit.createBossBar("", BarColor.WHITE, BarStyle.SOLID);
+        }
+        if (bossBarPhase != current) {
+            bossBarPhase = current;
+            bossBarTotalTicks = Math.max(1, remainingTicks());
+            bossBarLastSeconds = -1;
+            for (Player player : onlinePlayers()) {
+                bossBar.addPlayer(player);
+            }
+        }
+        int remaining = remainingTicks();
+        int seconds = Math.max(0, (remaining + 19) / 20);
+        if (seconds != bossBarLastSeconds) {
+            bossBarLastSeconds = seconds;
+            bossBar.setTitle(Msg.c(bossBarTitle(current, seconds)));
+        }
+        bossBar.setColor(bossBarColor(current));
+        bossBar.setProgress(Math.max(0.0, Math.min(1.0,
+                (double) remaining / bossBarTotalTicks)));
+    }
+
+    private int remainingTicks() {
+        if (phase == Phase.SELECTING && autoCloseTicks >= 0) {
+            return Math.min(phaseTicks, autoCloseTicks);
+        }
+        if (phase == Phase.STARTING) {
+            return runCountdownTicks;
+        }
+        return phaseTicks;
+    }
+
+    private String bossBarTitle(Phase current, int seconds) {
+        String roundTag = round > 0 ? "第 " + round + " 回合 · " : "";
+        return switch (current) {
+            case SELECTING -> "&e" + roundTag + "选择机关 &f" + seconds + " 秒";
+            case PLACING -> "&b" + roundTag + "摆放机关 &f" + seconds + " 秒";
+            case STARTING -> "&6跑酷倒计时 &f" + seconds + " 秒";
+            case RUNNING -> "&a" + roundTag + "跑酷中 &f" + seconds + " 秒";
+            case SCORING -> "&d" + roundTag + "结算中 &f" + seconds + " 秒";
+            default -> "";
+        };
+    }
+
+    private BarColor bossBarColor(Phase current) {
+        return switch (current) {
+            case SELECTING -> BarColor.YELLOW;
+            case PLACING -> BarColor.BLUE;
+            case STARTING -> BarColor.RED;
+            case RUNNING -> BarColor.GREEN;
+            case SCORING -> BarColor.PURPLE;
+            default -> BarColor.WHITE;
+        };
+    }
+
+    private void hideBossBar() {
+        if (bossBar != null) {
+            bossBar.removeAll();
+            bossBar = null;
+        }
+        bossBarPhase = null;
+        bossBarTotalTicks = -1;
+        bossBarLastSeconds = -1;
     }
 
     private int secondsToTicks(int seconds) {

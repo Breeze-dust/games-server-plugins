@@ -118,6 +118,17 @@ mechanisms:
     low-clear-weight: 40    # 触发保底时炸弹使用的权重
     low-clear-min-count: 1  # 保底至少出现几个炸弹
 
+  nuke:
+    enabled: true
+    weight: 6
+    icon: CREEPER_SPAWN_EGG
+    rotation: none
+    name: '&2核弹'
+    lore:
+      - '&7一次性炸掉 9x9x9 范围内的所有机关'
+      - '&7不会破坏地图原本的方块'
+    radius: 4               # 4 = 9x9x9
+
   spring:
     enabled: true
     weight: 10

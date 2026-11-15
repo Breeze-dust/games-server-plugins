@@ -227,7 +227,7 @@ public final class MechanismManager {
             }
             case "traffic" -> spawnTrafficGhosts(session, anchor, facing);
             case "coin" -> spawnCoinGhost(session);
-            case "bomb" -> {
+            case "bomb", "nuke" -> {
                 BlockData glass = Material.RED_STAINED_GLASS.createBlockData();
                 for (Location cell : cells) {
                     if (sameBlock(cell, anchor)) {
@@ -586,11 +586,12 @@ public final class MechanismManager {
             return placePortal(room, session, def, arena, anchor, yawSteps, pitchSteps);
         }
 
-        if ("bomb".equals(def.id())) {
+        if ("bomb".equals(def.id()) || "nuke".equals(def.id())) {
+            boolean nuke = "nuke".equals(def.id());
             if (!arena.inBuildBounds(anchor)) {
-                return PlaceResult.fail("炸弹只能放在可建造范围内。");
+                return PlaceResult.fail((nuke ? "核弹" : "炸弹") + "只能放在可建造范围内。");
             }
-            bomb(room, anchor, def.bombRadius());
+            bomb(room, anchor, def.bombRadius(), nuke);
             return PlaceResult.ok(null);
         }
 
@@ -1407,15 +1408,25 @@ public final class MechanismManager {
         }
     }
 
-    public void bomb(GameRoom room, Location anchor, int radius) {
+    public void bomb(GameRoom room, Location anchor, int radius, boolean nuke) {
+        String label = nuke ? "核弹" : "炸弹";
         for (MechanismInstance instance : new ArrayList<>(room.mechanisms())) {
             if (instance.intersectsCube(anchor, radius)) {
                 remove(room, instance);
             }
         }
-        anchor.getWorld().spawnParticle(Particle.EXPLOSION, anchor.clone().add(0.5, 0.5, 0.5), 3);
-        anchor.getWorld().playSound(anchor, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.8f);
-        room.broadcast("&c炸弹炸掉了周围的机关！");
+        if (nuke) {
+            anchor.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER,
+                    anchor.clone().add(0.5, 0.5, 0.5), 3);
+            anchor.getWorld().spawnParticle(Particle.EXPLOSION,
+                    anchor.clone().add(0.5, 0.5, 0.5), 20, radius, radius, radius);
+            anchor.getWorld().playSound(anchor, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 0.5f);
+        } else {
+            anchor.getWorld().spawnParticle(Particle.EXPLOSION,
+                    anchor.clone().add(0.5, 0.5, 0.5), 3);
+            anchor.getWorld().playSound(anchor, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.8f);
+        }
+        room.broadcast("&c" + label + "炸掉了周围的机关！");
     }
 
     // ---------- 还原 ----------
@@ -1528,6 +1539,7 @@ public final class MechanismManager {
                 out.add(anchor.clone());
                 out.add(anchor.clone().add(0, 1, 0));
             }
+            case "nuke" -> out.addAll(cubeEdges(anchor, def.bombRadius()));
             case "bomb" -> {
                 int radius = def.bombRadius();
                 for (int x = -radius; x <= radius; x++) {
@@ -1539,6 +1551,31 @@ public final class MechanismManager {
                 }
             }
             default -> out.add(anchor.clone());
+        }
+        return out;
+    }
+
+    /** 大范围爆炸只预览立方体的 12 条棱，避免一次生成数百个预览实体。 */
+    private List<Location> cubeEdges(Location anchor, int radius) {
+        List<Location> out = new ArrayList<>();
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    int faces = 0;
+                    if (x == -radius || x == radius) {
+                        faces++;
+                    }
+                    if (y == -radius || y == radius) {
+                        faces++;
+                    }
+                    if (z == -radius || z == radius) {
+                        faces++;
+                    }
+                    if (faces >= 2) {
+                        out.add(anchor.clone().add(x, y, z));
+                    }
+                }
+            }
         }
         return out;
     }

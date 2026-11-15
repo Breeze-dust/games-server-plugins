@@ -83,11 +83,14 @@ public final class SelectMechanismMenu {
         UUID owner = room.optionOwner(choice.optionId());
         if (owner == null) {
             lore.add(Msg.c("&a点击选择这个机关"));
-        } else if (owner.equals(player.getUniqueId())) {
-            lore.add(Msg.c("&a你已选择这个机关"));
         } else {
-            String ownerName = room.selectionStatus(choice.optionId());
-            lore.add(Msg.c("&c该机关已被【" + ownerName + "】选择"));
+            if (owner.equals(player.getUniqueId())) {
+                lore.add(Msg.c("&a你已选择这个机关"));
+            } else {
+                String ownerName = room.selectionStatus(choice.optionId());
+                lore.add(Msg.c("&c该机关已被【" + ownerName + "】选择"));
+            }
+            meta.setEnchantmentGlintOverride(true);
         }
         meta.setLore(lore);
         item.setItemMeta(meta);
