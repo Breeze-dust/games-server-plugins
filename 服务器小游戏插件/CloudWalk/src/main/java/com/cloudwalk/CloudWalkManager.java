@@ -86,6 +86,7 @@ public class CloudWalkManager {
     private BukkitTask leaderboardTask;
     private boolean[] lanesUsed = new boolean[0];
     private int tickCounter;
+    private long lastTickErrorLog;
 
     private final List<LeaderBoard> leaderboards = new ArrayList<>();
 
@@ -131,7 +132,7 @@ public class CloudWalkManager {
             leaderboardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::maintenance, 100L, 100L);
         }
         Bukkit.getScheduler().runTaskLater(plugin, this::maintenance, 40L);
-        syncTitles();
+        syncTitlesSafe();
 
         plugin.getLogger().info("云中漫步已加载：区域" + (baseBox == null ? "未配置" : "已配置")
                 + "，起点" + (baseStart == null ? "未配置" : "已配置")
@@ -494,7 +495,7 @@ public class CloudWalkManager {
         updateGlow(session, path.get(1));
 
         Chat.send(p, "&b&l云中漫步 &7· " + difficulty.color + difficulty.name
-                + " &7· &f跳到前方方块，每块 +1 分；掉下去本局结束。");
+                + " &7· &f跳到前方方块，每块 +1 分, 三远一高与四格跳 +2 分；掉下去本局结束。");
         Chat.actionBar(p, actionBarText(session));
     }
 
@@ -517,8 +518,44 @@ public class CloudWalkManager {
         return sessions.containsKey(id);
     }
 
-    public boolean isPathBlock(Block block) {
-        for (ParkourSession s : sessions.values()) {
+    /** 排障：站在没被判定到的方块上执行 /cloudwalk debug，看目标块、距离和 Y 判定值。 */
+    public List<String> debugInfo(UUID id) {
+        ParkourSession s = sessions.get(id);
+        if (s == null) {
+            return List.of("&7当前不在跑酷中。");
+        }
+        Player p = Bukkit.getPlayer(id);
+        if (p == null || !p.isOnline()) {
+            return List.of("&7玩家不在线。");
+        }
+        Location loc = p.getLocation();
+        List<String> out = new ArrayList<>();
+        out.add("&b难度：&f" + s.difficulty.id + " &7分数 " + s.score + " &7已生成 " + s.generated);
+        out.add("&b当前块：&f" + locText(s.current()));
+        if (s.path.size() > 1) {
+            BlockPos target = s.path.get(1);
+            double dx = loc.getX() - (target.x() + 0.5);
+            double dz = loc.getZ() - (target.z() + 0.5);
+            out.add("&b目标块：&f" + locText(target)
+                    + " &7中心水平距离 " + String.format("%.2f", Math.sqrt(dx * dx + dz * dz)));
+            out.add("&b你的位置：&f"
+                    + String.format("%.2f", loc.getX()) + ", "
+                    + String.format("%.2f", loc.getY()) + ", "
+                    + String.format("%.2f", loc.getZ())
+                    + " &7onGround=" + p.isOnGround()
+                    + " vy=" + String.format("%.2f", p.getVelocity().getY()));
+            out.add("&7判定：水平 ≤ 0.95，脚部 Y 在 "
+                    + (target.y() + 0.9) + " ~ " + (target.y() + 1.6));
+        }
+        out.add("&7队列：&f" + s.path.stream().map(this::locText).toList());
+        return out;
+    }
+
+    private String locText(BlockPos pos) {
+        return pos.x() + "," + pos.y() + "," + pos.z();
+    }
+
+    public boolean isPathBlock(Block block) {        for (ParkourSession s : sessions.values()) {
             if (!s.box.world().equals(block.getWorld())) {
                 continue;
             }
@@ -531,12 +568,26 @@ public class CloudWalkManager {
         return false;
     }
 
-    // ---------- 每 2 tick ----------
+    // ---------- 每 tick ----------
 
+    /** 包一层异常保护：任何一局出错都不能让整个检测任务死掉。 */
     private void tick() {
         if (sessions.isEmpty()) {
             return;
         }
+        try {
+            tickSessions();
+        } catch (Throwable ex) {
+            long now = System.currentTimeMillis();
+            if (now - lastTickErrorLog > 60_000L) {
+                lastTickErrorLog = now;
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "云中漫步 tick 异常（同分钟内不再重复打印）", ex);
+            }
+        }
+    }
+
+    private void tickSessions() {
         tickCounter++;
         boolean showBar = tickCounter % 10 == 0;
 
@@ -563,7 +614,7 @@ public class CloudWalkManager {
                 // 落在目标方块顶面附近：水平 0.85 格内、脚部 Y 在顶面 -0.1~+0.6。
                 // 不判断 Y 速度：玩家落地后立刻起跳（连跳）时，采样到 +0.4 仍然算数。
                 // 也不用 Player#isOnGround（已弃用，且依赖客户端上报）。
-                if (dx * dx + dz * dz <= 0.85 * 0.85
+                if (dx * dx + dz * dz <= 0.95 * 0.95
                         && feetY >= target.y() + 0.9
                         && feetY < target.y() + 1.6) {
                     score(p, s, target);
@@ -974,7 +1025,7 @@ public class CloudWalkManager {
     private void maintenance() {
         refreshLeaderboards();
         refreshPageViews();
-        syncTitles();
+        syncTitlesSafe();
         prunePageViews();
     }
 
@@ -1412,6 +1463,22 @@ public class CloudWalkManager {
 
     // ---------- 头衔 ----------
 
+    private long lastTitleErrorLog;
+
+    /** 头衔同步失败不能影响跑酷主循环（例如头衔插件版本不匹配）。 */
+    private void syncTitlesSafe() {
+        try {
+            syncTitles();
+        } catch (Throwable ex) {
+            long now = System.currentTimeMillis();
+            if (now - lastTitleErrorLog > 60_000L) {
+                lastTitleErrorLog = now;
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "云中漫步头衔同步失败（检查 MiniGameLib / PlayerTitles 版本）", ex);
+            }
+        }
+    }
+
     /** 每个难度前十持有对应头衔；高难度前十同时持有所有更低难度的头衔（但不出现在低难度榜上）。 */
     private void syncTitles() {
         boolean changed = false;
@@ -1584,7 +1651,7 @@ public class CloudWalkManager {
         data.set("bestAt." + difficultyId + "." + id, System.currentTimeMillis());
         data.set("names." + id, name);
         saveData();
-        syncTitles();
+        syncTitlesSafe();
         refreshLeaderboards();
     }
 
@@ -1595,7 +1662,7 @@ public class CloudWalkManager {
         }
         data.set("names." + id, null);
         saveData();
-        syncTitles();
+        syncTitlesSafe();
         refreshLeaderboards();
     }
 
@@ -1606,7 +1673,7 @@ public class CloudWalkManager {
         data.set("names", null);
         saveData();
         // 不清 title-holders：让 syncTitles 先按旧名单收回头衔，再自己清空
-        syncTitles();
+        syncTitlesSafe();
         refreshLeaderboards();
     }
 

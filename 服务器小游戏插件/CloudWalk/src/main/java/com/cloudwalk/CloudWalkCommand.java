@@ -118,6 +118,17 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                     Chat.send(sender, line);
                 }
             }
+            case "debug" -> {
+                if (!requireAdmin(sender)) {
+                    return true;
+                }
+                Player player = asPlayer(sender);
+                if (player != null) {
+                    for (String line : manager.debugInfo(player.getUniqueId())) {
+                        Chat.send(sender, line);
+                    }
+                }
+            }
             case "reload" -> {
                 if (!requireAdmin(sender)) {
                     return true;
@@ -199,7 +210,7 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&f/cloudwalk top [难度] &7- 对应难度前十（聊天）");
         Chat.send(sender, "&f/cloudwalk stats [玩家] &7- 查看各难度最高分");
         if (hasAdmin(sender)) {
-            Chat.send(sender, "&7管理：&fpos1 &7/&f pos2 &7/&f setstart &7/&f setlobby &7/&f info &7/&f reload &7/&f reset <玩家|all>");
+            Chat.send(sender, "&7管理：&fpos1 &7/&f pos2 &7/&f setstart &7/&f setlobby &7/&f info &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
             Chat.send(sender, "&7全息榜：&f/cloudwalk top place &7（在当前位置放置）、&f/cloudwalk top remove");
         }
     }
@@ -254,7 +265,7 @@ public class CloudWalkCommand implements CommandExecutor, TabCompleter {
                 }
             }
             if (hasAdmin(sender)) {
-                for (String sub : List.of("pos1", "pos2", "setstart", "setlobby", "info", "reload", "reset")) {
+                for (String sub : List.of("pos1", "pos2", "setstart", "setlobby", "info", "reload", "reset", "debug")) {
                     if (sub.startsWith(args[0].toLowerCase())) {
                         out.add(sub);
                     }

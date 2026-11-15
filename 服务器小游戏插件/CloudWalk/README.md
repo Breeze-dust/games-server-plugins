@@ -31,8 +31,9 @@
   点击方块切换启用/禁用，底部「全部启用」「关闭并保存」。选择按玩家存进 `players.yml` 的 `blocks.<uuid>`。
   第 2 格是「音效：开启/关闭」（音符盒），右键切换本局音效，按玩家存进 `sound.<uuid>`，默认开启。
   结束/下线/关服时原样还原物品栏；跑酷中这两个道具都不能丢弃。
-- **落地判定**：每 tick 检查一次：脚部与队列第一块顶面中心水平距离 ≤ 0.85、脚部 Y 在顶面 -0.1~+0.6；
-  命中后删旧块、队尾补一块。不判断 Y 速度，所以落地后立刻起跳的连跳也能正常计分。
+- **落地判定**：每 tick 检查一次：脚部与队列第一块顶面中心水平距离 ≤ 0.95、脚部 Y 在顶面 -0.1~+0.6；
+  命中后按规则加分、删旧块、队尾补一块。不判断 Y 速度，所以落地后立刻起跳的连跳也能正常计分。
+  tick 循环包了异常保护：任何一局出错都不会让整个检测任务停掉；排障用 `/cloudwalk debug`。
   XZ 出界判定留了 2 格余量，站在区域最边上的方块不会误判；服务端位置校正（TeleportCause.UNKNOWN）也不会被当成传送。
 - **计分**：普通跳 **+1**；「三远一高」（水平 4 + 上升）和「四格跳」（水平 5）各 **+2**。
   落地后的动作栏会显示本次「+1 / +2」和当前总分。
@@ -70,7 +71,8 @@
   - 玩家：无参数 / `join` 打开难度选择、`easy|medium|hard` 直接开始、
     `leave` 退出、`top [难度]` 该难度前十、`stats [玩家]` 各难度最高分、`help`
   - 管理（OP 或 `cloudwalk.admin`）：`pos1`、`pos2`（站到对角按）、`setstart`（站到起点按，取脚下那块）、
-    `setlobby`、`info`、`reload`、`reset <玩家|all>`（清单个玩家全部难度，all = 清空所有人）、`top place` / `top remove`（全息榜）
+    `setlobby`、`info`、`reload`、`reset <玩家|all>`（清单个玩家全部难度，all = 清空所有人）、`top place` / `top remove`（全息榜）、
+    `debug`（站在没判定到的方块上执行，输出目标块、中心距离和脚部 Y 判定区间）
 - **配置**：`server/plugins/CloudWalk/config.yml`（模板 `CloudWalk/src/main/resources/config.yml`）
   - `region` / `start` / `lobby`：由命令写入；**关服时会回写这三段**，手改请在停服后改，或改完 `/cloudwalk reload`。
     `start.random` / `start.random-y` 控制是否随机起点（不由命令写入，可手改）

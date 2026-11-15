@@ -69,11 +69,11 @@ public class DifficultyMenu implements InventoryHolder {
                     ? List.of("&7尚未开放，敬请期待")
                     : switch (difficulty.id) {
                         case "easy" -> List.of(
-                                "&7保持当前难度",
-                                "&7不会出现「空 3 格 + 上升 1 格」",
+                                "&7最基础的跑酷",
+                                "&7享受云端之旅",
                                 "&a点击开始");
                         case "medium" -> List.of(
-                                "&7在简单基础上加入「空 3 格 + 上升 1 格」",
+                                "&7在简单基础上加入「三远一高与四格跳」",
                                 "&a点击开始");
                         default -> List.of("&a点击开始");
                     };
