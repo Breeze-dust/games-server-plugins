@@ -65,11 +65,17 @@ public final class PathGenerator {
                           boolean allowSpecial, boolean farOnly) {
         Direction[] directions = {heading, heading.left(), heading.right()};
         List<List<BlockPos>> valid = new ArrayList<>(3);
-        for (Direction dir : directions) {
+        for (int i = 0; i < directions.length; i++) {
+            Direction dir = directions[i];
+            boolean straight = i == 0;
             List<BlockPos> list = new ArrayList<>(distances.length * heights.length);
             for (int distance : distances) {
                 boolean far = distance >= FAR_DISTANCE;
                 if (far != farOnly) {
+                    continue;
+                }
+                if (far && !straight) {
+                    // 四格跳只走直行，拐弯方向不出现
                     continue;
                 }
                 for (int dy : heights) {
