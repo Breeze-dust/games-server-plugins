@@ -13,6 +13,8 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.command.CommandSender;
@@ -66,6 +68,13 @@ public class CloudWalkManager {
     /** 主榜最后一行与底部「下一页」之间的空隙。 */
     private static final double FOOTER_GAP = 0.35;
     private static final String FOOTER_TEXT = "&e&l[ 下一页 >>> ]";
+
+    /** 隐藏头衔「利立浦特的踏云者」：缩小状态下，一局内跳满 {@link #SHRUNK_JUMPS_FOR_TITLE} 个方块。 */
+    public static final String TITLE_SHRUNK = "cw_lilliput";
+    public static final String TITLE_SHRUNK_NAME = "利立浦特的踏云者";
+    public static final String TITLE_SHRUNK_COLOR = "&d";
+    public static final String TITLE_SHRUNK_DESC = "&7云中漫步：缩小状态下在一局内跳满 10 个方块";
+    private static final int SHRUNK_JUMPS_FOR_TITLE = 10;
 
     private final CloudWalkPlugin plugin;
     private final Map<UUID, ParkourSession> sessions = new LinkedHashMap<>();
@@ -127,6 +136,8 @@ public class CloudWalkManager {
                         difficulty.titleColor, difficulty.titleDesc);
             }
         }
+        GameTitles.ensureHidden(TITLE_SHRUNK, TITLE_SHRUNK_NAME,
+                TITLE_SHRUNK_COLOR, TITLE_SHRUNK_DESC);
         loadLeaderboards();
         if (leaderboardTask == null) {
             leaderboardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::maintenance, 100L, 100L);
@@ -646,6 +657,19 @@ public class CloudWalkManager {
         int gained = (distance >= 5 || (distance == 4 && dy > 0)) ? 2 : 1;
         s.score += gained;
 
+        // 隐藏头衔：缩小状态下这一局累计跳过的方块数（掉落/退出时随 session 丢弃）
+        if (isShrunk(p)) {
+            s.shrunkJumps++;
+            if (s.shrunkJumps >= SHRUNK_JUMPS_FOR_TITLE && !s.shrunkTitleHandled) {
+                s.shrunkTitleHandled = true;
+                if (GameTitles.grantOrCreateHidden(p.getUniqueId(), TITLE_SHRUNK,
+                        TITLE_SHRUNK_NAME, TITLE_SHRUNK_COLOR, TITLE_SHRUNK_DESC)) {
+                    Chat.send(p, "&d缩小之身踏过十块云砖——获得隐藏头衔 &5[利立浦特的踏云者]&d！");
+                    p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                }
+            }
+        }
+
         if (settings.sound && soundEnabled(s.playerId)) {
             float pitch = Math.min(2.0f, 1.0f + s.score * 0.02f);
             p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, pitch);
@@ -678,6 +702,15 @@ public class CloudWalkManager {
         sparkle(s.box.world(), next);
         updateGlow(s, s.path.get(1));
         Chat.actionBar(p, "&a+" + gained + " &8· " + actionBarText(s));
+    }
+
+    /**
+     * 是否处于大厅玩具「缩小药水」的缩小状态。
+     * 缩小药水把玩家的 {@link Attribute#SCALE} 调小（默认 0.5）；云间漫步里没有别的来源会改它。
+     */
+    private static boolean isShrunk(Player p) {
+        AttributeInstance scale = p.getAttribute(Attribute.SCALE);
+        return scale != null && scale.getValue() < 0.999;
     }
 
     private void finish(Player p, ParkourSession s, String reason, boolean record, boolean teleport) {

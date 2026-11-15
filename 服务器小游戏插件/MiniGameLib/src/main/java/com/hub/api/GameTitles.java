@@ -51,6 +51,20 @@ public final class GameTitles {
                 player, titleId, name, color, description);
     }
 
+    /**
+     * 发放隐藏头衔：未拥有的玩家在头衔菜单里看不到它，获得之后才出现。
+     * 其余行为同 {@link #grantOrCreate(UUID, String, String, String, String)}。
+     *
+     * @return true = 本次新获得；false = 已拥有 / 参数无效 / 没装头衔插件
+     */
+    public static boolean grantOrCreateHidden(UUID player, String titleId,
+                                              String name, String color, String description) {
+        return call("grantOrCreate",
+                new Class<?>[]{UUID.class, String.class, String.class, String.class, String.class,
+                        boolean.class},
+                player, titleId, name, color, description, false);
+    }
+
     /** 玩家是否已拥有某个头衔（没装头衔插件时返回 false）。 */
     public static boolean owns(UUID player, String titleId) {
         return call("owns", new Class<?>[]{UUID.class, String.class}, player, titleId);
@@ -75,6 +89,17 @@ public final class GameTitles {
         return call("ensureTitle",
                 new Class<?>[]{String.class, String.class, String.class, String.class},
                 titleId, name, color, description);
+    }
+
+    /**
+     * 确保隐藏头衔定义存在（不发给任何人）：未拥有的玩家在头衔菜单里看不到它。
+     *
+     * @return true = 本次新建；false = 已存在 / 没装头衔插件
+     */
+    public static boolean ensureHidden(String titleId, String name, String color, String description) {
+        return call("ensureTitle",
+                new Class<?>[]{String.class, String.class, String.class, String.class, boolean.class},
+                titleId, name, color, description, false);
     }
 
     // ---------- 反射桥 ----------

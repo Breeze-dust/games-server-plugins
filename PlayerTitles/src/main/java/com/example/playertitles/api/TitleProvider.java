@@ -48,6 +48,15 @@ public interface TitleProvider {
         return false;
     }
 
+    /**
+     * 同 {@link #grantOrCreate(UUID, String, String, String, String)}，额外指定是否对所有玩家可见。
+     * visible=false = 隐藏头衔：未拥有的玩家在头衔菜单里看不到它。
+     */
+    default boolean grantOrCreate(UUID playerId, String titleId, String name, String color,
+                                  String description, boolean visible) {
+        return false;
+    }
+
     /** 玩家是否已拥有某个头衔。 */
     default boolean owns(UUID playerId, String titleId) {
         return false;
@@ -69,6 +78,12 @@ public interface TitleProvider {
      * @return true = 本次新建；false = 已存在 / 参数无效 / 旧版插件没有此方法
      */
     default boolean ensureTitle(String titleId, String name, String color, String description) {
+        return false;
+    }
+
+    /** 同 {@link #ensureTitle(String, String, String, String)}，额外指定是否对所有玩家可见。 */
+    default boolean ensureTitle(String titleId, String name, String color, String description,
+                                boolean visible) {
         return false;
     }
 }

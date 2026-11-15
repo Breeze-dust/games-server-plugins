@@ -250,22 +250,39 @@ public final class TitleManager {
      */
     public synchronized boolean grantOrCreate(UUID uuid, String titleId,
                                               String name, String color, String description) {
+        return grantOrCreate(uuid, titleId, name, color, description, true);
+    }
+
+    /**
+     * 授予头衔；头衔定义不存在时按给定内容创建，再发放。
+     *
+     * @param visible false = 隐藏头衔，未拥有的玩家在头衔菜单里看不到
+     * @return 是否本次新获得；参数无效返回 false
+     */
+    public synchronized boolean grantOrCreate(UUID uuid, String titleId, String name, String color,
+                                              String description, boolean visible) {
         if (uuid == null || titleId == null || titleId.isBlank()) {
             return false;
         }
-        ensureTitle(titleId, name, color, description);
+        ensureTitle(titleId, name, color, description, visible);
         return grant(uuid, titleId);
     }
 
     /** 确保头衔定义存在（不发给任何人）；返回是否本次新建。 */
     public synchronized boolean ensureTitle(String titleId, String name, String color, String description) {
+        return ensureTitle(titleId, name, color, description, true);
+    }
+
+    /** 确保头衔定义存在（不发给任何人，visible 指定是否对未拥有者可见）；返回是否本次新建。 */
+    public synchronized boolean ensureTitle(String titleId, String name, String color,
+                                            String description, boolean visible) {
         if (titleId == null || titleId.isBlank() || titles.containsKey(titleId)) {
             return false;
         }
         String safeName = name == null || name.isBlank() ? titleId : name;
         String safeColor = Text.normalizeColor(color == null || color.isBlank() ? "&f" : color);
         titles.put(titleId, new Title(titleId, safeName, safeColor == null ? "&f" : safeColor,
-                description == null || description.isBlank() ? "&7暂无描述" : description));
+                description == null || description.isBlank() ? "&7暂无描述" : description, visible));
         save();
         return true;
     }

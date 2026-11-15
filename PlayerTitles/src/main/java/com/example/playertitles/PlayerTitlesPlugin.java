@@ -93,6 +93,12 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
     }
 
     @Override
+    public boolean grantOrCreate(UUID playerId, String titleId, String name, String color,
+                                 String description, boolean visible) {
+        return titleManager.grantOrCreate(playerId, titleId, name, color, description, visible);
+    }
+
+    @Override
     public boolean owns(UUID playerId, String titleId) {
         return titleManager.owns(playerId, titleId);
     }
@@ -109,5 +115,11 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
     @Override
     public boolean ensureTitle(String titleId, String name, String color, String description) {
         return titleManager.ensureTitle(titleId, name, color, description);
+    }
+
+    @Override
+    public boolean ensureTitle(String titleId, String name, String color, String description,
+                               boolean visible) {
+        return titleManager.ensureTitle(titleId, name, color, description, visible);
     }
 }

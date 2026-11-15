@@ -21,6 +21,10 @@ public final class ParkourSession {
     public int score;
     /** 已经生成过的方块数（不含起始块），用于「开局前几块不出现三远一高」。 */
     public int generated;
+    /** 本局处于缩小状态时跳过的方块数（隐藏头衔「利立浦特的踏云者」用）。 */
+    public int shrunkJumps;
+    /** 本局是否已经处理过缩小头衔发放（避免每块都去查一次头衔插件）。 */
+    public boolean shrunkTitleHandled;
     public boolean finished;
 
     /** 标记「下一个目标方块」的发光方块展示实体。 */

@@ -1,9 +1,11 @@
 name: CloudWalk
-version: '1.0.0'
+version: '1.0.1'
 main: com.cloudwalk.CloudWalkPlugin
 api-version: '1.21'
 description: 云中漫步：主城随时可玩的无尽跑酷
 depend: [MiniGameLib]
+# PlayerTitles：启用时建好头衔定义、达成条件时发头衔；放在 softdepend 保证它先启用
+softdepend: [PlayerTitles]
 commands:
   cloudwalk:
     description: 云中漫步跑酷
