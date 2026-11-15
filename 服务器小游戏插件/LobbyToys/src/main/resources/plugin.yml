@@ -21,4 +21,4 @@ permissions:
     default: op
   lobbytoys.scratch:
     description: 允许用 /lobbytoys scratch 生成刮刮乐（暂不进入小玩具菜单）
-    default: op
+    default: true

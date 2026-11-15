@@ -12,7 +12,7 @@
   里面是一张 128×128 的地图：上层是灰色涂层，下层是 `行 × 列` 的奖品格子。**按住左键**在卡面上刮，
   涂层按笔刷半径被擦掉；某格被刮掉 `reveal-threshold` 比例后算揭开，立刻发该格奖品并触发事件效果。
   再执行 `/lobbytoys scratch close`、离开 6 格、下线、换世界或超时都会自动收回。
-  权限 `lobbytoys.scratch`（默认 op）；**故意不加入「小玩具」菜单和 HubCore 主菜单，普通玩家看不到入口**。
+  权限 `lobbytoys.scratch`（**默认 true，所有玩家可用**）；**故意不加入「小玩具」菜单和 HubCore 主菜单，所以菜单里看不到入口，玩家需要自己敲命令**。
   - 配置段 `scratch`：`rows` / `columns`（1-6，**默认行列就在这里改**）、`brush-radius`、`reveal-threshold`、
     `session-seconds`、`screen-distance`、`max-distance`、`max-sessions`、`hide-from-others`、
     `close-when-complete`、`close-delay-seconds`，以及 `prizes.<id>`。
@@ -34,7 +34,7 @@
   `/lobbytoys` 命令 → 每 100 刻 `ToyListener#refillAll` 给主城玩家补道具）。
 - **命令**：`/lobbytoys menu`、`/lobbytoys give [玩家]`、`/lobbytoys off`、`/lobbytoys scratch [行 列|close]`、
   `/lobbytoys debug`、`/lobbytoys reload`、`/lobbytoys help`；
-  别名 `toys` / `toy`。权限 `lobbytoys.use`（默认 true）、`lobbytoys.admin`（默认 op）、`lobbytoys.scratch`（默认 op）。
+  别名 `toys` / `toy`。权限 `lobbytoys.use`（默认 true）、`lobbytoys.admin`（默认 op）、`lobbytoys.scratch`（默认 true）。
   `/lobbytoys debug` 会输出插件版本、手持道具上的 `toy-id` / `toy-look` / 旧标记，以及当前配置的期望指纹，排障先用它。
 - **HubCore 集成**：`HubCore` 的 `MenuLayout#ensureToysMenuEntry()` 在检测到本插件时，自动在主菜单第一个空槽放
   「小玩具」（PLAYER_HEAD，动作 `cmd:lobbytoys menu`，所有人可见）；已有同动作条目就不重复添加。
@@ -119,7 +119,7 @@
      **按住左键**扫过卡面，涂层被擦掉、露出底色；刮开某格到阈值后动作栏提示「第 x 行第 y 列：奖品」，
      物品进背包、配置的 `sound/message/commands` 生效。
      `/lobbytoys scratch 2 4` 可临时改成 2 行 4 列；`/lobbytoys scratch close` 收回。
-     无 `lobbytoys.scratch` 权限的玩家执行会提示没有权限。
+     无 `lobbytoys.scratch` 权限的玩家执行会提示没有权限（默认所有人都有；要限制就装权限插件给对应组设 false）。
 - **未确认 / TODO**：
   - 无客户端环境，**缩放弹跳的实际手感、第一人称穿模程度未实机验证**；太跳就调小 `squash-amount`、
     调大 `squash-period-ticks`，或设 `squash-amount: 0` 关掉。

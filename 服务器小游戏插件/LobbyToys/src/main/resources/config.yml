@@ -53,7 +53,7 @@ toys:
       - "&8只能在主城使用"
 
 # ========== 刮刮乐 ==========
-# 只通过 /lobbytoys scratch 打开（权限 lobbytoys.scratch，默认 op），
+# 只通过 /lobbytoys scratch 打开（权限 lobbytoys.scratch，默认 true = 所有玩家可用），
 # 暂时不放进「小玩具」菜单，所以普通玩家看不到入口。
 # 玩法：玩家面前生成一个固定 item frame，里面是一张 128x128 的地图；
 #       按住左键在卡面上刮，刮开一格就按该格的奖品发物品 / 触发事件。
