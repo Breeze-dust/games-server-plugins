@@ -733,6 +733,10 @@ public class ArcheryManager {
             Chat.send(p, "&e先退出射箭本局再编辑。");
             return;
         }
+        if (HubAPI.gameOf(id) != null) {
+            Chat.send(p, "&c你正在其它游戏中，先退出再来。");
+            return;
+        }
         SavedInventory inventory = new SavedInventory(p);
         EditSession edit = new EditSession(inventory, new ArrayList<>(settings.regions));
         edits.put(id, edit);
