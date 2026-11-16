@@ -918,12 +918,11 @@ public class HubManager implements HubService {
         }
         int lobbyOrder = (keys.size() + 1) * 100;
 
-        List<String> lines = new ArrayList<>();
-        lines.add("&6&l========== 小游戏服 ==========");
+        StringBuilder hb = new StringBuilder();
+        hb.append("&6&l========== 小游戏服 ==========\n");
         if (!lobby.isEmpty()) {
-            lines.add("&7&l■ 大厅 &7(" + lobby.size() + ")");
-            lines.add(TabColumns.layout(
-                    lobby.stream().map(p -> nameIn(p, '7')).collect(Collectors.toList()), ""));
+            hb.append("&7&l■ 大厅 &7(").append(lobby.size()).append(")\n");
+            hb.append("&7").append(lobby.stream().map(Player::getName).collect(Collectors.joining("&7, "))).append("\n");
         }
         // 默认始终显示所有已登记游戏分区（每个游戏一个分区），空分区也显示（0）
         boolean showEmpty = plugin.getConfig().getBoolean("tab.show-empty-games", true);
@@ -935,17 +934,15 @@ public class HubManager implements HubService {
                 continue;
             }
             char color = colorFor(game);
-            lines.add("&" + color + "&l■ " + game + " &7(" + count + ")");
+            hb.append("&").append(color).append("&l■ ").append(game).append(" &7(").append(count).append(")\n");
             if (ws != null && !ws.isEmpty()) {
-                lines.add(TabColumns.layout(
-                        ws.stream().map(p -> nameIn(p, 'e')).collect(Collectors.toList()), "&e[等待中] "));
+                hb.append("  &e[等待中] ").append(ws.stream().map(p -> nameIn(p, 'e')).collect(Collectors.joining("&7, "))).append("\n");
             }
             if (ps != null && !ps.isEmpty()) {
-                lines.add(TabColumns.layout(
-                        ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.toList()), "&a[已加入] "));
+                hb.append("  &a[已加入] ").append(ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.joining("&7, "))).append("\n");
             }
         }
-        Component header = LEGACY.deserialize(TabColumns.justify(lines));
+        Component header = LEGACY.deserialize(hb.toString());
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             PlayerGame pg = gameMap.get(p.getUniqueId());
