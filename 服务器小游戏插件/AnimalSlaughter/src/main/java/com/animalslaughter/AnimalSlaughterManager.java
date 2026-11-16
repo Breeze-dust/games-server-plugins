@@ -1234,13 +1234,16 @@ public final class AnimalSlaughterManager {
     }
 
     private void giveWaitItems(Player player) {
-        ItemStack bed = new ItemStack(Material.RED_BED);
-        ItemMeta bedMeta = bed.getItemMeta();
-        if (bedMeta != null) {
-            bedMeta.displayName(Chat.noItalic(Chat.color("&c退出游戏 &7(右键)")));
-            bed.setItemMeta(bedMeta);
+        if (!WaitCountdown.isGloballySuppressed()) {
+            ItemStack bed = new ItemStack(Material.RED_BED);
+            ItemMeta bedMeta = bed.getItemMeta();
+            if (bedMeta != null) {
+                bedMeta.displayName(Chat.noItalic(Chat.color("&c退出游戏 &7(右键)")));
+                bed.setItemMeta(bedMeta);
+            }
+            player.getInventory().setItem(8, bed);
         }
-        player.getInventory().setItem(8, bed);
+        countdown.giveReadyItem(player);
 
         if (isAdmin(player)) {
             ItemStack paper = new ItemStack(Material.PAPER);

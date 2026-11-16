@@ -1,10 +1,14 @@
 package com.hub.util;
 
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -14,6 +18,8 @@ import java.util.UUID;
  * <ul>
  *   <li>队列里有 OP → 暂停自动倒计时，等 OP 手动开始；</li>
  *   <li>人数 &lt; min → 取消倒计时；</li>
+ *   <li>所有等待玩家都点了“准备” → 3 秒后开始（{@link #giveReadyItem} /
+ *       {@link #toggleReady}，道具与右键处理见 {@link ReadyItems}）；</li>
  *   <li>人数 ≥ max → 3 秒后开始（已在跑的 30 秒倒计时会缩短为 3 秒）；</li>
  *   <li>人数达标但未满 → 30 秒倒计时；加人/退人都不重置正在跑的倒计时。</li>
  * </ul>
@@ -68,8 +74,16 @@ public final class WaitCountdown {
     public static void setGloballySuppressed(boolean value) {
         globallySuppressed = value;
     }
+
+    /** 街机派对是否正在接管（接管期间不发准备/退出道具，也不自动开局）。 */
+    public static boolean isGloballySuppressed() {
+        return globallySuppressed;
+    }
+
     private BukkitTask task;
     private long endMs;
+    /** 已点过“准备”的玩家（只保留还在等待室里的人）。 */
+    private final Set<UUID> ready = new HashSet<>();
 
     public WaitCountdown(Plugin plugin, Host host) {
         this.plugin = plugin;
@@ -78,6 +92,7 @@ public final class WaitCountdown {
 
     /** 人数/状态变化后调用：该启动就启动，该缩短就缩短，该取消就取消。 */
     public void update() {
+        pruneReady();
         if (globallySuppressed) {
             cancel();
             return;
@@ -93,6 +108,11 @@ public final class WaitCountdown {
         int max = host.maxPlayers();
         if (size < min) {
             cancel();
+        } else if (allReady()) {
+            // 所有等待玩家都点了准备：缩短为 3 秒倒计时，不再等 30 秒
+            if (!isRunning() || remainingSeconds() > FULL_SECONDS) {
+                start(FULL_SECONDS);
+            }
         } else if (size >= max) {
             if (!isRunning() || remainingSeconds() > FULL_SECONDS) {
                 start(FULL_SECONDS);
@@ -114,6 +134,9 @@ public final class WaitCountdown {
             long left = remainingSeconds();
             if (left <= 0) {
                 cancel();
+                // 开局了：准备状态归零，免得下一局一进等待室就被判成“全员已准备”
+                ready.clear();
+                ReadyItems.retain(this, java.util.List.of());
                 host.onStart();
                 return;
             }
@@ -139,5 +162,78 @@ public final class WaitCountdown {
             return 0L;
         }
         return Math.max(0L, (endMs - System.currentTimeMillis()) / 1000L);
+    }
+
+    // ---------- 准备道具 ----------
+
+    /**
+     * 发准备道具（放进 0 号槽）。各游戏在给等待物品时调用。
+     * 街机派对接管期间不发。
+     */
+    public void giveReadyItem(Player player) {
+        if (player == null || globallySuppressed) {
+            return;
+        }
+        UUID id = player.getUniqueId();
+        ready.remove(id);
+        ReadyItems.bind(id, this);
+        player.getInventory().setItem(ReadyItems.SLOT, ReadyItems.icon(false));
+    }
+
+    /** 右键准备道具：在“已准备 / 未准备”之间切换，并刷新倒计时。 */
+    public void toggleReady(Player player) {
+        if (player == null || globallySuppressed) {
+            return;
+        }
+        UUID id = player.getUniqueId();
+        if (!host.waitingPlayers().contains(id)) {
+            return;
+        }
+        boolean nowReady;
+        if (ready.remove(id)) {
+            nowReady = false;
+        } else {
+            ready.add(id);
+            nowReady = true;
+        }
+        player.getInventory().setItem(ReadyItems.SLOT, ReadyItems.icon(nowReady));
+        int total = host.waitingPlayers().size();
+        if (nowReady) {
+            host.onMessage("&a" + player.getName() + " &7已准备 &8(" + readyCount() + "/" + total + ")");
+        } else {
+            host.onMessage("&e" + player.getName() + " &7取消准备 &8(" + readyCount() + "/" + total + ")");
+        }
+        update();
+    }
+
+    /** 玩家离开等待室/下线时清掉准备状态。 */
+    public void removeReady(UUID id) {
+        ready.remove(id);
+        ReadyItems.unbind(id);
+        ReadyItems.clearFrom(Bukkit.getPlayer(id));
+    }
+
+    /** 全部等待玩家是否都已准备（至少一人）。 */
+    public boolean allReady() {
+        Collection<UUID> waiting = host.waitingPlayers();
+        if (waiting.isEmpty()) {
+            return false;
+        }
+        return waiting.stream().allMatch(ready::contains);
+    }
+
+    public int readyCount() {
+        return ready.size();
+    }
+
+    public boolean isReady(UUID id) {
+        return ready.contains(id);
+    }
+
+    /** 只保留还在等待室里的人的准备状态，并解绑已离开的玩家。 */
+    private void pruneReady() {
+        Collection<UUID> waiting = new ArrayList<>(host.waitingPlayers());
+        ready.retainAll(waiting);
+        ReadyItems.retain(this, waiting);
     }
 }

@@ -968,7 +968,10 @@ public final class ArrowRainManager {
     }
 
     private void giveWaitItems(Player player) {
-        player.getInventory().setItem(waitSlot("return", 8), waitItem(returnKey, "return", Material.RED_BED));
+        if (!WaitCountdown.isGloballySuppressed()) {
+            player.getInventory().setItem(waitSlot("return", 8), waitItem(returnKey, "return", Material.RED_BED));
+        }
+        countdown.giveReadyItem(player);
         if (player.hasPermission("arrowrain.admin")) {
             player.getInventory().setItem(waitSlot("start", 4), waitItem(startKey, "start", Material.PAPER));
         }

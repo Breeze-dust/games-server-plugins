@@ -571,6 +571,7 @@ public class DigToBottomManager {
         p.setVelocity(new Vector(0, 0, 0));
         HubAPI.setGame(id, GAME);
         giveLeaveBed(p);
+        wait(a).giveReadyItem(p);
         if (p.isOp()) {
             giveStartPaper(p);
         }
@@ -1116,6 +1117,9 @@ public class DigToBottomManager {
     }
 
     public void giveLeaveBed(Player p) {
+        if (WaitCountdown.isGloballySuppressed()) {
+            return;
+        }
         ItemStack bed = new ItemStack(Material.RED_BED);
         ItemMeta meta = bed.getItemMeta();
         if (meta != null) {

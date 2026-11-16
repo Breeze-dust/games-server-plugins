@@ -408,6 +408,7 @@ public class LuckyPillarManager {
         p.teleport(lobby);
         HubAPI.setGame(id, GAME);
         giveLeaveBed(p);
+        wait(a).giveReadyItem(p);
         if (canAdmin(p)) {
             giveStartPaper(p);
         }
@@ -2026,6 +2027,9 @@ public class LuckyPillarManager {
     // ---------- 道具 ----------
 
     public void giveLeaveBed(Player p) {
+        if (WaitCountdown.isGloballySuppressed()) {
+            return;
+        }
         ItemStack bed = new ItemStack(Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {

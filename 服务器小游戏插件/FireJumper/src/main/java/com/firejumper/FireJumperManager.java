@@ -853,7 +853,10 @@ public final class FireJumperManager {
     }
 
     private void giveWaitItems(Player player) {
-        player.getInventory().setItem(waitSlot("return", 8), waitItem(returnKey, "return", RED_BED_FALLBACK));
+        if (!WaitCountdown.isGloballySuppressed()) {
+            player.getInventory().setItem(waitSlot("return", 8), waitItem(returnKey, "return", RED_BED_FALLBACK));
+        }
+        countdown.giveReadyItem(player);
         if (player.hasPermission("firejumper.admin")) {
             player.getInventory().setItem(waitSlot("start", 4), waitItem(startKey, "start", Material.PAPER));
         }

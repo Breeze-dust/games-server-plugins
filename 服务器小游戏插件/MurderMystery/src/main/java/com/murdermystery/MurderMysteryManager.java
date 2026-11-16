@@ -745,6 +745,7 @@ public class MurderMysteryManager {
         p.teleport(lobby);
         HubAPI.setGame(id, GAME_NAME);
         giveLeaveBed(p);
+        wait(a).giveReadyItem(p);
         if (p.isOp()) {
             giveStartPaper(p);
         }
@@ -911,6 +912,9 @@ public class MurderMysteryManager {
     // ---------- 等待倒计时 ----------
 
     public void giveLeaveBed(Player p) {
+        if (WaitCountdown.isGloballySuppressed()) {
+            return;
+        }
         ItemStack bed = new ItemStack(Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {

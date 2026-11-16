@@ -432,6 +432,7 @@ public class TntRunManager {
         p.teleport(lobby);
         HubAPI.setGame(id, GAME);
         giveLeaveBed(p);
+        wait(a).giveReadyItem(p);
         if (p.isOp()) {
             giveStartPaper(p);
         }
@@ -566,6 +567,9 @@ public class TntRunManager {
 
     /** 退出床。 */
     public void giveLeaveBed(Player p) {
+        if (WaitCountdown.isGloballySuppressed()) {
+            return;
+        }
         org.bukkit.inventory.ItemStack bed = new org.bukkit.inventory.ItemStack(Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {

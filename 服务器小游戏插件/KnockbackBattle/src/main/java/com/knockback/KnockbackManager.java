@@ -805,7 +805,10 @@ public final class KnockbackManager {
     // ---------- 物品 ----------
 
     private void giveWaitItems(Player player) {
-        player.getInventory().setItem(returnSlot(), waitReturnItem());
+        if (!WaitCountdown.isGloballySuppressed()) {
+            player.getInventory().setItem(returnSlot(), waitReturnItem());
+        }
+        countdown.giveReadyItem(player);
         if (isAdmin(player)) {
             player.getInventory().setItem(startSlot(), waitStartItem());
         }

@@ -145,7 +145,9 @@ public class FootballItems {
         if (op) {
             p.getInventory().setItem(4, make(Kind.START_PAPER, 0));
         }
-        p.getInventory().setItem(8, make(Kind.LEAVE_BED, 0));
+        if (!com.hub.util.WaitCountdown.isGloballySuppressed()) {
+            p.getInventory().setItem(8, make(Kind.LEAVE_BED, 0));
+        }
     }
 
     /**

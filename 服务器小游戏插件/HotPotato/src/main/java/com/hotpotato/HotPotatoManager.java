@@ -329,6 +329,7 @@ public class HotPotatoManager {
         p.teleport(lobby);
         HubAPI.setGame(id, "烫手山芋");
         giveLeaveBed(p);
+        wait(a).giveReadyItem(p);
         if (p.isOp()) {
             giveStartPaper(p);
         }
@@ -678,6 +679,9 @@ public class HotPotatoManager {
 
     /** 退出床。 */
     public void giveLeaveBed(Player p) {
+        if (WaitCountdown.isGloballySuppressed()) {
+            return;
+        }
         ItemStack bed = new ItemStack(Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {

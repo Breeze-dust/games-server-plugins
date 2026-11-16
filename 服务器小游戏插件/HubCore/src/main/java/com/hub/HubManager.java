@@ -877,7 +877,7 @@ public class HubManager implements HubService {
         return gameMap.get(id) == null;
     }
 
-    /** 每秒刷新 tab：头部按游戏分区，玩家名前缀标注等待中 / 已加入。 */
+    /** 每秒刷新 tab：头部按游戏分区、名单四列排布，玩家列表按游戏排序。 */
     public void refreshTab() {
         // 按游戏与状态收集在线玩家
         List<Player> lobby = new ArrayList<>();
@@ -910,11 +910,20 @@ public class HubManager implements HubService {
             }
         }
 
-        StringBuilder hb = new StringBuilder();
-        hb.append("&6&l========== 小游戏服 ==========\n");
+        // 玩家列表里的排序号：同游戏的人挨在一起。listOrder 越大越靠前，
+        // 所以大厅给最大号，游戏按分区顺序递减（与头部展示顺序一致）。
+        Map<String, Integer> orderByGame = new LinkedHashMap<>();
+        for (int i = 0; i < keys.size(); i++) {
+            orderByGame.put(keys.get(i), (keys.size() - i) * 100);
+        }
+        int lobbyOrder = (keys.size() + 1) * 100;
+
+        List<String> lines = new ArrayList<>();
+        lines.add("&6&l========== 小游戏服 ==========");
         if (!lobby.isEmpty()) {
-            hb.append("&7&l■ 大厅 &7(").append(lobby.size()).append(")\n");
-            hb.append("&7").append(lobby.stream().map(Player::getName).collect(Collectors.joining("&7, "))).append("\n");
+            lines.add("&7&l■ 大厅 &7(" + lobby.size() + ")");
+            lines.add(TabColumns.layout(
+                    lobby.stream().map(p -> nameIn(p, '7')).collect(Collectors.toList()), ""));
         }
         // 默认始终显示所有已登记游戏分区（每个游戏一个分区），空分区也显示（0）
         boolean showEmpty = plugin.getConfig().getBoolean("tab.show-empty-games", true);
@@ -926,26 +935,36 @@ public class HubManager implements HubService {
                 continue;
             }
             char color = colorFor(game);
-            hb.append("&").append(color).append("&l■ ").append(game).append(" &7(").append(count).append(")\n");
+            lines.add("&" + color + "&l■ " + game + " &7(" + count + ")");
             if (ws != null && !ws.isEmpty()) {
-                hb.append("  &e[等待中] ").append(ws.stream().map(p -> nameIn(p, 'e')).collect(Collectors.joining("&7, "))).append("\n");
+                lines.add(TabColumns.layout(
+                        ws.stream().map(p -> nameIn(p, 'e')).collect(Collectors.toList()), "&e[等待中] "));
             }
             if (ps != null && !ps.isEmpty()) {
-                hb.append("  &a[已加入] ").append(ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.joining("&7, "))).append("\n");
+                lines.add(TabColumns.layout(
+                        ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.toList()), "&a[已加入] "));
             }
         }
-        Component header = LEGACY.deserialize(hb.toString());
+        Component header = LEGACY.deserialize(TabColumns.justify(lines));
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             PlayerGame pg = gameMap.get(p.getUniqueId());
             String name = p.getName();
+            int order = lobbyOrder;
             if (pg == null) {
                 p.playerListName(LEGACY.deserialize("&7" + name));
-            } else if (pg.state() == GameState.WAITING) {
-                p.playerListName(LEGACY.deserialize("&e[等待中·" + pg.game() + "] " + coloredName(p)));
             } else {
-                p.playerListName(LEGACY.deserialize("&a[已加入·" + pg.game() + "] " + coloredName(p)));
+                Integer gameOrder = orderByGame.get(pg.game());
+                if (gameOrder != null) {
+                    order = gameOrder;
+                }
+                if (pg.state() == GameState.WAITING) {
+                    p.playerListName(LEGACY.deserialize("&e[等待中·" + pg.game() + "] " + coloredName(p)));
+                } else {
+                    p.playerListName(LEGACY.deserialize("&a[已加入·" + pg.game() + "] " + coloredName(p)));
+                }
             }
+            p.setPlayerListOrder(order);
             p.sendPlayerListHeaderAndFooter(header, Component.empty());
         }
     }

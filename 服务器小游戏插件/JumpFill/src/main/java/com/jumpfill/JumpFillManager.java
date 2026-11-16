@@ -771,6 +771,7 @@ public final class JumpFillManager {
             player.teleport(wait);
         }
         prepare(player);
+        countdown.giveReadyItem(player);
         if (player.hasPermission("jumpfill.admin")) {
             giveStartItem(player);
         }

@@ -641,6 +641,7 @@ public final class LandClaimManager {
             player.getInventory().setItem(4, waitingItem("wait-items.start", startKey,
                     Material.PAPER, "&a&l开始游戏 &7(右键)", List.of("&7点击立刻开始本局")));
         }
+        countdown.giveReadyItem(player);
     }
 
     private ItemStack waitingItem(String path, NamespacedKey key, Material defaultMaterial,

@@ -318,6 +318,7 @@ public class FootballManager {
         p.teleport(lobby);
         HubAPI.setGame(id, GAME_NAME);
         items.giveWaitingItems(p, p.isOp() || p.hasPermission("fb.admin"));
+        wait(a).giveReadyItem(p);
         msg(p, "&a你已加入 &e" + arenaName + "&a，右键 &c红队旗 &f/ &9蓝队旗 &f选队，开赛后自动分到人少的一队。");
         broadcast(a, "&e" + p.getName() + "&f 加入了（&e" + a.getPlayers().size() + "&f 人，红 "
                 + a.getTeamRed().size() + "/蓝 " + a.getTeamBlue().size() + "）");

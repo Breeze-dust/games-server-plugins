@@ -263,6 +263,7 @@ public final class QuarkManager {
         resetPlayer(player);
         player.teleport(arena.getLobby());
         HubAPI.giveHubItem(player);
+        countdown.giveReadyItem(player);
         HubAPI.setGame(id, GAME_NAME);
         HubAPI.announceJoin(plugin.getName(), player.getName());
         Chat.send(player, "&a已加入" + GAME_NAME + "等待队列 &7(" + waiting.size() + "/" + maxPlayers() + ")");

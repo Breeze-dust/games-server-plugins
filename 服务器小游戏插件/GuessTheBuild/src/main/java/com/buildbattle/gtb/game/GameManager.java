@@ -487,7 +487,10 @@ public class GameManager {
         if (p.isOp()) {
             p.getInventory().setItem(0, waitingItem(START_ITEM, START_NAME, "右键开始游戏（一次确认）"));
         }
-        p.getInventory().setItem(8, waitingItem(LEAVE_ITEM, LEAVE_NAME, "右键离开游戏"));
+        if (!WaitCountdown.isGloballySuppressed()) {
+            p.getInventory().setItem(8, waitingItem(LEAVE_ITEM, LEAVE_NAME, "右键离开游戏"));
+        }
+        wait.giveReadyItem(p);
     }
 
     /** 游戏开始前回收等待道具。 */

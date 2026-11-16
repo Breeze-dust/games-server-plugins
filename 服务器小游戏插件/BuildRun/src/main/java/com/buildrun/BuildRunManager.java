@@ -449,6 +449,7 @@ public class BuildRunManager {
         }
         HubAPI.setGame(id, GAME);
         giveWaitingItems(p);
+        wait(a).giveReadyItem(p);
         msg(p, "&a你已加入 &e" + arenaName + "&a，等待开始…");
         broadcast(a, "&e" + p.getName() + "&f 加入了（&e" + a.getPlayers().size() + "&f 人）");
         HubAPI.announceJoin(GAME, p.getName(), arenaName);
@@ -1795,7 +1796,9 @@ public class BuildRunManager {
     // ==================================================================
 
     private void giveWaitingItems(Player p) {
-        p.getInventory().setItem(LEAVE_SLOT, tool(Material.RED_BED, "leave", "&c退出游戏 &7(右键)", List.of("&7离开这个场地")));
+        if (!WaitCountdown.isGloballySuppressed()) {
+            p.getInventory().setItem(LEAVE_SLOT, tool(Material.RED_BED, "leave", "&c退出游戏 &7(右键)", List.of("&7离开这个场地")));
+        }
         if (p.isOp()) {
             p.getInventory().setItem(START_SLOT, tool(Material.PAPER, "start", "&a&l开始游戏 &7(右键)", List.of("&7人齐后右键开始")));
         }
@@ -1806,7 +1809,9 @@ public class BuildRunManager {
         p.getInventory().setItem(MENU_SLOT, tool(Material.COMPASS, "menu", "&b&l跑酷工具 &7(右键)",
                 List.of("&6起点/终点棒&7 · &d羊毛效果&7 · &a完成建造",
                         "&7右键打开工具菜单")));
-        p.getInventory().setItem(LEAVE_SLOT, tool(Material.RED_BED, "leave", "&c退出游戏 &7(右键)", List.of("&7离开这个场地")));
+        if (!WaitCountdown.isGloballySuppressed()) {
+            p.getInventory().setItem(LEAVE_SLOT, tool(Material.RED_BED, "leave", "&c退出游戏 &7(右键)", List.of("&7离开这个场地")));
+        }
         p.getInventory().setHeldItemSlot(MENU_SLOT);
     }
 

@@ -659,9 +659,11 @@ public final class GameRoom {
     /** 等待阶段：所有人右键退出房间；房主与管理员额外获得开始游戏道具。 */
     private void giveWaitItems(Player player) {
         clearGameInventory(player);
-        player.getInventory().setItem(8, waitItem(Material.RED_BED,
-                "&c&l退出房间 &7(右键)",
-                "&7右键退出房间并回到主城（同 /hub）", plugin.exitItemKey()));
+        if (!com.hub.util.WaitCountdown.isGloballySuppressed()) {
+            player.getInventory().setItem(8, waitItem(Material.RED_BED,
+                    "&c&l退出房间 &7(右键)",
+                    "&7右键退出房间并回到主城（同 /hub）", plugin.exitItemKey()));
+        }
         if (player.getUniqueId().equals(host) || player.hasPermission("sn.admin")) {
             player.getInventory().setItem(4, waitItem(Material.PAPER,
                     "&a&l开始游戏 &7(右键)",

@@ -1072,6 +1072,7 @@ public final class TNTBattleManager {
                     waitingItem("wait-items.start", startKey, Material.PAPER,
                             "&a&l开始游戏 &7(右键)", List.of("&7点击立刻开始本局")));
         }
+        countdown.giveReadyItem(player);
     }
 
     /** 等待室的音符盒道具：默认关闭；右键只开启自己的背景音乐，不影响别人。 */

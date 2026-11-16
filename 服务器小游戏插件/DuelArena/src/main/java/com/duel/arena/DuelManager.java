@@ -528,6 +528,7 @@ public class DuelManager {
             p.teleport(lobby);
         }
         giveLeaveBed(p);
+        wait(a).giveReadyItem(p);
         if (p.isOp()) {
             giveStartPaper(p);
         }
@@ -587,6 +588,9 @@ public class DuelManager {
 
     /** 退出床。 */
     public void giveLeaveBed(Player p) {
+        if (WaitCountdown.isGloballySuppressed()) {
+            return;
+        }
         org.bukkit.inventory.ItemStack bed = new org.bukkit.inventory.ItemStack(org.bukkit.Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {
