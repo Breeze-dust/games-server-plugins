@@ -2,10 +2,11 @@ package com.archery;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Animals;
+import org.bukkit.entity.EntityType;
 
 /** config.yml 的只读快照。 */
 public final class ArcherySettings {
@@ -34,11 +35,11 @@ public final class ArcherySettings {
     public double minSpeed = 1.5;
     public double maxSpeed = 6.0;
     public double fastSpeed = 4.5;
-    public double smallScale = 0.5;
 
-    public Material fixedBlock = Material.TARGET;
-    public Material movingBlock = Material.REDSTONE_BLOCK;
-    public Material fastBlock = Material.GOLD_BLOCK;
+    /** 三种靶子的动物：成年 = 正常大小，幼年 = 缩小靶。 */
+    public EntityType fixedEntity = EntityType.COW;
+    public EntityType movingEntity = EntityType.PIG;
+    public EntityType fastEntity = EntityType.SHEEP;
 
     public int scoreFixedNormal = 1;
     public int scoreFixedSmall = 3;
@@ -92,11 +93,10 @@ public final class ArcherySettings {
         s.minSpeed = Math.max(0.0, cfg.getDouble("targets.min-speed", 1.5));
         s.maxSpeed = Math.max(s.minSpeed, cfg.getDouble("targets.max-speed", 6.0));
         s.fastSpeed = Math.max(0.0, cfg.getDouble("targets.fast-speed", 4.5));
-        s.smallScale = clamp(cfg.getDouble("targets.small-scale", 0.5), 0.2, 0.9);
 
-        s.fixedBlock = block(cfg.getString("targets.blocks.fixed"), Material.TARGET);
-        s.movingBlock = block(cfg.getString("targets.blocks.moving"), Material.REDSTONE_BLOCK);
-        s.fastBlock = block(cfg.getString("targets.blocks.fast"), Material.GOLD_BLOCK);
+        s.fixedEntity = animal(cfg.getString("targets.entities.fixed"), EntityType.COW);
+        s.movingEntity = animal(cfg.getString("targets.entities.moving"), EntityType.PIG);
+        s.fastEntity = animal(cfg.getString("targets.entities.fast"), EntityType.SHEEP);
 
         s.scoreFixedNormal = score(cfg, "targets.scores.fixed-normal", 1);
         s.scoreFixedSmall = score(cfg, "targets.scores.fixed-small", 3);
@@ -130,11 +130,21 @@ public final class ArcherySettings {
         return (int) clamp(cfg.getInt(path, fallback), 0, 1000);
     }
 
-    private static Material block(String name, Material fallback) {
-        if (name == null || name.isEmpty()) {
+    /** 只接受能切换成年/幼年的动物，写错或写成僵尸之类就退回默认值。 */
+    private static EntityType animal(String name, EntityType fallback) {
+        if (name == null || name.isBlank()) {
             return fallback;
         }
-        Material material = Material.matchMaterial(name);
-        return material != null && material.isBlock() ? material : fallback;
+        EntityType type;
+        try {
+            type = EntityType.valueOf(name.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return fallback;
+        }
+        Class<?> clazz = type.getEntityClass();
+        if (clazz == null || !Animals.class.isAssignableFrom(clazz)) {
+            return fallback;
+        }
+        return type;
     }
 }

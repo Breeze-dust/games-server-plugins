@@ -16,10 +16,13 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.AbstractArrow;
+import org.bukkit.entity.Ageable;
 import org.bukkit.entity.Arrow;
-import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
@@ -263,7 +266,7 @@ public class ArcheryManager {
 
     private void clearTargets(ArcherySession s) {
         for (TargetInstance t : new ArrayList<>(s.targets)) {
-            Entity entity = Bukkit.getEntity(t.displayId);
+            Entity entity = Bukkit.getEntity(t.entityId);
             if (entity != null) {
                 entity.remove();
             }
@@ -349,14 +352,14 @@ public class ArcheryManager {
         }
 
         boolean small = random.nextDouble() < settings.smallChance;
-        double size = small ? settings.smallScale : 1.0;
+        double approxSize = small ? 0.5 : 1.0;
         boolean moving = random.nextDouble() < settings.movingChance && settings.maxSpeed > 0.0;
         double speed = moving
                 ? settings.minSpeed + random.nextDouble() * (settings.maxSpeed - settings.minSpeed)
                 : 0.0;
         boolean fast = moving && speed >= settings.fastSpeed;
 
-        Location point = region.randomPoint(random, size);
+        Location point = region.randomPoint(random, approxSize);
         for (int attempt = 0; attempt < 24; attempt++) {
             boolean ok = true;
             for (TargetInstance other : s.targets) {
@@ -371,7 +374,7 @@ public class ArcheryManager {
             if (ok) {
                 break;
             }
-            point = region.randomPoint(random, size);
+            point = region.randomPoint(random, approxSize);
         }
 
         double vx = 0.0;
@@ -382,37 +385,61 @@ public class ArcheryManager {
             vz = Math.sin(angle) * speed / 20.0;
         }
 
-        Material material = fast ? settings.fastBlock : (moving ? settings.movingBlock : settings.fixedBlock);
+        EntityType type = fast ? settings.fastEntity
+                : (moving ? settings.movingEntity : settings.fixedEntity);
         if (!point.getChunk().isLoaded()) {
             point.getChunk().load();
         }
-        Location spawnLocation = point.clone();
-        float offset = (float) (-size / 2.0);
-        BlockDisplay display = region.world().spawn(spawnLocation, BlockDisplay.class, entity -> {
-            entity.setBlock(material.createBlockData());
-            entity.setPersistent(false);
-            entity.setInvulnerable(true);
-            entity.setGravity(false);
-            entity.setShadowRadius(0f);
-            entity.setShadowStrength(0f);
-            entity.setTransformation(new Transformation(
-                    new Vector3f(offset, offset, offset),
-                    new Quaternionf(),
-                    new Vector3f((float) size, (float) size, (float) size),
-                    new Quaternionf()));
-            if (moving) {
-                entity.setGlowing(true);
-                entity.setGlowColorOverride(fast ? Color.RED : Color.YELLOW);
-            }
-        });
-        for (Player other : Bukkit.getOnlinePlayers()) {
-            if (!other.getUniqueId().equals(s.playerId)) {
-                other.hideEntity(plugin, display);
+        Entity entity = region.world().spawnEntity(new Location(region.world(),
+                point.getX(), point.getY(), point.getZ()), type);
+        if (!(entity instanceof LivingEntity living)) {
+            entity.remove();
+            return;
+        }
+
+        if (living instanceof Mob mob) {
+            mob.setAI(false);
+            mob.setAware(false);
+            mob.setTarget(null);
+        }
+        if (living instanceof Ageable ageable) {
+            if (small) {
+                ageable.setBaby();
+            } else {
+                ageable.setAdult();
             }
         }
-        s.targets.add(new TargetInstance(display.getUniqueId(),
+        living.setSilent(true);
+        living.setPersistent(false);
+        living.setInvulnerable(true);
+        living.setGravity(false);
+        living.setCollidable(false);
+        living.setCanPickupItems(false);
+        living.setRemoveWhenFarAway(false);
+        if (moving) {
+            living.setGlowing(true);
+        }
+
+        double width = Math.max(0.1, living.getWidth());
+        double height = Math.max(0.1, living.getHeight());
+        // 生成的 y 是碰撞箱中心，Bukkit 实体坐标是脚底，放下去后再校准一次。
+        Location placed = new Location(region.world(), point.getX(),
+                point.getY() - height / 2.0, point.getZ());
+        if (moving) {
+            placed.setDirection(new Vector(vx, 0.0, vz));
+        } else {
+            placed.setRotation(random.nextFloat() * 360.0f, 0.0f);
+        }
+        living.teleport(placed);
+
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (!other.getUniqueId().equals(s.playerId)) {
+                other.hideEntity(plugin, living);
+            }
+        }
+        s.targets.add(new TargetInstance(living.getUniqueId(), type,
                 point.getX(), point.getY(), point.getZ(), vx, vz, small, speed, fast,
-                System.currentTimeMillis()));
+                System.currentTimeMillis(), width, height));
     }
 
     private void tickTargets(ArcherySession s) {
@@ -422,14 +449,18 @@ public class ArcheryManager {
         long now = System.currentTimeMillis();
         long lifetimeMs = settings.targetLifetimeSeconds * 1000L;
         for (TargetInstance t : new ArrayList<>(s.targets)) {
-            Entity entity = Bukkit.getEntity(t.displayId);
-            if (!(entity instanceof BlockDisplay display) || !display.isValid()) {
+            Entity entity = Bukkit.getEntity(t.entityId);
+            if (!(entity instanceof LivingEntity living) || !living.isValid()) {
                 s.targets.remove(t);
                 scheduleRespawn(s);
                 continue;
             }
+            // 幼年形态的碰撞箱可能晚一拍才生效，每 tick 按实体实际尺寸刷新。
+            t.width = Math.max(0.1, living.getWidth());
+            t.height = Math.max(0.1, living.getHeight());
+            t.y = living.getLocation().getY() + t.height / 2.0;
             if (lifetimeMs > 0 && now - t.spawnedAt >= lifetimeMs) {
-                display.remove();
+                living.remove();
                 s.targets.remove(t);
                 scheduleRespawn(s);
                 continue;
@@ -442,7 +473,7 @@ public class ArcheryManager {
             double dx = t.x - region.centerX();
             double dz = t.z - region.centerZ();
             double distance = Math.sqrt(dx * dx + dz * dz);
-            double max = Math.max(0.1, region.radius() - t.size(settings) / 2.0);
+            double max = Math.max(0.1, region.radius() - t.width / 2.0);
             if (distance > max) {
                 double nx = distance < 1.0e-6 ? 1.0 : dx / distance;
                 double nz = distance < 1.0e-6 ? 0.0 : dz / distance;
@@ -452,7 +483,9 @@ public class ArcheryManager {
                 t.x = region.centerX() + nx * max;
                 t.z = region.centerZ() + nz * max;
             }
-            display.teleport(new Location(region.world(), t.x, t.y, t.z));
+            Location next = new Location(region.world(), t.x, t.feetY(), t.z);
+            next.setDirection(new Vector(t.vx, 0.0, t.vz));
+            living.teleport(next);
         }
     }
 
@@ -487,12 +520,24 @@ public class ArcheryManager {
         return false;
     }
 
-    public void onArrowHit(Arrow arrow) {
+    /** 箭命中方块/实体后立刻移除；命中自己的靶子动物时在这里直接结算。 */
+    public void onArrowHit(Arrow arrow, Entity hitEntity) {
+        UUID arrowId = arrow.getUniqueId();
         for (ArcherySession s : sessions.values()) {
-            if (s.arrows.remove(arrow.getUniqueId()) != null) {
-                arrow.remove();
-                return;
+            if (s.arrows.remove(arrowId) == null) {
+                continue;
             }
+            Player p = Bukkit.getPlayer(s.playerId);
+            if (hitEntity != null && p != null && p.isOnline()) {
+                for (TargetInstance target : new ArrayList<>(s.targets)) {
+                    if (target.entityId.equals(hitEntity.getUniqueId())) {
+                        awardHit(p, s, target, hitEntity.getLocation().toVector());
+                        break;
+                    }
+                }
+            }
+            arrow.remove();
+            return;
         }
     }
 
@@ -529,7 +574,7 @@ public class ArcheryManager {
             Vector hitPoint = null;
             double bestDistance = Double.MAX_VALUE;
             for (TargetInstance target : s.targets) {
-                BoundingBox box = target.box(settings);
+                BoundingBox box = target.box();
                 Vector point = null;
                 if (box.contains(from)) {
                     point = from.clone();
@@ -557,14 +602,17 @@ public class ArcheryManager {
     }
 
     private void awardHit(Player p, ArcherySession s, TargetInstance target, Vector point) {
+        // 原版命中事件和每 tick 扫掠可能同时到达，先移除成功的那一次才算分。
+        if (!s.targets.remove(target)) {
+            return;
+        }
         int gained = target.score(settings);
         s.score += gained;
 
-        Entity entity = Bukkit.getEntity(target.displayId);
+        Entity entity = Bukkit.getEntity(target.entityId);
         if (entity != null) {
             entity.remove();
         }
-        s.targets.remove(target);
         scheduleRespawn(s);
 
         if (settings.sound) {
@@ -641,7 +689,7 @@ public class ArcheryManager {
                 continue;
             }
             for (TargetInstance t : s.targets) {
-                Entity entity = Bukkit.getEntity(t.displayId);
+                Entity entity = Bukkit.getEntity(t.entityId);
                 if (entity != null) {
                     p.hideEntity(plugin, entity);
                 }

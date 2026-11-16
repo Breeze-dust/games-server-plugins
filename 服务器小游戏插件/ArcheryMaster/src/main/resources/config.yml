@@ -35,18 +35,18 @@ targets:
   max: 8                  # 场上同时存在的靶子数
   respawn-delay-ticks: 10 # 射中后隔多久补一个新靶（20 刻 = 1 秒）
   lifetime-seconds: 0     # 靶子最多存在多久；0 = 不自动消失
-  small-chance: 0.35      # 缩小靶概率（0~1）
+  small-chance: 0.35      # 幼年形态（缩小靶）概率（0~1）
   moving-chance: 0.50     # 移动靶概率（0~1），未抽中就是固定靶
   min-speed: 1.5          # 移动靶速度下限（格/秒）
   max-speed: 6.0          # 移动靶速度上限（格/秒），每只靶随机取区间内速度
   fast-speed: 4.5         # 速度 >= 这个值算「快速移动靶」（格/秒）
-  small-scale: 0.5        # 缩小靶的边长（正常靶是 1.0）
 
-  # 三种靶子的外观（写 Bukkit 方块材质名，缩小靶按 small-scale 缩放）
-  blocks:
-    fixed: TARGET         # 固定靶
-    moving: REDSTONE_BLOCK # 移动靶
-    fast: GOLD_BLOCK      # 快速移动靶
+  # 三种靶子的动物（写 Bukkit 实体名，必须能分成年/幼年，如 COW/PIG/SHEEP/CHICKEN）
+  # 成年 = 正常大小，幼年 = 缩小靶；动物没有 AI、不能被推动，移动时朝向运动方向。
+  entities:
+    fixed: COW            # 固定靶
+    moving: PIG           # 移动靶
+    fast: SHEEP           # 快速移动靶
 
   # 命中得分
   scores:

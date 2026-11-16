@@ -120,7 +120,7 @@ public class ArcheryListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onProjectileHit(ProjectileHitEvent event) {
         if (event.getEntity() instanceof Arrow arrow) {
-            plugin.getManager().onArrowHit(arrow);
+            plugin.getManager().onArrowHit(arrow, event.getHitEntity());
         }
     }
 
