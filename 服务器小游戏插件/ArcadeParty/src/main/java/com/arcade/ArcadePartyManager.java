@@ -1516,6 +1516,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             bed.setItemMeta(bedMeta);
         }
         player.getInventory().setItem(8, bed);
+        // 等待室「准备」道具：全员准备后由 WaitCountdown 提前开局（派对进行中不会发放）
+        countdown.giveReadyItem(player);
         if (isAdmin(player)) {
             ItemStack paper = new ItemStack(Material.PAPER);
             ItemMeta paperMeta = paper.getItemMeta();
