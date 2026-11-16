@@ -78,6 +78,12 @@ D:\BuildBattle\server-backup.bat              # 一键快照整个 server\ -> se
    写法：动手前先判断"是不是我的世界/我的场地"，不是就 `return`。
 6. **上传面板铁律**：先停面板服 → 再覆盖 → 再启动；不能只传 `plugins/*.jar`，
    `config/` 与各插件的 `config.yml / data.yml / words.yml / arena-*.snap` 都要在。
+7. **有等待室的小游戏必须发「准备」道具**（用户定的规矩，以后新增/改造游戏同样适用）：
+   等待物品发放处调 `countdown.giveReadyItem(player)`（多场地用该场地的 `WaitCountdown` 实例），
+   全员准备后由 `WaitCountdown` 提前 3 秒开局；队列里有管理员时仍然只等管理员手动开；
+   准备道具占用**槽位 2**（0/1/4/8 通常已被开始纸、床、选队道具占用，新增等待道具时不要挤占 2）。
+   街机派对接管期间（`WaitCountdown.isGloballySuppressed()`）不发准备道具，也不发红色退出床。
+   实现与外观见 `MiniGameLib/src/main/java/com/hub/util/{ReadyItems,WaitCountdown}.java`。
 
 ## 6. 汇报格式（用户要的收尾）
 
