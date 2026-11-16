@@ -31,6 +31,7 @@ public class HubListener implements Listener {
         // 延迟一 tick 传送，避免世界未加载完
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (p.isOnline()) {
+                plugin.getManager().sendTabLayout(p);
                 plugin.getManager().teleportToLobby(p);
             }
         }, 1L);

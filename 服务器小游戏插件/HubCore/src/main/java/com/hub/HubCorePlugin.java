@@ -48,6 +48,7 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        ensureTabDefaults();
         manager = new HubManager(this);
         registry = new GameRegistry(this);
         registry.rescan();
@@ -101,6 +102,26 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
         getServer().getScheduler().runTaskTimer(this, manager::tickSpectate, 20L, 20L);
 
         getLogger().info("HubCore 已启用。大厅：" + manager.getLobby());
+    }
+
+    /** 旧配置没有 tab.layout 段时补默认值（写回 config.yml，方便面板上直接改）。 */
+    private void ensureTabDefaults() {
+        boolean changed = false;
+        if (!getConfig().isSet("tab.footer")) {
+            getConfig().set("tab.footer", "");
+            changed = true;
+        }
+        if (!getConfig().isSet("tab.layout.enabled")) {
+            getConfig().set("tab.layout.enabled", true);
+            getConfig().set("tab.layout.columns", 4);
+            getConfig().set("tab.layout.rows", 20);
+            getConfig().set("tab.layout.empty-slot-text", "");
+            getConfig().set("tab.layout.empty-slot-ping", 0);
+            changed = true;
+        }
+        if (changed) {
+            saveConfig();
+        }
     }
 
     @Override
@@ -257,6 +278,7 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
                 }
                 reloadConfig();
                 registry.rescan();
+                manager.getTabLayout().reload();
                 manager.refreshTab();
                 sender.sendMessage(LEGACY.deserialize("&a已重载配置并重新扫描小游戏插件。"));
             }

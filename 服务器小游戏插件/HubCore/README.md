@@ -12,7 +12,12 @@
 - **OP 专属物品**：`menu.items.<槽位>` 支持 `op-only: true`，非 OP 打开菜单时该格不渲染、也点不到。装了 ArcadeParty 时，启动会自动在主菜单找一个空槽放「派对设置」（COMPASS，`action: cmd:arcade menu`，`op-only: true`），已有 `cmd:arcade menu` 条目则只补 `op-only`，不重复添加。装了 LobbyToys 时，`ensureToysMenuEntry()` 会在主菜单**第一个空槽**放「小玩具」（PLAYER_HEAD，`action: cmd:lobbytoys menu`，所有人可见），已有 `cmd:lobbytoys menu` 条目则不重复添加。
 - **配置 / 数据**：`server/plugins/HubCore/config.yml`（源码 `HubCore/src/main/resources/config.yml` 只是模板，改的时候要连线上那份一起改）—— `lobby.*`（`/hub set` 写）、`menu-item`（默认 COMPASS）/ `menu-item-slot`（默认 4）、`menu-title`（旧键，只在 `menu.title` 不存在时兜底）、`games` 段（`name` 显示名 / `alias` / `color` / `icon` / `command` 无场地信息时的兜底命令 / `join-prefix` 拼成 `"<前缀> <场地名>"`）、`menu` 段（`rows` / `title` / `items.<槽位>` / `sub.<游戏>.items.<场地名或槽位>` / `arena-desc.<游戏>.<场地>`）、`tab.show-empty-games`、`lock-inventory`。**改菜单布局/提示不用改代码**：编辑每一步都立即 `saveConfig()` 落盘。
 - **tab 名字颜色**：tab（头部分区名单 + 玩家列表名）每秒重刷成"大厅灰 / 等待黄 / 已加入绿"，会盖掉记分板队伍色；小游戏要对局内按队伍染色（如绿茵足球红/蓝队）时调 `HubAPI.setTabNameColor(uuid, "c"/"9")`，刷新只换名字段颜色、状态前缀不变；`clearGame`（退出游戏/下线）自动清除。实现：`HubManager#setTabNameColor` + `refreshTab`。
-- **tab 名单排版**：头部保持原样式（游戏名居中、每个分区名单一行逗号分隔）。玩家列表条目用 `Player#setPlayerListOrder` 排序：大厅最大、游戏按分区顺序递减，所以**同一游戏的人会自动挨在一起**（条目区列数由客户端决定：20 行一列、最多 4 列，不到 61 人时只有 1 列，服务端不能强制）。
+- **tab 名单排版**：头部保持原样式（游戏名居中、每个分区名单一行逗号分隔），底部文字取 `tab.footer`。
+  **固定格子布局**（`tab.layout.enabled`，默认开）：用假条目占满 `columns × rows`（默认 4×20=80）个槽位，
+  客户端就会排出四列；真玩家按 **大厅 → 各游戏** 的顺序依次放进非固定槽位（同一游戏的人挨在一起），
+  `tab.layout.fixed-slots` 里的槽位不安排玩家、显示固定文字（槽位 1-80，列优先，1-20 是第一列）。
+  实现：`com.hub.TabLayout`（反射发 `ClientboundPlayerInfoUpdatePacket` / `RemovePacket`；初始化失败会自动降级成普通 tab 并在日志打 `[tab]` 警告）。
+  注意：假条目对客户端是空白行，格子会被全部铺满；关掉布局时用的是纯 `setPlayerListOrder` 排序。
 - **场地状态渲染规则**：子菜单里每个场地一块羊毛，物品名就是场地名。`MenuLayout.ArenaState.of`：上报 `state != WAITING`（含还没上报/刚删）→ **红 RED_WOOL = 游戏中 `&c`**；`WAITING` 且 `players <= 0` → **绿 LIME_WOOL = 没人 `&a`**；`WAITING` 且有人 → **黄 YELLOW_WOOL = 等待中 `&e`**。**颜色不对先查游戏插件上报的 `players`**（0 人却报 PLAYING 就会显示成红）。游戏名必须与注册表显示名一致：`/hub games` 与启动日志「已登记 N 个游戏：…」是权威名单（`canonicalName` 会把 alias / 少空格归一化，但别依赖 OP 手写的名字）。OP 给该场地写过 `material` / `lore` 就以 OP 的为准（默认状态行不显示）。
 - **常改文件**：
   | 需求 | 文件 |

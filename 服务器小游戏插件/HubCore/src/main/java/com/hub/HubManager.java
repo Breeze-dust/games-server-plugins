@@ -36,9 +36,21 @@ public class HubManager implements HubService {
     private final Map<UUID, PlayerGame> gameMap = new LinkedHashMap<>();
     /** 玩家 -> tab 名字颜色覆盖（legacy 色号，如 "c"/"9"），小游戏插件按队伍染色用。 */
     private final Map<UUID, String> tabNameColor = new LinkedHashMap<>();
+    /** TAB 式固定格子（4 列 × 20 行 + 假条目）。 */
+    private final TabLayout tabLayout;
 
     public HubManager(HubCorePlugin plugin) {
         this.plugin = plugin;
+        this.tabLayout = new TabLayout(plugin);
+    }
+
+    public TabLayout getTabLayout() {
+        return tabLayout;
+    }
+
+    /** 玩家进服后把 tab 格子补给他。 */
+    public void sendTabLayout(Player player) {
+        tabLayout.sendTo(player);
     }
 
     /** 运行时登记一个游戏（一般不需要：启动时会自动扫描带接入标记的插件）。 */
@@ -943,6 +955,26 @@ public class HubManager implements HubService {
             }
         }
         Component header = LEGACY.deserialize(hb.toString());
+        String footerText = plugin.getConfig().getString("tab.footer", "");
+        Component footer = footerText == null || footerText.isEmpty()
+                ? Component.empty() : LEGACY.deserialize(footerText);
+
+        // 固定格子布局：把玩家按 大厅 → 各游戏 的顺序填进槽位（其余槽位由假条目占满）
+        boolean layoutOn = tabLayout.isEnabled();
+        if (layoutOn) {
+            List<Player> ordered = new ArrayList<>(lobby);
+            for (String game : keys) {
+                List<Player> ws = waiting.get(game);
+                if (ws != null) {
+                    ordered.addAll(ws);
+                }
+                List<Player> ps = playing.get(game);
+                if (ps != null) {
+                    ordered.addAll(ps);
+                }
+            }
+            tabLayout.apply(ordered);
+        }
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             PlayerGame pg = gameMap.get(p.getUniqueId());
@@ -961,8 +993,10 @@ public class HubManager implements HubService {
                     p.playerListName(LEGACY.deserialize("&a[已加入·" + pg.game() + "] " + coloredName(p)));
                 }
             }
-            p.setPlayerListOrder(order);
-            p.sendPlayerListHeaderAndFooter(header, Component.empty());
+            if (!layoutOn) {
+                p.setPlayerListOrder(order);
+            }
+            p.sendPlayerListHeaderAndFooter(header, footer);
         }
     }
 
