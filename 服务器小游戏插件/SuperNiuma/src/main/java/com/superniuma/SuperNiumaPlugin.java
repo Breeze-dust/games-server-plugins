@@ -1,6 +1,7 @@
 package com.superniuma;
 
 import com.superniuma.arena.ArenaManager;
+import com.superniuma.arena.RoomCopyManager;
 import com.superniuma.command.SnCommand;
 import com.superniuma.game.RoomManager;
 import com.superniuma.listener.GameListener;
@@ -18,6 +19,7 @@ import java.io.File;
 public final class SuperNiumaPlugin extends JavaPlugin {
 
     private ArenaManager arenas;
+    private RoomCopyManager copies;
     private MechanismRegistry mechanisms;
     private MechanismManager mechanismManager;
     private RoomManager rooms;
@@ -39,6 +41,9 @@ public final class SuperNiumaPlugin extends JavaPlugin {
 
         arenas = new ArenaManager(this);
         arenas.load();
+
+        copies = new RoomCopyManager(this);
+        copies.load();
 
         mechanisms = new MechanismRegistry(this);
         mechanisms.load();
@@ -80,6 +85,10 @@ public final class SuperNiumaPlugin extends JavaPlugin {
 
     public ArenaManager arenas() {
         return arenas;
+    }
+
+    public RoomCopyManager copies() {
+        return copies;
     }
 
     public MechanismRegistry mechanisms() {

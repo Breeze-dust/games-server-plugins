@@ -90,6 +90,31 @@ public final class Arena {
         return voidY;
     }
 
+    /** 生成同一张蓝本在目标世界里的副本：所有坐标平移，名字保持不变。 */
+    public Arena translated(World target, int dx, int dy, int dz) {
+        Arena out = new Arena(name, target.getName());
+        out.spawn = shift(spawn, target, dx, dy, dz);
+        out.start = shift(start, target, dx, dy, dz);
+        out.buildMin = shift(buildMin, target, dx, dy, dz);
+        out.buildMax = shift(buildMax, target, dx, dy, dz);
+        out.finishMin = shift(finishMin, target, dx, dy, dz);
+        out.finishMax = shift(finishMax, target, dx, dy, dz);
+        out.voidY = voidY + dy;
+        return out;
+    }
+
+    private static Location shift(Location loc, World target, int dx, int dy, int dz) {
+        if (loc == null) {
+            return null;
+        }
+        Location out = loc.clone();
+        out.setWorld(target);
+        out.setX(out.getX() + dx);
+        out.setY(out.getY() + dy);
+        out.setZ(out.getZ() + dz);
+        return out;
+    }
+
     public void setVoidY(double voidY) {
         this.voidY = voidY;
     }

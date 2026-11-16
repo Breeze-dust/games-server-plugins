@@ -4,6 +4,8 @@ import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
+import com.superniuma.arena.RoomCopy;
+import com.superniuma.arena.RoomCopyManager;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -21,18 +23,27 @@ public final class RoomManager {
     private final SuperNiumaPlugin plugin;
     private final Map<String, GameRoom> rooms = new LinkedHashMap<>();
     private final Map<UUID, GameRoom> byPlayer = new HashMap<>();
+    private final Map<String, RoomCopy> leases = new HashMap<>();
 
     public RoomManager(SuperNiumaPlugin plugin) {
         this.plugin = plugin;
     }
 
     public GameRoom create(Arena arena, GameMode mode, int teamCount, int winScore,
-                           int maxRounds, Player host) {
+                           int maxRounds, Player host) throws RoomCopyManager.CopyException {
         String id = newId();
+        RoomCopy copy = plugin.copies().allocate(id, arena);
         int maxPlayers = plugin.getConfig().getInt("room.default-max-players", 8);
-        GameRoom room = new GameRoom(plugin, id, arena, mode, teamCount, winScore,
-                maxRounds, maxPlayers, host);
+        GameRoom room;
+        try {
+            room = new GameRoom(plugin, id, copy.arena(), mode, teamCount, winScore,
+                    maxRounds, maxPlayers, host);
+        } catch (RuntimeException ex) {
+            plugin.copies().release(copy);
+            throw ex;
+        }
         rooms.put(id, room);
+        leases.put(id, copy);
         byPlayer.put(host.getUniqueId(), room);
         return room;
     }
@@ -94,6 +105,10 @@ public final class RoomManager {
         }
         rooms.remove(room.id());
         byPlayer.entrySet().removeIf(entry -> entry.getValue() == room);
+        RoomCopy copy = leases.remove(room.id());
+        if (copy != null) {
+            plugin.copies().release(copy);
+        }
         if (room.arena() != null) {
             HubAPI.setArena(GameRoom.GAME_NAME, room.arena().getName(), GameState.WAITING, 0, null);
         }
@@ -111,6 +126,8 @@ public final class RoomManager {
         for (GameRoom room : new ArrayList<>(rooms.values())) {
             room.shutdown();
         }
+        plugin.copies().releaseAll();
+        leases.clear();
         rooms.clear();
         byPlayer.clear();
     }

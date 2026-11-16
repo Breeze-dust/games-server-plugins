@@ -3,6 +3,7 @@ package com.superniuma.menu;
 import com.superniuma.Msg;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
+import com.superniuma.arena.RoomCopyManager;
 import com.superniuma.game.GameMode;
 import com.superniuma.game.GameRoom;
 import org.bukkit.Bukkit;
@@ -138,8 +139,14 @@ public final class CreateRoomMenu {
             Msg.send(player, "&c这张地图还没有配置完整。");
             return;
         }
-        GameRoom room = plugin.rooms().create(draft.arena, draft.mode, draft.teamCount,
-                draft.winScore, draft.maxRounds, player);
+        GameRoom room;
+        try {
+            room = plugin.rooms().create(draft.arena, draft.mode, draft.teamCount,
+                    draft.winScore, draft.maxRounds, player);
+        } catch (RoomCopyManager.CopyException ex) {
+            Msg.send(player, "&c无法创建房间副本：" + ex.getMessage());
+            return;
+        }
         DRAFTS.remove(player.getUniqueId());
         player.closeInventory();
         Msg.send(player, "&a房间已创建：&e" + room.id() + " &7（" + room.modeText()

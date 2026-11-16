@@ -3,6 +3,7 @@ package com.superniuma.command;
 import com.superniuma.Msg;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
+import com.superniuma.arena.RoomCopyManager;
 import com.superniuma.game.GameMode;
 import com.superniuma.game.GameRoom;
 import com.superniuma.menu.RoomMenu;
@@ -121,7 +122,13 @@ public final class SnCommand implements CommandExecutor, TabCompleter {
                 : plugin.getConfig().getInt("room.default-win-score", 10);
         int rounds = args.length > 5 ? parseInt(args[5], plugin.getConfig().getInt("room.default-max-rounds", 8))
                 : plugin.getConfig().getInt("room.default-max-rounds", 8);
-        GameRoom room = plugin.rooms().create(arena, mode, teams, win, rounds, player);
+        GameRoom room;
+        try {
+            room = plugin.rooms().create(arena, mode, teams, win, rounds, player);
+        } catch (RoomCopyManager.CopyException ex) {
+            Msg.send(player, "&c无法创建房间副本：" + ex.getMessage());
+            return;
+        }
         Msg.send(player, "&a房间已创建：&e" + room.id() + " &7（" + room.modeText()
                 + "，目标 " + room.winScore() + " 分，最高 " + room.maxRounds() + " 回合）");
     }
@@ -221,7 +228,8 @@ public final class SnCommand implements CommandExecutor, TabCompleter {
                 }
                 for (Arena arena : plugin.arenas().all()) {
                     Msg.raw(sender, "&f" + arena.getName() + " &7- " + arena.getWorldName()
-                            + (arena.isReady() ? " &a✓" : " &c未完成"));
+                            + (arena.isReady() ? " &a✓" : " &c未完成")
+                            + " &7副本 " + plugin.copies().activeCount(arena.getName()));
                 }
             }
             case "create" -> {
@@ -258,6 +266,15 @@ public final class SnCommand implements CommandExecutor, TabCompleter {
                 Msg.raw(sender, "&7出生点：" + fmt(arena.getSpawn()));
                 Msg.raw(sender, "&7起点：" + fmt(arena.getStart()));
                 Msg.raw(sender, "&7建造范围：" + fmt(arena.getBuildMin()) + " ~ " + fmt(arena.getBuildMax()));
+                if (arena.getBuildMin() != null && arena.getBuildMax() != null) {
+                    int sizeX = arena.getBuildMax().getBlockX() - arena.getBuildMin().getBlockX() + 1;
+                    int sizeY = arena.getBuildMax().getBlockY() - arena.getBuildMin().getBlockY() + 1;
+                    int sizeZ = arena.getBuildMax().getBlockZ() - arena.getBuildMin().getBlockZ() + 1;
+                    Msg.raw(sender, "&7蓝本大小：" + sizeX + "×" + sizeY + "×" + sizeZ
+                            + "（" + ((long) sizeX * sizeY * sizeZ) + " 格）");
+                }
+                Msg.raw(sender, "&7副本世界：" + plugin.copies().worldName()
+                        + "&7，当前副本：" + plugin.copies().activeCount(arena.getName()));
                 Msg.raw(sender, "&7终点范围：" + fmt(arena.getFinishMin()) + " ~ " + fmt(arena.getFinishMax()));
                 Msg.raw(sender, "&7虚空高度：" + arena.getVoidY());
                 Msg.raw(sender, arena.isReady() ? "&a状态：可用" : "&c状态：配置不完整");

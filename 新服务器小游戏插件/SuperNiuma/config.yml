@@ -8,6 +8,14 @@ room:
   default-max-rounds: 8    # 默认最高回合数
   default-team-count: 2    # 团队模式默认队伍数
 
+# 每个房间会把地图蓝本（pos1/pos2 圈出的区域）复制到下面这个世界里，
+# 各自占一个互不重叠的网格位置；房间结束时自动清空。
+copy:
+  world: world_sn_rooms    # 副本世界；不存在时自动创建虚空世界（需与蓝图世界不同）
+  gap: 256                 # 副本之间的间隔（格），要大于服务器视距，避免隔空看见隔壁房间
+  columns: 4               # 每行排几个副本
+  max-blocks: 500000       # 单张蓝本最大体积，超过则拒绝开房
+
 selection:
   duration-seconds: 20     # 选择机关环节时长
   auto-close-seconds: 2    # 所有人都选好后，再过几秒自动关闭界面并进入摆放
