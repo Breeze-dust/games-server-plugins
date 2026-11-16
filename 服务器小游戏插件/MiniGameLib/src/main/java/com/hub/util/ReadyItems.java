@@ -46,6 +46,15 @@ public final class ReadyItems {
     /** 玩家 -> 他所在等待室的倒计时（右键准备时据此找到所属游戏）。 */
     private static final Map<UUID, WaitCountdown> OWNERS = new ConcurrentHashMap<>();
 
+    /**
+     * 玩家 -> 上一次处理准备点击的 tick。
+     * <p>
+     * 对着方块右键时 Paper 会把 {@code PlayerInteractEvent} 连发两次（先方块、再物品），
+     * 不拦一下就会“准备 → 取消准备”切换两遍：道具回到灰色，但 3 秒倒计时已经被触发。
+     * 同一 tick 内的第二次点击直接忽略。
+     */
+    private static final Map<UUID, Integer> LAST_TOGGLE_TICK = new ConcurrentHashMap<>();
+
     private ReadyItems() {
     }
 
@@ -66,7 +75,13 @@ public final class ReadyItems {
                     return;
                 }
                 event.setCancelled(true);
-                WaitCountdown owner = OWNERS.get(event.getPlayer().getUniqueId());
+                UUID id = event.getPlayer().getUniqueId();
+                int tick = Bukkit.getCurrentTick();
+                Integer last = LAST_TOGGLE_TICK.put(id, tick);
+                if (last != null && last == tick) {
+                    return;
+                }
+                WaitCountdown owner = OWNERS.get(id);
                 if (owner != null) {
                     owner.toggleReady(event.getPlayer());
                 }
@@ -75,6 +90,7 @@ public final class ReadyItems {
             @EventHandler
             public void onQuit(PlayerQuitEvent event) {
                 UUID id = event.getPlayer().getUniqueId();
+                LAST_TOGGLE_TICK.remove(id);
                 WaitCountdown owner = OWNERS.remove(id);
                 if (owner != null) {
                     owner.removeReady(id);
