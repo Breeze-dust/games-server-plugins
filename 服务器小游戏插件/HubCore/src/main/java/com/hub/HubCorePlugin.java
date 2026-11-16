@@ -8,6 +8,7 @@ import com.hub.menu.MenuLayout;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRule;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -89,6 +90,10 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
             hub.setExecutor(this);
             hub.setTabCompleter(this);
         }
+        PluginCommand tppos = getCommand("tppos");
+        if (tppos != null) {
+            tppos.setExecutor(this::handleTpPos);
+        }
 
         // 每秒刷新 tab
         getServer().getScheduler().runTaskTimer(this, manager::refreshTab, 20L, 20L);
@@ -154,6 +159,58 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
                 getLogger().info("主城时间/天气被改动，已恢复为白天晴天（同类提示每分钟最多一条）。");
             }
         }
+    }
+
+    /**
+     * 普通玩家可用的坐标传送：只允许在各自当前所在的大厅世界内传，
+     * 不能跨世界，也进不了小游戏世界（那些世界不叫大厅世界名）。
+     */
+    private boolean handleTpPos(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player p)) {
+            sender.sendMessage("只有玩家可以执行。");
+            return true;
+        }
+        if (!p.hasPermission("hub.tppos")) {
+            p.sendMessage(LEGACY.deserialize("&c你没有使用 /tppos 的权限。"));
+            return true;
+        }
+        if (args.length != 3) {
+            p.sendMessage(LEGACY.deserialize("&c用法：/tppos <x> <y> <z>"));
+            return true;
+        }
+        Location lobby = manager.getLobby();
+        World world = p.getWorld();
+        if (lobby == null || !world.equals(lobby.getWorld())) {
+            p.sendMessage(LEGACY.deserialize("&c/tppos 只能在大厅世界里使用。"));
+            return true;
+        }
+        double x;
+        double y;
+        double z;
+        try {
+            x = Double.parseDouble(args[0]);
+            y = Double.parseDouble(args[1]);
+            z = Double.parseDouble(args[2]);
+        } catch (NumberFormatException e) {
+            p.sendMessage(LEGACY.deserialize("&c坐标必须是数字，例如 /tppos 100 64 -200"));
+            return true;
+        }
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+            p.sendMessage(LEGACY.deserialize("&c坐标必须是数字，例如 /tppos 100 64 -200"));
+            return true;
+        }
+        if (y < world.getMinHeight() || y > world.getMaxHeight()) {
+            p.sendMessage(LEGACY.deserialize("&cY 必须在 " + world.getMinHeight()
+                    + " ~ " + world.getMaxHeight() + " 之间。"));
+            return true;
+        }
+        p.teleport(new Location(world, x, y, z, p.getLocation().getYaw(), p.getLocation().getPitch()));
+        p.sendMessage(LEGACY.deserialize("&a已传送到 &f" + coord(x) + " " + coord(y) + " " + coord(z) + "&a。"));
+        return true;
+    }
+
+    private static String coord(double v) {
+        return String.valueOf(Math.round(v * 10) / 10.0);
     }
 
     @Override

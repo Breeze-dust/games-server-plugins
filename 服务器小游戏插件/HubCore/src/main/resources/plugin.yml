@@ -9,7 +9,13 @@ commands:
     description: 大厅管理 + 菜单编辑
     usage: /hub [menu|set|reload|lock|item|games|players|arena]，菜单编辑见 /hub menu help
     aliases: [lobby, spawn]
+  tppos:
+    description: 传送到主城世界内的坐标（普通玩家可用）
+    usage: /tppos <x> <y> <z>
 permissions:
   hub.admin:
     description: 管理大厅
     default: op
+  hub.tppos:
+    description: 允许在大厅世界里用 /tppos 传坐标
+    default: true
