@@ -62,43 +62,39 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
             }
             case "stats", "me" -> showStats(sender, manager, args);
             case "help", "?" -> help(sender);
-            case "setarea" -> {
-                Player player = adminPlayer(sender);
-                if (player == null) {
-                    return true;
-                }
-                if (args.length == 6) {
-                    Double centerX = number(args[1]);
-                    Double centerZ = number(args[2]);
-                    Double radius = number(args[3]);
-                    Double yMin = number(args[4]);
-                    Double yMax = number(args[5]);
-                    if (centerX == null || centerZ == null || radius == null
-                            || yMin == null || yMax == null) {
-                        Chat.send(sender, "&c坐标、半径和高度都必须是数字。");
-                        return true;
-                    }
-                    manager.setArea(player, centerX, centerZ, radius, yMin, yMax);
-                } else if (args.length == 4) {
-                    Double radius = number(args[1]);
-                    Double yMin = number(args[2]);
-                    Double yMax = number(args[3]);
-                    if (radius == null || yMin == null || yMax == null) {
-                        Chat.send(sender, "&c半径和高度都必须是数字。");
-                        return true;
-                    }
-                    manager.setArea(player, player.getLocation().getX(),
-                            player.getLocation().getZ(), radius, yMin, yMax);
-                } else {
-                    Chat.send(sender, "&c用法：/archery setarea <中心X> <中心Z> <半径> <最低Y> <最高Y>");
-                    Chat.send(sender, "&c或站到中心：/archery setarea <半径> <最低Y> <最高Y>");
-                }
-            }
             case "setstart" -> {
                 Player player = adminPlayer(sender);
                 if (player != null) {
                     manager.setStart(player);
                 }
+            }
+            case "edit" -> {
+                Player player = adminPlayer(sender);
+                if (player != null) {
+                    manager.enterEdit(player);
+                }
+            }
+            case "regions", "regionlist" -> {
+                if (requireAdmin(sender)) {
+                    for (String line : manager.listRegions()) {
+                        Chat.send(sender, line);
+                    }
+                }
+            }
+            case "region" -> {
+                if (!requireAdmin(sender)) {
+                    return true;
+                }
+                if (args.length < 3 || !args[1].equalsIgnoreCase("remove")) {
+                    Chat.send(sender, "&c用法：/archery region remove <序号>（序号用 /archery regions 查看）");
+                    return true;
+                }
+                Integer index = integer(args[2]);
+                if (index == null || !manager.removeRegion(index)) {
+                    Chat.send(sender, "&c序号不对。");
+                    return true;
+                }
+                Chat.send(sender, "&a已删除区域 #" + index + "。");
             }
             case "info" -> {
                 if (!requireAdmin(sender)) {
@@ -195,9 +191,9 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&f/archery top &7- 查看排行榜");
         Chat.send(sender, "&f/archery stats [玩家] &7- 查看最高分和名次");
         if (hasAdmin(sender)) {
-            Chat.send(sender, "&7管理：&fsetarea &7/&f setstart &7/&f info &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
-            Chat.send(sender, "&7区域：&f/archery setarea <中心X> <中心Z> <半径> <最低Y> <最高Y>");
-            Chat.send(sender, "&7　　　或站到中心：&f/archery setarea <半径> <最低Y> <最高Y>");
+            Chat.send(sender, "&7管理：&fedit &7/&f setstart &7/&f info &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
+            Chat.send(sender, "&7靶场：&f/archery edit &7进入编辑模式（木棍选对角、下界之星确认并输入基础分、绿宝石保存、屏障退出）");
+            Chat.send(sender, "&7　　　&f/archery regions &7查看全部区域，&f/archery region remove <序号> &7删除");
             Chat.send(sender, "&7排行榜：&f/archery top place &7（当前位置放置）、&f/archery top remove");
         }
     }
@@ -229,9 +225,9 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         return sender.isOp() || sender.hasPermission("archery.admin");
     }
 
-    private static Double number(String raw) {
+    private static Integer integer(String raw) {
         try {
-            return Double.parseDouble(raw);
+            return Integer.parseInt(raw);
         } catch (NumberFormatException ex) {
             return null;
         }
@@ -247,7 +243,7 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 }
             }
             if (hasAdmin(sender)) {
-                for (String sub : List.of("setarea", "setstart", "info", "reload", "reset", "debug")) {
+                for (String sub : List.of("edit", "setstart", "regions", "region", "info", "reload", "reset", "debug")) {
                     if (sub.startsWith(args[0].toLowerCase())) {
                         out.add(sub);
                     }
@@ -259,6 +255,10 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 if (option.startsWith(args[1].toLowerCase())) {
                     out.add(option);
                 }
+            }
+        } else if (args.length == 2 && "region".equalsIgnoreCase(args[0]) && hasAdmin(sender)) {
+            if ("remove".startsWith(args[1].toLowerCase())) {
+                out.add("remove");
             }
         } else if (args.length == 2
                 && ("stats".equalsIgnoreCase(args[0]) || "reset".equalsIgnoreCase(args[0]))) {

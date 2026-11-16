@@ -1,22 +1,20 @@
 package com.archery;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.entity.Animals;
-import org.bukkit.entity.EntityType;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /** config.yml 的只读快照。 */
 public final class ArcherySettings {
-
-    public String regionWorld = "";
-    public double centerX;
-    public double centerZ;
-    public double radius = 10.0;
-    public double yMin;
-    public double yMax = 10.0;
 
     public String startWorld = "";
     public double startX;
@@ -35,43 +33,27 @@ public final class ArcherySettings {
     public double minSpeed = 1.5;
     public double maxSpeed = 6.0;
     public double fastSpeed = 4.5;
+    public double smallScale = 0.5;
 
-    /** 三种靶子的动物：成年 = 正常大小，幼年 = 缩小靶。 */
-    public EntityType fixedEntity = EntityType.COW;
-    public EntityType movingEntity = EntityType.PIG;
-    public EntityType fastEntity = EntityType.SHEEP;
+    public Material fixedBlock = Material.TARGET;
+    public Material movingBlock = Material.REDSTONE_BLOCK;
+    public Material fastBlock = Material.GOLD_BLOCK;
+    public Color smallGlowColor = Color.RED;
 
-    public int scoreFixedNormal = 1;
-    public int scoreFixedSmall = 3;
-    public int scoreMovingNormal = 3;
-    public int scoreMovingSmall = 5;
-    public int scoreFastNormal = 5;
-    public int scoreFastSmall = 10;
+    /** 三项独立加成：移动 +1、快速 +2、缩小 +2，可叠加。 */
+    public int bonusMoving = 1;
+    public int bonusFast = 2;
+    public int bonusSmall = 2;
 
     public boolean sound = true;
     public boolean particle = true;
     public int topSize = 10;
 
+    /** 编辑模式划出的长方体区域，每个区域带自己的基础分。 */
+    public List<TargetRegion> regions = new ArrayList<>();
+
     public static ArcherySettings load(FileConfiguration cfg) {
         ArcherySettings s = new ArcherySettings();
-
-        ConfigurationSection region = cfg.getConfigurationSection("region");
-        if (region != null) {
-            s.regionWorld = region.getString("world", "");
-            s.centerX = region.getDouble("center-x", 0.0);
-            s.centerZ = region.getDouble("center-z", 0.0);
-            s.radius = clamp(region.getDouble("radius", 10.0), 1.0, 256.0);
-            s.yMin = region.getDouble("y-min", 0.0);
-            s.yMax = region.getDouble("y-max", 10.0);
-            if (s.yMax < s.yMin) {
-                double swap = s.yMin;
-                s.yMin = s.yMax;
-                s.yMax = swap;
-            }
-            if (s.yMax - s.yMin < 0.5) {
-                s.yMax = s.yMin + 0.5;
-            }
-        }
 
         ConfigurationSection start = cfg.getConfigurationSection("start");
         if (start != null) {
@@ -93,21 +75,42 @@ public final class ArcherySettings {
         s.minSpeed = Math.max(0.0, cfg.getDouble("targets.min-speed", 1.5));
         s.maxSpeed = Math.max(s.minSpeed, cfg.getDouble("targets.max-speed", 6.0));
         s.fastSpeed = Math.max(0.0, cfg.getDouble("targets.fast-speed", 4.5));
+        s.smallScale = clamp(cfg.getDouble("targets.small-scale", 0.5), 0.2, 0.9);
 
-        s.fixedEntity = animal(cfg.getString("targets.entities.fixed"), EntityType.COW);
-        s.movingEntity = animal(cfg.getString("targets.entities.moving"), EntityType.PIG);
-        s.fastEntity = animal(cfg.getString("targets.entities.fast"), EntityType.SHEEP);
+        s.fixedBlock = block(cfg.getString("targets.blocks.fixed"), Material.TARGET);
+        s.movingBlock = block(cfg.getString("targets.blocks.moving"), Material.REDSTONE_BLOCK);
+        s.fastBlock = block(cfg.getString("targets.blocks.fast"), Material.GOLD_BLOCK);
+        s.smallGlowColor = glowColor(cfg.getString("targets.small-glow-color"));
 
-        s.scoreFixedNormal = score(cfg, "targets.scores.fixed-normal", 1);
-        s.scoreFixedSmall = score(cfg, "targets.scores.fixed-small", 3);
-        s.scoreMovingNormal = score(cfg, "targets.scores.moving-normal", 3);
-        s.scoreMovingSmall = score(cfg, "targets.scores.moving-small", 5);
-        s.scoreFastNormal = score(cfg, "targets.scores.fast-normal", 5);
-        s.scoreFastSmall = score(cfg, "targets.scores.fast-small", 10);
+        s.bonusMoving = (int) clamp(cfg.getInt("targets.bonuses.moving", 1), 0, 1000);
+        s.bonusFast = (int) clamp(cfg.getInt("targets.bonuses.fast", 2), 0, 1000);
+        s.bonusSmall = (int) clamp(cfg.getInt("targets.bonuses.small", 2), 0, 1000);
 
         s.sound = cfg.getBoolean("effects.sound", true);
         s.particle = cfg.getBoolean("effects.particle", true);
         s.topSize = (int) clamp(cfg.getInt("top-size", 10), 1, 50);
+
+        for (Map<?, ?> raw : cfg.getMapList("regions")) {
+            Object worldName = raw.get("world");
+            if (worldName == null) {
+                continue;
+            }
+            World world = Bukkit.getWorld(String.valueOf(worldName));
+            if (world == null) {
+                continue;
+            }
+            double minX = number(raw.get("min-x"), 0.0);
+            double minY = number(raw.get("min-y"), 0.0);
+            double minZ = number(raw.get("min-z"), 0.0);
+            double maxX = number(raw.get("max-x"), 0.0);
+            double maxY = number(raw.get("max-y"), 0.0);
+            double maxZ = number(raw.get("max-z"), 0.0);
+            if (maxX <= minX || maxY <= minY || maxZ <= minZ) {
+                continue;
+            }
+            int base = (int) clamp(number(raw.get("base-score"), 1.0), 1, 100000);
+            s.regions.add(new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ, base));
+        }
         return s;
     }
 
@@ -126,25 +129,44 @@ public final class ArcherySettings {
         return Math.max(min, Math.min(max, value));
     }
 
-    private static int score(FileConfiguration cfg, String path, int fallback) {
-        return (int) clamp(cfg.getInt(path, fallback), 0, 1000);
+    private static double number(Object value, double fallback) {
+        return value instanceof Number number ? number.doubleValue() : fallback;
     }
 
-    /** 只接受能切换成年/幼年的动物，写错或写成僵尸之类就退回默认值。 */
-    private static EntityType animal(String name, EntityType fallback) {
-        if (name == null || name.isBlank()) {
+    private static Material block(String name, Material fallback) {
+        if (name == null || name.isEmpty()) {
             return fallback;
         }
-        EntityType type;
-        try {
-            type = EntityType.valueOf(name.trim().toUpperCase(java.util.Locale.ROOT));
-        } catch (IllegalArgumentException ex) {
-            return fallback;
+        Material material = Material.matchMaterial(name);
+        return material != null && material.isBlock() ? material : fallback;
+    }
+
+    /** 支持 #RRGGBB 或常见颜色名；写错退回红色。 */
+    private static Color glowColor(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Color.RED;
         }
-        Class<?> clazz = type.getEntityClass();
-        if (clazz == null || !Animals.class.isAssignableFrom(clazz)) {
-            return fallback;
+        String value = raw.trim();
+        if (value.startsWith("#") && value.length() == 7) {
+            try {
+                return Color.fromRGB(Integer.parseInt(value.substring(1), 16));
+            } catch (NumberFormatException ignored) {
+                return Color.RED;
+            }
         }
-        return type;
+        return switch (value.toUpperCase(Locale.ROOT)) {
+            case "BLACK" -> Color.BLACK;
+            case "BLUE" -> Color.BLUE;
+            case "AQUA", "CYAN" -> Color.AQUA;
+            case "GREEN" -> Color.GREEN;
+            case "LIME" -> Color.LIME;
+            case "GRAY", "GREY" -> Color.GRAY;
+            case "PURPLE" -> Color.PURPLE;
+            case "PINK" -> Color.FUCHSIA;
+            case "ORANGE" -> Color.ORANGE;
+            case "WHITE" -> Color.WHITE;
+            case "YELLOW" -> Color.YELLOW;
+            default -> Color.RED;
+        };
     }
 }
