@@ -1,0 +1,68 @@
+# ========== 箭术大师（主城限时射箭）配置 ==========
+# 区域和站位用游戏内命令设置：
+#   /archery setarea <中心X> <中心Z> <半径> <最低Y> <最高Y>
+#   /archery setarea <半径> <最低Y> <最高Y>      （中心取你当前站位的 X/Z）
+#   /archery setstart                          （站到射击位，记录位置和视角）
+# 注意：命令会写回本文件的 region / start / leaderboards 段；
+# 手改配置请在停服后改，或改完执行 /archery reload。
+
+# 靶子出现区域：以 (center-x, center-z) 为轴、radius 为半径的圆柱体，
+# 靶子中心只会出现在 y-min ~ y-max 之间。
+region:
+  world: ''
+  center-x: 0.0
+  center-z: 0.0
+  radius: 10.0
+  y-min: 0.0
+  y-max: 10.0
+
+# 射击站位（可选）：站到射击位执行 /archery setstart。
+# 配置后玩家开局会被传送到这里；不配置时玩家就在执行 /archery 的位置开玩，
+# 两种情况结束时都会回到进入前的位置和视角。
+start:
+  world: ''
+  x: 0.0
+  y: 0.0
+  z: 0.0
+  yaw: 0.0
+  pitch: 0.0
+
+game:
+  time-seconds: 60        # 每局时长（秒）
+
+# 靶子
+targets:
+  max: 8                  # 场上同时存在的靶子数
+  respawn-delay-ticks: 10 # 射中后隔多久补一个新靶（20 刻 = 1 秒）
+  lifetime-seconds: 0     # 靶子最多存在多久；0 = 不自动消失
+  small-chance: 0.35      # 缩小靶概率（0~1）
+  moving-chance: 0.50     # 移动靶概率（0~1），未抽中就是固定靶
+  min-speed: 1.5          # 移动靶速度下限（格/秒）
+  max-speed: 6.0          # 移动靶速度上限（格/秒），每只靶随机取区间内速度
+  fast-speed: 4.5         # 速度 >= 这个值算「快速移动靶」（格/秒）
+  small-scale: 0.5        # 缩小靶的边长（正常靶是 1.0）
+
+  # 三种靶子的外观（写 Bukkit 方块材质名，缩小靶按 small-scale 缩放）
+  blocks:
+    fixed: TARGET         # 固定靶
+    moving: REDSTONE_BLOCK # 移动靶
+    fast: GOLD_BLOCK      # 快速移动靶
+
+  # 命中得分
+  scores:
+    fixed-normal: 1       # 正常固定靶
+    fixed-small: 3        # 缩小固定靶
+    moving-normal: 3      # 正常移动靶
+    moving-small: 5       # 缩小移动靶
+    fast-normal: 5        # 正常快速移动靶
+    fast-small: 10        # 缩小快速移动靶
+
+effects:
+  sound: true
+  particle: true
+
+top-size: 10              # 排行榜显示前几名
+
+# 浮空文字排行榜（/archery top place 在当前位置放置，top remove 移除）
+# 固定朝向，每 5 秒刷新一次
+leaderboards: []
