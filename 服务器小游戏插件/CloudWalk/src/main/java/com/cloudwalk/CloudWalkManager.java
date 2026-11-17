@@ -503,6 +503,7 @@ public class CloudWalkManager {
         session.heading = cursor;
         session.generated = path.size() - 1;
         sessions.put(id, session);
+        HubAPI.setPlaying(id, "云中漫步");
         updateGlow(session, path.get(1));
 
         Chat.send(p, "&b&l云中漫步 &7· " + difficulty.color + difficulty.name
@@ -720,6 +721,7 @@ public class CloudWalkManager {
         s.finished = true;
         sessions.remove(s.playerId);
         freeLane(s.lane);
+        HubAPI.clearGame(s.playerId);
 
         if (s.glow != null) {
             s.glow.remove();
@@ -1386,6 +1388,8 @@ public class CloudWalkManager {
             if (entity instanceof TextDisplay existing && existing.isValid()) {
                 display = existing;
                 display.teleport(pageLoc);
+                // teleport 会把实体朝向改成 Location 的 yaw，必须重新摆正，否则背对玩家看起来就是空的
+                display.setRotation(snapYaw(board.loc.getYaw() + 180f), 0f);
             } else {
                 removePageView(p.getUniqueId());
             }
@@ -1458,6 +1462,7 @@ public class CloudWalkManager {
                 continue;
             }
             display.teleport(mainLocation(view.board, settings.topSize));
+            display.setRotation(snapYaw(view.board.loc.getYaw() + 180f), 0f);
             display.text(difficultyText(difficulty));
         }
     }
