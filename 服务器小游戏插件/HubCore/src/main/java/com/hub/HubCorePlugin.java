@@ -112,7 +112,7 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
             changed = true;
         }
         if (!getConfig().isSet("tab.layout.enabled")) {
-            getConfig().set("tab.layout.enabled", true);
+            getConfig().set("tab.layout.enabled", false);
             getConfig().set("tab.layout.columns", 4);
             getConfig().set("tab.layout.rows", 20);
             getConfig().set("tab.layout.empty-slot-text", "");
