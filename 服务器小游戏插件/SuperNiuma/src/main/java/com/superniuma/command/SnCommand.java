@@ -142,18 +142,19 @@ public final class SnCommand implements CommandExecutor, TabCompleter {
             Msg.send(player, "&c用法：/sn join <房间号>");
             return;
         }
-        if (plugin.rooms().roomOf(player) != null) {
-            Msg.send(player, "&c你已经在一个房间里了。");
-            return;
-        }
         GameRoom room = plugin.rooms().byId(args[1]);
         if (room == null) {
             Msg.send(player, "&c房间不存在或已结束：&e" + args[1]
                     + "&c。这里要填 /sn create 返回的 4 位房间号，不是地图名；用 /sn list 查看当前房间。");
             return;
         }
+        GameRoom current = plugin.rooms().roomOf(player);
+        if (current != null && current != room) {
+            Msg.send(player, "&c你已经在一个房间里了。");
+            return;
+        }
         if (!plugin.rooms().join(room.id(), player)) {
-            Msg.send(player, "&c加入失败（房间已开始或已满）。");
+            Msg.send(player, "&c加入失败（房间已结束或已满）。");
             return;
         }
         Msg.send(player, "&a已加入房间 &e" + room.id() + "&a。");

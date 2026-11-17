@@ -59,10 +59,11 @@ public final class RoomMenu {
             }
             List<String> lore = Arrays.asList(
                     Msg.c("&7地图：&f" + room.arena().getName()),
+                    Msg.c("&7房主：&f" + room.hostName()),
                     Msg.c("&7模式：&f" + room.modeText()),
                     Msg.c("&7状态：&f" + room.statusText()),
                     Msg.c("&7人数：&f" + room.size() + "/" + room.maxPlayers()),
-                    Msg.c("&a点击加入"));
+                    Msg.c(room.phase() == GameRoom.Phase.WAITING ? "&a点击加入" : "&a点击中途加入"));
             inventory.setItem(roomSlot, item(Material.OAK_DOOR,
                     "&a房间 " + room.id(), lore));
             holder.action(roomSlot, "join:" + room.id());

@@ -62,7 +62,12 @@ public final class SuperNiumaPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
         getServer().getPluginManager().registerEvents(new MenuListener(this), this);
 
-        com.hub.api.HubAPI.registerLobbyHandler(player -> rooms.leave(player, true));
+        // 掉线重连的玩家登录时主城也会发一次"回主城"：保留席位的那次交给重连流程。
+        com.hub.api.HubAPI.registerLobbyHandler(player -> {
+            if (!rooms.resumeAfterLogin(player)) {
+                rooms.leave(player, true);
+            }
+        });
 
         getLogger().info("超级牛马已启用（机关 " + mechanisms.enabled().size() + " 种）。");
     }

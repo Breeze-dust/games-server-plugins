@@ -2,19 +2,23 @@ package com.superniuma.game;
 
 import com.hub.api.GameState;
 import com.hub.api.HubAPI;
+import com.superniuma.Msg;
 import com.superniuma.SuperNiumaPlugin;
 import com.superniuma.arena.Arena;
 import com.superniuma.arena.RoomCopy;
 import com.superniuma.arena.RoomCopyManager;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** 所有房间的登记表。 */
@@ -24,6 +28,8 @@ public final class RoomManager {
     private final Map<String, GameRoom> rooms = new LinkedHashMap<>();
     private final Map<UUID, GameRoom> byPlayer = new HashMap<>();
     private final Map<String, RoomCopy> leases = new HashMap<>();
+    /** 登录后还留着对局席位、等待自动送回房间的玩家。 */
+    private final Set<UUID> rejoiningSoon = new HashSet<>();
 
     public RoomManager(SuperNiumaPlugin plugin) {
         this.plugin = plugin;
@@ -82,7 +88,8 @@ public final class RoomManager {
         if (room == null) {
             return false;
         }
-        if (byPlayer.containsKey(player.getUniqueId())) {
+        GameRoom current = byPlayer.get(player.getUniqueId());
+        if (current != null && current != room) {
             return false;
         }
         if (!room.addParticipant(player)) {
@@ -97,6 +104,51 @@ public final class RoomManager {
         if (room != null) {
             room.leave(player, toLobby);
         }
+    }
+
+    /** 掉线：对局中保留席位等重连，等待室直接退出。 */
+    public void quit(Player player) {
+        GameRoom room = byPlayer.get(player.getUniqueId());
+        if (room == null) {
+            return;
+        }
+        if (!room.handleQuit(player)) {
+            byPlayer.remove(player.getUniqueId());
+        }
+    }
+
+    /** 玩家登录时先记下：如果还留着对局席位，稍后自动送回对局。 */
+    public void onLogin(Player player) {
+        if (byPlayer.containsKey(player.getUniqueId())) {
+            rejoiningSoon.add(player.getUniqueId());
+        }
+    }
+
+    /**
+     * 玩家登录后主城会自动把玩家传回大厅（这会调用"回主城"回调）。
+     * 保留席位的玩家这次不算退出对局，改为稍后送回房间。
+     *
+     * @return true 表示拦下了这次回主城
+     */
+    public boolean resumeAfterLogin(Player player) {
+        if (!rejoiningSoon.remove(player.getUniqueId())) {
+            return false;
+        }
+        GameRoom room = byPlayer.get(player.getUniqueId());
+        if (room == null) {
+            return false;
+        }
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            GameRoom current = byPlayer.get(player.getUniqueId());
+            if (current != null) {
+                Msg.send(player, "&a正在把你送回房间 &e" + current.id() + "&a…");
+                current.addParticipant(player);
+            }
+        }, 5L);
+        return true;
     }
 
     public void removeRoom(GameRoom room) {
@@ -130,5 +182,6 @@ public final class RoomManager {
         leases.clear();
         rooms.clear();
         byPlayer.clear();
+        rejoiningSoon.clear();
     }
 }

@@ -99,6 +99,7 @@ public final class GameRoom {
     private Phase phase = Phase.WAITING;
     private int phaseTicks;
     private int autoCloseTicks = -1;
+    private int emptyTicks;
     private int runCountdownTicks;
     private int round;
     private RoundData roundData = new RoundData();
@@ -252,8 +253,12 @@ public final class GameRoom {
     // ---------- 加入 / 离开 ----------
 
     public boolean addParticipant(Player player) {
-        if (phase != Phase.WAITING || participants.size() >= maxPlayers || participant(player) != null) {
+        if (phase == Phase.ENDED || participants.size() >= maxPlayers) {
             return false;
+        }
+        Participant existing = participant(player);
+        if (existing != null) {
+            return rejoin(player, existing);
         }
         Participant participant = new Participant(player.getUniqueId(), player.getName());
         participant.setTeamId(assignTeam());
@@ -269,15 +274,178 @@ public final class GameRoom {
         HubAPI.setGame(player.getUniqueId(), GAME_NAME);
         HubAPI.announceJoin(plugin.getName(), player.getName(), arena.getName());
         updateArenaStatus();
-        Location spawn = arena.getSpawn();
-        if (spawn != null) {
-            player.teleport(spawn);
+        enterCurrentPhase(player, participant);
+        broadcast(phase == Phase.WAITING
+                ? "&a" + player.getName() + " 加入了房间（" + participants.size() + "/" + maxPlayers + "）。"
+                : "&a" + player.getName() + " 中途加入了游戏（" + participants.size() + "/" + maxPlayers + "）。");
+        return true;
+    }
+
+    /** 断线重连：沿用原来的分数和回合状态，直接回到当前环节。 */
+    private boolean rejoin(Player player, Participant participant) {
+        if (phase == Phase.ENDED) {
+            return false;
+        }
+        saveInventory(player);
+        setupCollisionBoard(player);
+        HubAPI.setGame(player.getUniqueId(), GAME_NAME);
+        updateArenaStatus();
+        enterCurrentPhase(player, participant);
+        broadcast(phase == Phase.WAITING
+                ? "&a" + player.getName() + " 回到了房间。"
+                : "&a" + player.getName() + " 重新连接，回到了游戏中。");
+        return true;
+    }
+
+    /** 根据当前环节把玩家放到该在的位置、换上该拿的道具。 */
+    private void enterCurrentPhase(Player player, Participant participant) {
+        player.setCanPickupItems(false);
+        if (phase != Phase.WAITING) {
+            HubAPI.setPlaying(player.getUniqueId(), GAME_NAME);
+            applyTabColor(player, participant);
+        }
+        switch (phase) {
+            case WAITING -> {
+                if (arena.getSpawn() != null) {
+                    player.teleport(arena.getSpawn());
+                }
+                player.setGameMode(org.bukkit.GameMode.ADVENTURE);
+                giveWaitItems(player);
+            }
+            case SELECTING -> {
+                if (arena.getSpawn() != null) {
+                    player.teleport(arena.getSpawn());
+                }
+                player.setGameMode(org.bukkit.GameMode.ADVENTURE);
+                player.setAllowFlight(false);
+                player.setFlying(false);
+                clearGameInventory(player);
+                if (participant.choice() == null) {
+                    SelectMechanismMenu.open(plugin, this, player);
+                }
+            }
+            case PLACING -> {
+                if (arena.getSpawn() != null) {
+                    player.teleport(arena.getSpawn());
+                }
+                PlacementSession previous = sessions.remove(player.getUniqueId());
+                if (previous != null) {
+                    plugin.mechanismManager().clearPreview(previous);
+                }
+                if (participant.choice() == null || participant.placed()) {
+                    player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+                } else {
+                    player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    player.setAllowFlight(true);
+                    player.setFlying(true);
+                    enableReach(player);
+                    givePlacementItems(player, participant.choice());
+                    int startDistance = plugin.getConfig().getInt("placement.start-distance", 3);
+                    sessions.put(player.getUniqueId(),
+                            new PlacementSession(player, participant.choice(), startDistance));
+                }
+            }
+            case STARTING -> enterRun(player);
+            case RUNNING -> {
+                enterRun(player);
+                if (participant.finished() || participant.failed()) {
+                    player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+                }
+            }
+            case SCORING -> {
+                if (arena.getSpawn() != null) {
+                    player.teleport(arena.getSpawn());
+                }
+                player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void enterRun(Player player) {
+        if (arena.getStart() != null) {
+            player.teleport(arena.getStart());
         }
         player.setGameMode(org.bukkit.GameMode.ADVENTURE);
-        player.setCanPickupItems(false);
-        giveWaitItems(player);
-        broadcast("&a" + player.getName() + " 加入了房间（" + participants.size() + "/" + maxPlayers + "）。");
+        player.setAllowFlight(false);
+        player.setFlying(false);
+        restoreReach(player);
+        clearGameInventory(player);
+        player.setFireTicks(0);
+    }
+
+    private void applyTabColor(Player player, Participant participant) {
+        if (mode != GameMode.TEAM) {
+            return;
+        }
+        TeamState team = teams.get(participant.teamId());
+        if (team != null) {
+            HubAPI.setTabNameColor(player.getUniqueId(), String.valueOf(team.color().getChar()));
+        }
+    }
+
+    /**
+     * 玩家掉线。对局中保留席位等重连（不判失败、不扣分），等待室直接移出。
+     *
+     * @return 是否保留了席位
+     */
+    public boolean handleQuit(Player player) {
+        Participant participant = participant(player);
+        if (participant == null) {
+            return false;
+        }
+        if (phase == Phase.WAITING || phase == Phase.ENDED) {
+            removeParticipant(player);
+            return false;
+        }
+        if (bossBar != null) {
+            bossBar.removePlayer(player);
+        }
+        PlacementSession session = sessions.remove(player.getUniqueId());
+        if (session != null) {
+            plugin.mechanismManager().clearPreview(session);
+        }
+        dropCounts.remove(player.getUniqueId());
+        lastDropMillis.remove(player.getUniqueId());
+        if (player.isOnline()) {
+            plugin.mechanismManager().clearPlayerEffects(player);
+            restore(player);
+        }
+        HubAPI.clearGame(player.getUniqueId());
+        if (host.equals(player.getUniqueId())) {
+            Player next = firstOnlineParticipant();
+            if (next != null) {
+                host = next.getUniqueId();
+                broadcast("&e房主已转移给 " + next.getName() + "。");
+            }
+        }
+        updateArenaStatus();
+        broadcast("&e" + player.getName() + " 掉线了，重连后会回到本局游戏。");
         return true;
+    }
+
+    private Player firstOnlineParticipant() {
+        for (Participant participant : participants) {
+            Player player = Bukkit.getPlayer(participant.uuid());
+            if (player != null) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    public String hostName() {
+        Player online = Bukkit.getPlayer(host);
+        if (online != null) {
+            return online.getName();
+        }
+        Participant participant = participant(host);
+        return participant == null ? "未知" : participant.name();
+    }
+
+    public int onlineCount() {
+        return onlinePlayers().size();
     }
 
     private int assignTeam() {
@@ -1489,6 +1657,16 @@ public final class GameRoom {
     private void tick() {
         if (ending) {
             return;
+        }
+        if (phase != Phase.WAITING && onlinePlayers().isEmpty()) {
+            // 全员掉线后留一段时间给重连，超时再关房释放副本。
+            if (++emptyTicks >= secondsToTicks(
+                    plugin.getConfig().getInt("room.empty-grace-seconds", 120))) {
+                abort("所有玩家都已离线，房间已关闭。");
+                return;
+            }
+        } else {
+            emptyTicks = 0;
         }
         tickPhase();
         updateBossBar();

@@ -56,15 +56,16 @@ public final class MenuListener implements Listener {
                 Msg.send(player, "&c这个房间已经结束或不存在了，请点「刷新」重新读取房间列表。");
                 return;
             }
-            if (plugin.rooms().roomOf(player) != null) {
-                Msg.send(player, "&c你已经在房间里了。");
+            GameRoom current = plugin.rooms().roomOf(player);
+            if (current != null && current != room) {
+                Msg.send(player, "&c你已经在另一个房间里了。");
                 return;
             }
             if (plugin.rooms().join(room.id(), player)) {
                 player.closeInventory();
                 Msg.send(player, "&a已加入房间 &e" + room.id() + "&a。");
             } else {
-                Msg.send(player, "&c加入失败（房间已开始或已满）。");
+                Msg.send(player, "&c加入失败（房间已结束或已满）。");
             }
             return;
         }
