@@ -1,5 +1,5 @@
 name: ArcheryMaster
-version: '1.1.0'
+version: '1.1.1'
 main: com.archery.ArcheryPlugin
 api-version: '1.21'
 description: 箭术大师：主城随时可玩的限时射箭小游戏

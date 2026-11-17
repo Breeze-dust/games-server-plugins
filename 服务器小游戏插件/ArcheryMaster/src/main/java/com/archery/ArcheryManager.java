@@ -846,9 +846,8 @@ public class ArcheryManager {
             }
             Vector direction = delta.clone().normalize();
 
-            TargetInstance hit = null;
-            Vector hitPoint = null;
-            double bestDistance = Double.MAX_VALUE;
+            List<TargetInstance> hits = new ArrayList<>();
+            List<Vector> points = new ArrayList<>();
             for (TargetInstance target : s.targets) {
                 BoundingBox box = target.box();
                 Vector point = null;
@@ -861,18 +860,13 @@ public class ArcheryManager {
                     }
                 }
                 if (point != null) {
-                    double distance = point.distanceSquared(from);
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        hit = target;
-                        hitPoint = point;
-                    }
+                    hits.add(target);
+                    points.add(point);
                 }
             }
-            if (hit != null) {
-                arrow.remove();
-                iterator.remove();
-                awardHit(p, s, hit, hitPoint);
+            // 命中靶子后不删箭：箭会继续飞，能连续穿过多个靶子（靶子命中后立即移除，不会重复计分）。
+            for (int i = 0; i < hits.size(); i++) {
+                awardHit(p, s, hits.get(i), points.get(i));
             }
         }
     }
