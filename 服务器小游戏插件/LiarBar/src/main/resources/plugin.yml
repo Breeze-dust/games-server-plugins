@@ -1,0 +1,28 @@
+name: LiarBar
+version: '1.0.0'
+main: com.liarbar.LiarBarPlugin
+api-version: '1.21'
+description: 骗子酒馆：大厅里找一张空桌坐下，四人坐满自动开局，轮流出牌吹牛、质疑对方、俄罗斯轮盘，最后存活者获胜
+
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+
+minigame-game: true
+minigame:
+  name: 骗子酒馆
+  icon: BELL
+  color: '4'
+
+commands:
+  liarbar:
+    description: 骗子酒馆小游戏
+    usage: /liarbar help
+    aliases: [lb, liars]
+
+permissions:
+  liarbar.play:
+    description: 允许进入骗子酒馆
+    default: true
+  liarbar.admin:
+    description: 配置骗子酒馆的房间、桌子与椅子
+    default: op

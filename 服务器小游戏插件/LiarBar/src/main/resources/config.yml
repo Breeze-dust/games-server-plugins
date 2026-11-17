@@ -1,0 +1,35 @@
+# ========== 骗子酒馆配置 ==========
+# 房间区域：OP 站到房间两个对角执行 /liarbar pos1、/liarbar pos2。
+# 区域内会阻止方块破坏/放置；站在区域内视为"在酒馆里"。
+room:
+  world: ''
+  spawn: {}
+  pos1: {}
+  pos2: {}
+
+# 桌子（场次）：一张桌子登记 4 把椅子，椅子必须是一段台阶方块。
+# OP 站在台阶上执行 /liarbar addchair <桌名>，逐把登记；登记满 4 把即可开局。
+# 示例（不用手写，命令会自动生成）：
+# tables:
+#   一号桌:
+#     seats:
+#     - {world: world, x: 10.0, y: 65.0, z: 10.0}
+tables: {}
+
+settings:
+  # 每桌玩家数（同时也是每桌需要的椅子数）
+  players-per-table: 4
+  # 四人坐满后自动开局的倒计时（秒）
+  start-countdown-seconds: 3
+  # 每人每回合手牌数（1~5）
+  hand-size: 5
+  # 一次最多声称几张牌
+  max-play-cards: 3
+  # 每人的思考时间（秒），超时自动打出一张牌
+  turn-seconds: 30
+  # 质疑结算后到下一回合的间隔（秒）
+  round-delay-seconds: 4
+  # 本局结束后，全员从座椅起身并留在房间里等待下一局（秒）
+  end-delay-seconds: 5
+  # 左轮弹巢数：每次质疑失败扣一次扳机，弹巢转一格，转到子弹就出局
+  chambers: 6
