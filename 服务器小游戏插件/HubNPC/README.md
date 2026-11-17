@@ -26,6 +26,7 @@
 /npc list                             列出全部 NPC（含是否已加载）
 /npc info <id>                        详情
 /npc tp <id>                          传送到 NPC
+/npc reload                           重读 config.yml（朝向玩家开关/距离/刷新间隔），不动 npcs.yml
 /npc remove <id>                      删除 NPC 与实体
 ```
 
@@ -107,6 +108,8 @@ look-at-player:
 - 找不到玩家（或 `enabled: false`）时用 `npcs.yml` 里存的 yaw/pitch 复位。
 - 玩家在附近时用 `/npc move` 改朝向不会立刻看到效果（会被下一轮朝向玩家覆盖），
   等人走开就会显示新朝向；想固定朝向就把 `enabled` 关掉。
+- 改完配置执行 `/npc reload` 立即生效，不用重启服务器；`/npc reload` 不读 `npcs.yml`，
+  不会重建或覆盖已有 NPC。
 
 
 ## 皮肤联动

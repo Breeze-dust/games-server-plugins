@@ -267,6 +267,7 @@ final class NpcManager {
     // ---------------------------------------------------------------- 朝向玩家
 
     private double gazeRange;
+    private int gazeInterval;
     private BukkitTask gazeTask;
 
     /** 玩家进入 range 格时 NPC 转身看他；range <= 0 表示关闭。 */
@@ -276,11 +277,20 @@ final class NpcManager {
             gazeTask = null;
         }
         gazeRange = range;
+        gazeInterval = Math.max(1, intervalTicks);
         if (range <= 0) {
             return;
         }
-        long period = Math.max(1, intervalTicks);
-        gazeTask = Bukkit.getScheduler().runTaskTimer(plugin, this::updateGaze, period, period);
+        gazeTask = Bukkit.getScheduler().runTaskTimer(
+                plugin, this::updateGaze, gazeInterval, gazeInterval);
+    }
+
+    double gazeRange() {
+        return gazeRange;
+    }
+
+    int gazeInterval() {
+        return gazeInterval;
     }
 
     private void updateGaze() {

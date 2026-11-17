@@ -32,14 +32,23 @@ public final class HubNPCPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new NpcListener(manager), this);
         manager.reapplyLoaded();
+        applyGazeSettings();
 
+        getLogger().info("HubNPC 已启用，共 " + manager.size() + " 个 NPC"
+                + (skins != null && skins.available() ? "，已连接 SkinsRestorer。" : "。"));
+    }
+
+    /** /npc reload：重读 config.yml 并重新应用朝向设置（不碰 npcs.yml）。 */
+    void reloadSettings() {
+        reloadConfig();
+        applyGazeSettings();
+    }
+
+    private void applyGazeSettings() {
         boolean gaze = getConfig().getBoolean("look-at-player.enabled", true);
         double gazeRange = gaze ? getConfig().getDouble("look-at-player.range", 8.0) : 0.0;
         int gazeInterval = getConfig().getInt("look-at-player.interval", 10);
         manager.startGaze(gazeRange, gazeInterval);
-
-        getLogger().info("HubNPC 已启用，共 " + manager.size() + " 个 NPC"
-                + (skins != null && skins.available() ? "，已连接 SkinsRestorer。" : "。"));
     }
 
     @Override

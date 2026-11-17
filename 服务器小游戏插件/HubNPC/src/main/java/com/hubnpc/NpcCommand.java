@@ -22,7 +22,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             Set.of("remove", "rename", "skin", "move", "tp", "info");
     private static final String[] ROOT = {
             "help", "create", "remove", "list", "rename",
-            "skin", "command", "move", "tp", "info"
+            "skin", "command", "move", "tp", "info", "reload"
     };
 
     private final HubNPCPlugin plugin;
@@ -49,6 +49,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             case "move" -> move(sender, args);
             case "tp" -> teleport(sender, args);
             case "info" -> info(sender, args);
+            case "reload" -> reload(sender);
             case "help" -> help(sender);
             default -> help(sender);
         }
@@ -307,6 +308,22 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void reload(CommandSender sender) {
+        try {
+            plugin.reloadSettings();
+        } catch (Throwable t) {
+            msg(sender, "&c重载 config.yml 失败：" + t.getMessage());
+            return;
+        }
+        double range = manager.gazeRange();
+        if (range > 0) {
+            msg(sender, "&a已重载 config.yml：NPC 会在 &f" + fmt(range) + " &a格内朝向玩家，每 &f"
+                    + manager.gazeInterval() + " &atick 刷新。");
+        } else {
+            msg(sender, "&a已重载 config.yml：朝向玩家已关闭。");
+        }
+    }
+
     private void help(CommandSender sender) {
         msg(sender, "&6&lHubNPC &7- 主城 NPC 管理");
         msg(sender, "&e/npc create <id> <名字> [位置] &7生成 NPC（不写位置=脚下，朝向玩家）");
@@ -318,6 +335,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         msg(sender, "&e/npc command list|remove|clear <id> [序号] &7查看/删除/清空右键指令");
         msg(sender, "&e/npc rename <id> <新名字> &7改名　&e/npc move <id> [位置] &7移动");
         msg(sender, "&e/npc list &7列表　&e/npc info <id> &7详情　&e/npc tp <id> &7传送　&e/npc remove <id> &7删除");
+        msg(sender, "&e/npc reload &7重读 config.yml（朝向玩家开关/距离/刷新间隔），不影响 npcs.yml");
         msg(sender, "&7颜色：&f&6 &7颜色代码、&f&#FFAA00 &7单色、"
                 + "&f<gradient:#FF0000:#00AAFF>渐变</gradient> &7或 "
                 + "&f{#FF0000:#00AAFF}简写渐变{/}");
