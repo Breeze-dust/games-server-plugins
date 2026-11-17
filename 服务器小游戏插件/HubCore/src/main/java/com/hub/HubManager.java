@@ -954,10 +954,16 @@ public class HubManager implements HubService {
                 hb.append("  &a[已加入] ").append(ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.joining("&7, "))).append("\n");
             }
         }
-        Component header = LEGACY.deserialize(hb.toString());
-        String footerText = plugin.getConfig().getString("tab.footer", "");
-        Component footer = footerText == null || footerText.isEmpty()
-                ? Component.empty() : LEGACY.deserialize(footerText);
+        // 头部/底部文字：支持 {time} {date} {online} {max} {mem-used} {mem-max} {tps} {ping}
+        // （{ping} 是每个玩家自己的延迟，所以底部按玩家逐个生成）
+        TabStats stats = tabStats();
+        List<String> headerExtra = configLines("tab.header-extra");
+        List<String> footerLines = configLines("tab.footer");
+        String headerBase = hb.toString();
+        boolean headerNeedsPlayer = headerExtra.stream().anyMatch(l -> l.contains("{ping}"));
+        Component staticHeader = headerExtra.isEmpty()
+                ? LEGACY.deserialize(headerBase)
+                : LEGACY.deserialize(fillLines(headerExtra, null, stats) + headerBase);
 
         // 固定格子布局：把玩家按 大厅 → 各游戏 的顺序填进槽位（其余槽位由假条目占满）
         boolean layoutOn = tabLayout.isEnabled();
@@ -996,8 +1002,79 @@ public class HubManager implements HubService {
             if (!layoutOn) {
                 p.setPlayerListOrder(order);
             }
+            Component header = headerNeedsPlayer
+                    ? LEGACY.deserialize(fillLines(headerExtra, p, stats) + headerBase)
+                    : staticHeader;
+            Component footer = footerLines.isEmpty()
+                    ? Component.empty()
+                    : LEGACY.deserialize(fillLines(footerLines, p, stats));
             p.sendPlayerListHeaderAndFooter(header, footer);
         }
+    }
+
+    /** tab 头部/底部用到的实时数据（每秒刷新一次）。 */
+    private record TabStats(String time, String date, int online, int max,
+                            long usedMb, long maxMb, String tps) {
+    }
+
+    private TabStats tabStats() {
+        Runtime rt = Runtime.getRuntime();
+        long used = (rt.totalMemory() - rt.freeMemory()) / 1048576L;
+        long max = rt.maxMemory() / 1048576L;
+        double tps = 20.0;
+        double[] recent = Bukkit.getTPS();
+        if (recent.length > 0) {
+            tps = Math.min(20.0, recent[0]);
+        }
+        return new TabStats(
+                java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")),
+                java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("MM-dd")),
+                Bukkit.getOnlinePlayers().size(),
+                Bukkit.getMaxPlayers(),
+                used, max,
+                String.format(java.util.Locale.ROOT, "%.1f", tps));
+    }
+
+    private String fillLines(List<String> lines, Player player, TabStats stats) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            sb.append(fill(line, player, stats)).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private String fill(String line, Player player, TabStats stats) {
+        String out = line
+                .replace("{time}", stats.time())
+                .replace("{date}", stats.date())
+                .replace("{online}", String.valueOf(stats.online()))
+                .replace("{max}", String.valueOf(stats.max()))
+                .replace("{mem-used}", String.valueOf(stats.usedMb()))
+                .replace("{mem-max}", String.valueOf(stats.maxMb()))
+                .replace("{tps}", stats.tps());
+        if (out.contains("{ping}")) {
+            out = out.replace("{ping}", String.valueOf(player == null ? 0 : player.getPing()));
+        }
+        return out;
+    }
+
+    /** 读一组文本行（YAML 字符串或字符串列表都认；空值 = 没有）。 */
+    private List<String> configLines(String path) {
+        Object raw = plugin.getConfig().get(path);
+        List<String> out = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null) {
+                    out.add(String.valueOf(o));
+                }
+            }
+        } else if (raw != null) {
+            String s = String.valueOf(raw);
+            if (!s.isEmpty()) {
+                out.addAll(List.of(s.split("\n", -1)));
+            }
+        }
+        return out;
     }
 
     /** 分区名单里的名字：有 tab 颜色覆盖用覆盖色，否则用分区默认色。 */

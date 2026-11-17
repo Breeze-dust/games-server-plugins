@@ -108,7 +108,9 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
     private void ensureTabDefaults() {
         boolean changed = false;
         if (!getConfig().isSet("tab.footer")) {
-            getConfig().set("tab.footer", "");
+            getConfig().set("tab.footer", java.util.List.of(
+                    "&7时间 &f{time} &8| &7在线 &f{online}&8/&f{max} &8| &7延迟 &f{ping}ms",
+                    "&7内存 &f{mem-used}&8/&f{mem-max} MB"));
             changed = true;
         }
         if (!getConfig().isSet("tab.layout.enabled")) {
