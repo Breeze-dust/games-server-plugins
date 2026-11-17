@@ -1011,9 +1011,11 @@ public class HubManager implements HubService {
                     order = gameOrder;
                 }
                 if (pg.state() == GameState.WAITING) {
-                    p.playerListName(LEGACY.deserialize("&e[等待中·" + pg.game() + "] " + coloredName(p) + ping));
+                    p.playerListName(LEGACY.deserialize("&e[等待中·&" + colorFor(pg.game()) + pg.game()
+                            + "&e] " + coloredName(p) + ping));
                 } else {
-                    p.playerListName(LEGACY.deserialize("&a[已加入·" + pg.game() + "] " + coloredName(p) + ping));
+                    p.playerListName(LEGACY.deserialize("&a[已加入·&" + colorFor(pg.game()) + pg.game()
+                            + "&a] " + coloredName(p) + ping));
                 }
             }
             if (!layoutOn) {
