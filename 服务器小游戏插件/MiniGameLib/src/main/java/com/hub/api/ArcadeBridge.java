@@ -33,6 +33,14 @@ public final class ArcadeBridge {
         /** 小游戏没有正常结算（例如被管理员停掉）；街机派对按无成绩处理。 */
         default void onRoundAborted(String gameKey) {
         }
+
+        /**
+         * 该玩家是否正在某个街机派对的对局里（主城 tab 据此把条目显示成「街机派对」，
+         * 而不是当前正在跑的那个迷你小游戏）。
+         */
+        default boolean isInRound(java.util.UUID player) {
+            return false;
+        }
     }
 
     private static volatile Listener listener;
@@ -53,6 +61,12 @@ public final class ArcadeBridge {
     /** 街机派对是否在接管（游戏可用来决定要不要额外上报）。 */
     public static boolean isActive() {
         return listener != null;
+    }
+
+    /** 该玩家是否正在街机派对的对局里（派对没装/没在跑时为 false）。 */
+    public static boolean isInRound(java.util.UUID player) {
+        Listener l = listener;
+        return l != null && l.isInRound(player);
     }
 
     public static void report(String gameKey, Collection<UUID> firsts,

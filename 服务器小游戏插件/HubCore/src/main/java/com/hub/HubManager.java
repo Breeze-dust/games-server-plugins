@@ -1,12 +1,14 @@
 package com.hub;
 
 import com.hub.api.ArenaStatus;
+import com.hub.api.ArcadeBridge;
 import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.api.HubService;
 import com.hub.game.GameInfo;
 import com.hub.menu.MenuLayout;
 import com.hub.util.Chat;
+import com.hub.util.ReadyItems;
 import com.hub.util.Titles;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -115,7 +117,7 @@ public class HubManager implements HubService {
 
     /** 传送大厅并给菜单道具。传回主城即视为回到大厅，同时清除游戏状态（保证与游戏分区分开）。 */
     public void teleportToLobby(Player p) {
-        spectating.remove(p.getUniqueId()); // 回大厅 = 结束观战
+        stopSpectating(p.getUniqueId()); // 回大厅 = 结束观战
         HubAPI.notifyLobbyHandlers(p); // 先让各游戏插件把玩家踢出自身游戏状态（有防递归保护）
         clearGame(p.getUniqueId());
         Location lobby = getLobby();
@@ -231,6 +233,10 @@ public class HubManager implements HubService {
 
     /** 正在观战的玩家 -> 被观战的游戏显示名。 */
     private final Map<UUID, String> spectating = new LinkedHashMap<>();
+    /** 正在观战的玩家 -> 场地名（空串 = 不分场地）。 */
+    private final Map<UUID, String> spectatingArena = new LinkedHashMap<>();
+    /** 正在观战的玩家 -> 上一次把他们传送过去的落点（落点变了才重新传）。 */
+    private final Map<UUID, Location> lastSpectatorSpot = new LinkedHashMap<>();
     /** 游戏 -> 场地 -> 观战落点（由各游戏通过 HubAPI.setArenaSpectator 上报）；场地名为空串 = 整个游戏共用。 */
     private final Map<String, Map<String, Location>> spectatorSpots = new LinkedHashMap<>();
 
@@ -311,10 +317,14 @@ public class HubManager implements HubService {
         }
         p.closeInventory();
         spectating.put(p.getUniqueId(), canon);
+        spectatingArena.put(p.getUniqueId(), arena == null ? "" : arena);
         if (spot != null) {
             p.teleport(spot);
+            lastSpectatorSpot.put(p.getUniqueId(), spot.clone());
         } else {
-            p.teleport(follow.getLocation().clone().add(0.0, 3.0, 0.0));
+            Location target = follow.getLocation().clone().add(0.0, 3.0, 0.0);
+            p.teleport(target);
+            lastSpectatorSpot.put(p.getUniqueId(), target);
         }
         p.setFallDistance(0f);
         p.setGameMode(GameMode.SPECTATOR);
@@ -357,9 +367,15 @@ public class HubManager implements HubService {
         return loc == null ? null : loc.clone();
     }
 
+    /** 给其它插件读观战落点用（街机派对切局时把观战点指向当前迷你小游戏）。 */
+    @Override
+    public Location getArenaSpectator(String game, String arena) {
+        return spectatorSpot(plugin.getRegistry().canonicalName(game), arena);
+    }
+
     /** 右键末影之眼退出观战：回大厅并重新发道具。 */
     public void exitSpectate(Player p) {
-        spectating.remove(p.getUniqueId());
+        stopSpectating(p.getUniqueId());
         teleportToLobby(p);
         p.sendMessage(LEGACY.deserialize("&7已退出观战，回到大厅。"));
     }
@@ -372,12 +388,12 @@ public class HubManager implements HubService {
         for (UUID id : new ArrayList<>(spectating.keySet())) {
             Player p = Bukkit.getPlayer(id);
             if (p == null || !p.isOnline()) {
-                spectating.remove(id);
+                stopSpectating(id);
                 continue;
             }
             String game = spectating.get(id);
             if (!isGameRunning(game)) {
-                spectating.remove(id);
+                stopSpectating(id);
                 if (p.getGameMode() == GameMode.SPECTATOR) {
                     teleportToLobby(p);
                 }
@@ -386,13 +402,31 @@ public class HubManager implements HubService {
             }
             if (p.getGameMode() != GameMode.SPECTATOR) {
                 // 被别的插件改了游戏模式：观战没法继续了，直接送回大厅，别把人晾在游戏世界里
-                spectating.remove(id);
+                stopSpectating(id);
                 teleportToLobby(p);
                 p.sendMessage(LEGACY.deserialize("&7观战已结束（游戏模式被改动），已送回大厅。"));
                 continue;
             }
+            // 观战落点变了（典型：街机派对切到下一个迷你小游戏）→ 跟着传过去
+            String arena = spectatingArena.getOrDefault(id, "");
+            Location spot = spectatorSpot(game, arena);
+            if (spot != null) {
+                Location last = lastSpectatorSpot.get(id);
+                if (last == null || last.getWorld() != spot.getWorld() || last.distanceSquared(spot) > 1.0) {
+                    p.teleport(spot);
+                    p.setFallDistance(0f);
+                    lastSpectatorSpot.put(id, spot.clone());
+                }
+            }
             Chat.actionBar(p, "&7观战中：&b" + game + " &7｜ 输入 &e/hub &7退出（聊天栏有按钮）");
         }
+    }
+
+    /** 清掉一个玩家的观战状态（不含传送）。 */
+    private void stopSpectating(UUID id) {
+        spectating.remove(id);
+        spectatingArena.remove(id);
+        lastSpectatorSpot.remove(id);
     }
 
     /** 该游戏当前有没有正在进行的对局（菜单红色羊毛的判定口径；没有场地信息的单场游戏看玩家状态）。 */
@@ -872,7 +906,7 @@ public class HubManager implements HubService {
     public void clearGame(UUID player) {
         gameMap.remove(player);
         tabNameColor.remove(player);
-        spectating.remove(player);
+        stopSpectating(player);
     }
 
     /** 玩家当前上报的游戏显示名；不在任何游戏中返回 null。 */
@@ -1011,8 +1045,12 @@ public class HubManager implements HubService {
                     order = gameOrder;
                 }
                 if (pg.state() == GameState.WAITING) {
-                    p.playerListName(LEGACY.deserialize("&e[等待中·&" + colorFor(pg.game()) + pg.game()
-                            + "&e] " + coloredName(p) + ping));
+                    boolean ready = ReadyItems.isReady(p.getUniqueId());
+                    String stateColor = ready ? "&b" : "&e";
+                    p.playerListName(LEGACY.deserialize(stateColor + "[" + (ready ? "已准备" : "未准备")
+                            + "·&" + colorFor(pg.game()) + pg.game() + stateColor + "] " + coloredName(p) + ping));
+                } else if (ArcadeBridge.isInRound(p.getUniqueId())) {
+                    p.playerListName(LEGACY.deserialize("&6[游玩中·&e街机派对&6] " + coloredName(p) + ping));
                 } else {
                     p.playerListName(LEGACY.deserialize("&a[已加入·&" + colorFor(pg.game()) + pg.game()
                             + "&a] " + coloredName(p) + ping));

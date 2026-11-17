@@ -145,6 +145,15 @@ public final class ReadyItems {
                 .getOrDefault(KEY, PersistentDataType.BYTE, (byte) 0) == 1;
     }
 
+    /** 该玩家当前是否在等待室里点了「准备」（主城 tab 用来显示 [已准备]）。 */
+    public static boolean isReady(UUID player) {
+        if (player == null) {
+            return false;
+        }
+        WaitCountdown owner = OWNERS.get(player);
+        return owner != null && owner.isReady(player);
+    }
+
     /** 玩家身上还挂着准备道具时把它清掉（离开等待室 / 开局时调用）。 */
     static void clearFrom(Player player) {
         if (player == null) {

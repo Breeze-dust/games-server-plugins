@@ -910,6 +910,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             }
         }, roundTimeoutSeconds() * 20L);
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), start);
+        // 迷你小游戏开局后会上报自己的观战落点；稍等片刻再让观战者跟过去
+        Bukkit.getScheduler().runTaskLater(plugin, this::syncPartySpectators, 40L);
     }
 
     @Override
@@ -936,6 +938,38 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
     public void onRoundAborted(String gameKey) {
         if (state == State.ROUND && !roundResolved && gameKey != null && gameKey.equals(currentGameKey)) {
             finishRound(List.of(), List.of(), List.of());
+        }
+    }
+
+    /** 主城 tab 用：对局进行中的人显示成「街机派对」，不显示具体是哪个迷你小游戏。 */
+    @Override
+    public boolean isInRound(UUID player) {
+        return state != State.WAITING && player != null && playing.contains(player);
+    }
+
+    /**
+     * 观战者跟着每一局走：把派对的观战落点指向当前迷你小游戏的落点（主城的外部观战者据此跟过去），
+     * 并把本局人数超限、坐在旁边看的派对玩家传送到同一个点。
+     */
+    private void syncPartySpectators() {
+        if (state != State.ROUND || currentGameKey == null || currentArena == null) {
+            return;
+        }
+        Location spot = HubAPI.getArenaSpectator(displayOf(currentGameKey), currentArena);
+        if (spot == null) {
+            return;
+        }
+        HubAPI.setArenaSpectator(GAME, ARENA, spot);
+        for (UUID id : transitionSpectators) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline()) {
+                continue;
+            }
+            p.teleport(spot);
+            p.setFallDistance(0f);
+            if (p.getGameMode() != GameMode.SPECTATOR) {
+                p.setGameMode(GameMode.SPECTATOR);
+            }
         }
     }
 

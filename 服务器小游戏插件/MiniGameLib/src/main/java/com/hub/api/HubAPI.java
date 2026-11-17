@@ -168,6 +168,12 @@ public final class HubAPI {
         }
     }
 
+    /** 读某场地的观战落点；没上报过返回 null。 */
+    public static Location getArenaSpectator(String gameName, String arenaName) {
+        HubService s = service;
+        return s == null ? null : s.getArenaSpectator(gameName, arenaName);
+    }
+
     /** 场地被删除时通知主城移除其菜单状态。 */
     public static void removeArena(String gameName, String arenaName) {
         HubService s = service;

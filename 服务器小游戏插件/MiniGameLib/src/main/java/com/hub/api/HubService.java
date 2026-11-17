@@ -70,6 +70,14 @@ public interface HubService {
     }
 
     /**
+     * 读某场地的观战落点（街机派对切下一局时把自己的观战点指向当前迷你小游戏的落点）。
+     * 没有上报过返回 null。默认实现返回 null（旧版主城没有这个能力）。
+     */
+    default Location getArenaSpectator(String game, String arena) {
+        return null;
+    }
+
+    /**
      * 玩家加入某游戏时，向全服公屏播报一条加入提示。
      *
      * @param gameIdOrName 游戏标识（插件名或显示名都行，主城会归一化成显示名）
