@@ -7,6 +7,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             Set.of("remove", "rename", "skin", "move", "tp", "info");
     private static final String[] ROOT = {
             "help", "create", "remove", "list", "rename",
-            "skin", "command", "move", "tp", "info", "reload"
+            "skin", "command", "move", "tp", "info", "reload", "cleanup"
     };
 
     private final HubNPCPlugin plugin;
@@ -50,6 +51,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             case "tp" -> teleport(sender, args);
             case "info" -> info(sender, args);
             case "reload" -> reload(sender);
+            case "cleanup" -> cleanup(sender, args);
             case "help" -> help(sender);
             default -> help(sender);
         }
@@ -324,6 +326,29 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void cleanup(CommandSender sender, String[] args) {
+        List<Mannequin> orphans = manager.findOrphans();
+        if (orphans.isEmpty()) {
+            msg(sender, "&a没有发现未登记的副本实体（只统计已加载区块）。");
+            return;
+        }
+        msg(sender, "&e未登记的副本实体共 &f" + orphans.size() + " &e个（只统计已加载区块）：");
+        for (Mannequin mannequin : orphans) {
+            Location at = mannequin.getLocation();
+            msg(sender, " &7- &f" + manager.idOf(mannequin) + " &7@ &f" + at.getWorld().getName()
+                    + " " + fmt(at.getX()) + " " + fmt(at.getY()) + " " + fmt(at.getZ())
+                    + " &8" + mannequin.getUniqueId().toString().substring(0, 8));
+        }
+        boolean confirm = args.length >= 2
+                && (args[1].equalsIgnoreCase("confirm") || args[1].equalsIgnoreCase("确认"));
+        if (!confirm) {
+            msg(sender, "&c确认删除请输入 &f/npc cleanup confirm");
+            return;
+        }
+        int removed = manager.removeAll(orphans);
+        msg(sender, "&a已删除 &f" + removed + " &a个未登记的副本实体。");
+    }
+
     private void help(CommandSender sender) {
         msg(sender, "&6&lHubNPC &7- 主城 NPC 管理");
         msg(sender, "&e/npc create <id> <名字> [位置] &7生成 NPC（不写位置=脚下，朝向玩家）");
@@ -336,6 +361,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         msg(sender, "&e/npc rename <id> <新名字> &7改名　&e/npc move <id> [位置] &7移动");
         msg(sender, "&e/npc list &7列表　&e/npc info <id> &7详情　&e/npc tp <id> &7传送　&e/npc remove <id> &7删除");
         msg(sender, "&e/npc reload &7重读 config.yml（朝向玩家开关/距离/刷新间隔），不影响 npcs.yml");
+        msg(sender, "&e/npc cleanup [confirm] &7列出/删除未登记的副本实体（复制粘贴、回档留下的）");
         msg(sender, "&7颜色：&f&6 &7颜色代码、&f&#FFAA00 &7单色、"
                 + "&f<gradient:#FF0000:#00AAFF>渐变</gradient> &7或 "
                 + "&f{#FF0000:#00AAFF}简写渐变{/}");
@@ -520,6 +546,9 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3 && sub.equals("skin")) {
             return filter(args[2], List.of("reset"));
+        }
+        if (args.length == 2 && sub.equals("cleanup")) {
+            return filter(args[1], List.of("confirm"));
         }
         if (args.length == 3 && (sub.equals("create") || sub.equals("move"))) {
             return filter(args[2], List.of("here", "at"));

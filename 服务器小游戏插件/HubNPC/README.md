@@ -27,6 +27,7 @@
 /npc info <id>                        详情
 /npc tp <id>                          传送到 NPC
 /npc reload                           重读 config.yml（朝向玩家开关/距离/刷新间隔），不动 npcs.yml
+/npc cleanup [confirm]                列出未登记的副本实体；加 confirm 删除
 /npc remove <id>                      删除 NPC 与实体
 ```
 
@@ -111,6 +112,16 @@ look-at-player:
 - 改完配置执行 `/npc reload` 立即生效，不用重启服务器；`/npc reload` 不读 `npcs.yml`，
   不会重建或覆盖已有 NPC。
 
+
+## 副本实体清理
+
+插件按实体上的 `hubnpc:npc-id` 标签认 NPC，而 `npcs.yml` 每个 id 只记**一只**实体 UUID。
+用 WorldEdit / 结构方块复制粘贴 NPC 区域、或世界回档但数据文件没同步，会留下带标签的副本：
+能右键执行同一套指令，但不会跟着玩家转（朝向任务只认登记的那只），而且 Mannequin 无重力会悬在原地。
+
+`/npc cleanup` 列出所有**已加载区块里**带标签但不是登记实体的 Mannequin（id、坐标、UUID 前 8 位），
+`/npc cleanup confirm` 才真正删除；删除只动实体，不改 `npcs.yml`。
+副本在没加载的区块里时看不到，需要有人靠近那块区域再执行。
 
 ## 皮肤联动
 

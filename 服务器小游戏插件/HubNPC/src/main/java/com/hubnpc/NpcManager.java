@@ -462,6 +462,46 @@ final class NpcManager {
         clickCooldown.remove(playerId);
     }
 
+    // ---------------------------------------------------------------- 副本清理
+
+    /**
+     * 带本插件标签、但不是 npcs.yml 里登记的那只实体（复制粘贴区块、回档等留下的副本）。
+     * 只能看到已加载区块里的实体。
+     */
+    List<Mannequin> findOrphans() {
+        List<Mannequin> orphans = new ArrayList<>();
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (!(entity instanceof Mannequin mannequin)) {
+                    continue;
+                }
+                String id = mannequin.getPersistentDataContainer()
+                        .get(keyId, PersistentDataType.STRING);
+                if (id == null) {
+                    continue;
+                }
+                NpcData data = npcs.get(id);
+                if (data != null && data.entityId.equals(mannequin.getUniqueId())) {
+                    continue;
+                }
+                orphans.add(mannequin);
+            }
+        }
+        return orphans;
+    }
+
+    int removeAll(Collection<Mannequin> entities) {
+        int removed = 0;
+        for (Mannequin mannequin : entities) {
+            if (!mannequin.isValid()) {
+                continue;
+            }
+            mannequin.remove();
+            removed++;
+        }
+        return removed;
+    }
+
     // ---------------------------------------------------------------- 区块加载
 
     void onEntitiesLoaded(Collection<Entity> entities) {
