@@ -17,8 +17,11 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
@@ -26,7 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** 事件入口：入座、出牌/质疑、房间保护、离场。 */
+/** 事件入口：进入区域、入座、出牌/质疑/开枪、房间保护、离场。 */
 public class LiarBarListener implements Listener {
 
     private final LiarBarPlugin plugin;
@@ -39,6 +42,36 @@ public class LiarBarListener implements Listener {
         this.plugin = plugin;
         this.manager = plugin.getManager();
     }
+
+    // ---------- 区域识别 ----------
+
+    @EventHandler
+    public void onMove(PlayerMoveEvent event) {
+        if (event.getTo().getBlockX() == event.getFrom().getBlockX()
+                && event.getTo().getBlockY() == event.getFrom().getBlockY()
+                && event.getTo().getBlockZ() == event.getFrom().getBlockZ()) {
+            return;
+        }
+        manager.checkRegion(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onTeleport(PlayerTeleportEvent event) {
+        Bukkit.getScheduler().runTask(plugin, () -> manager.checkRegion(event.getPlayer()));
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        Bukkit.getScheduler().runTaskLater(plugin, () -> manager.checkRegion(event.getPlayer()), 20L);
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        lastClickTick.remove(event.getPlayer().getUniqueId());
+        manager.onQuit(event.getPlayer());
+    }
+
+    // ---------- 交互 ----------
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
@@ -63,11 +96,14 @@ public class LiarBarListener implements Listener {
                 return;
             }
             if (left) {
-                ItemStack hand = event.getItem();
-                LiarBarCards.Card card = manager.items().cardOf(hand);
+                LiarBarCards.Card card = manager.items().cardOf(event.getItem());
                 if (card != null) {
                     table.toggleSelect(player, player.getInventory().getHeldItemSlot());
                 }
+                return;
+            }
+            if (manager.items().isRevolver(event.getItem())) {
+                table.fireRevolver(player.getUniqueId());
             } else if (manager.items().isBell(event.getItem())) {
                 table.challenge(player);
             } else {
@@ -88,13 +124,7 @@ public class LiarBarListener implements Listener {
             }
         }
 
-        if (right && manager.items().isLeave(event.getItem())) {
-            event.setCancelled(true);
-            manager.leave(player, false);
-            return;
-        }
-
-        // 房间内其它方块一律不响应（避免打开箱子、按按钮、踩床等）
+        // 房间内其它方块一律不响应（避免打开箱子、按按钮等）
         if (right && event.getClickedBlock() != null) {
             event.setCancelled(true);
         }
@@ -126,16 +156,11 @@ public class LiarBarListener implements Listener {
         Bukkit.getScheduler().runTask(plugin, () -> table.onVoluntaryDismount(player));
     }
 
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        lastClickTick.remove(event.getPlayer().getUniqueId());
-        manager.onQuit(event.getPlayer());
-    }
+    // ---------- 房间保护 ----------
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        if (manager.inRoom(event.getPlayer())
-                && manager.room().inRoom(event.getBlock().getLocation())
+        if (manager.room().inRoom(event.getBlock().getLocation())
                 && !event.getPlayer().hasPermission("liarbar.admin")) {
             event.setCancelled(true);
         }
@@ -143,8 +168,7 @@ public class LiarBarListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
-        if (manager.inRoom(event.getPlayer())
-                && manager.room().inRoom(event.getBlock().getLocation())
+        if (manager.room().inRoom(event.getBlock().getLocation())
                 && !event.getPlayer().hasPermission("liarbar.admin")) {
             event.setCancelled(true);
         }

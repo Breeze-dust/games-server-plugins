@@ -141,23 +141,32 @@ public final class LiarBarRoom {
         seats.remove(table);
     }
 
-    /** 玩家是否站在房间区域内（没设 pos1/pos2 时按"有没有进过房间"由 Manager 判断）。 */
+    /** 玩家是否站在房间区域内（没设 pos1/pos2 时退回等待点周围 48 格）。 */
     public boolean inRoom(Location loc) {
-        if (pos1 == null || pos2 == null || loc == null || loc.getWorld() == null) {
+        if (loc == null || loc.getWorld() == null) {
             return false;
         }
-        if (loc.getWorld() != pos1.getWorld()) {
-            return false;
+        if (pos1 != null && pos2 != null) {
+            if (loc.getWorld() != pos1.getWorld()) {
+                return false;
+            }
+            int minX = Math.min(pos1.getBlockX(), pos2.getBlockX());
+            int maxX = Math.max(pos1.getBlockX(), pos2.getBlockX());
+            int minY = Math.min(pos1.getBlockY(), pos2.getBlockY());
+            int maxY = Math.max(pos1.getBlockY(), pos2.getBlockY());
+            int minZ = Math.min(pos1.getBlockZ(), pos2.getBlockZ());
+            int maxZ = Math.max(pos1.getBlockZ(), pos2.getBlockZ());
+            return loc.getBlockX() >= minX && loc.getBlockX() <= maxX
+                    && loc.getBlockY() >= minY && loc.getBlockY() <= maxY
+                    && loc.getBlockZ() >= minZ && loc.getBlockZ() <= maxZ;
         }
-        int minX = Math.min(pos1.getBlockX(), pos2.getBlockX());
-        int maxX = Math.max(pos1.getBlockX(), pos2.getBlockX());
-        int minY = Math.min(pos1.getBlockY(), pos2.getBlockY());
-        int maxY = Math.max(pos1.getBlockY(), pos2.getBlockY());
-        int minZ = Math.min(pos1.getBlockZ(), pos2.getBlockZ());
-        int maxZ = Math.max(pos1.getBlockZ(), pos2.getBlockZ());
-        return loc.getBlockX() >= minX && loc.getBlockX() <= maxX
-                && loc.getBlockY() >= minY && loc.getBlockY() <= maxY
-                && loc.getBlockZ() >= minZ && loc.getBlockZ() <= maxZ;
+        if (spawn != null && loc.getWorld() == spawn.getWorld()) {
+            double dx = loc.getX() - spawn.getX();
+            double dz = loc.getZ() - spawn.getZ();
+            double dy = loc.getY() - spawn.getY();
+            return dx * dx + dz * dz <= 48 * 48 && Math.abs(dy) <= 48;
+        }
+        return false;
     }
 
     public void save() {

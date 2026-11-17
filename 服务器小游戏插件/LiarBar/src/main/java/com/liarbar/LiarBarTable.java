@@ -6,18 +6,26 @@ import com.hub.util.Chat;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Directional;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -35,7 +43,7 @@ public final class LiarBarTable {
 
     public enum State {WAITING, STARTING, PLAYING, ENDING}
 
-    /** 槽位约定：0~4 手牌，6 桌面牌，8 质疑钟/离开酒馆。 */
+    /** 槽位约定：0~4 手牌，6 目标牌提示，8 质疑钟。 */
     public static final int TABLE_SLOT = 6;
     public static final int BELL_SLOT = 8;
 
@@ -44,19 +52,12 @@ public final class LiarBarTable {
         final Location sit;
         UUID occupant;
         ArmorStand stand;
+        ArmorStand corpse;
+        Location dispenser;
 
         Seat(Location chair, Location sit) {
             this.chair = chair;
             this.sit = sit;
-        }
-    }
-
-    private static final class Revolver {
-        final int bullet;
-        int pulls;
-
-        Revolver(int chambers) {
-            this.bullet = ThreadLocalRandom.current().nextInt(Math.max(1, chambers));
         }
     }
 
@@ -74,7 +75,6 @@ public final class LiarBarTable {
 
     /** 存活玩家（按座位顺序）。 */
     private final List<UUID> order = new ArrayList<>();
-    private final Map<UUID, Revolver> guns = new HashMap<>();
     private final Map<UUID, Set<Integer>> selections = new HashMap<>();
     private final Map<UUID, String> names = new HashMap<>();
 
@@ -86,6 +86,21 @@ public final class LiarBarTable {
     private int pileCount;
     private UUID lastPlayOwner;
     private List<LiarBarCards.Card> lastPlayCards;
+
+    // 左轮（整张桌子共用一把，开局随机起始位置，扣一次转一格）
+    private int cylinderStart;
+    private int bulletAt;
+    private int pulls;
+
+    // 揭幕 / 开枪
+    private final List<ItemFrame> frames = new ArrayList<>();
+    private UUID pendingShooter;
+    private int pendingShooterIndex;
+    private BukkitTask fireTimeout;
+    private BukkitTask revealTask;
+    private BukkitTask waterTask;
+    private final Map<UUID, BukkitTask> burnTasks = new HashMap<>();
+    private final List<Block> fluidBlocks = new ArrayList<>();
 
     public LiarBarTable(Plugin plugin, LiarBarManager manager, LiarBarSettings settings,
                         String name, List<Location> chairs) {
@@ -148,20 +163,17 @@ public final class LiarBarTable {
     }
 
     public boolean isFull() {
-        return seats.size() >= settings.playersPerTable && occupiedCount() >= settings.playersPerTable;
+        return seats.size() >= settings.playersPerTable
+                && occupiedCount() >= settings.playersPerTable;
     }
 
-    public boolean hasSeatFor(Player player) {
+    public boolean isSeated(Player player) {
         return seatOf(player) != null;
     }
 
-    public boolean hasChair(org.bukkit.block.Block block) {
+    public boolean hasChair(Block block) {
         for (Seat seat : seats) {
-            if (seat.chair.getWorld() != null
-                    && seat.chair.getWorld().equals(block.getWorld())
-                    && seat.chair.getBlockX() == block.getX()
-                    && seat.chair.getBlockY() == block.getY()
-                    && seat.chair.getBlockZ() == block.getZ()) {
+            if (sameBlock(seat.chair, block)) {
                 return true;
             }
         }
@@ -169,12 +181,27 @@ public final class LiarBarTable {
     }
 
     private Seat seatOf(Player player) {
+        return player == null ? null : seatOf(player.getUniqueId());
+    }
+
+    private Seat seatOf(UUID id) {
+        if (id == null) {
+            return null;
+        }
         for (Seat seat : seats) {
-            if (player.getUniqueId().equals(seat.occupant)) {
+            if (id.equals(seat.occupant)) {
                 return seat;
             }
         }
         return null;
+    }
+
+    private static boolean sameBlock(Location loc, Block block) {
+        return loc.getWorld() != null
+                && loc.getWorld().equals(block.getWorld())
+                && loc.getBlockX() == block.getX()
+                && loc.getBlockY() == block.getY()
+                && loc.getBlockZ() == block.getZ();
     }
 
     /** 右键椅子：入座并视为准备。 */
@@ -203,6 +230,7 @@ public final class LiarBarTable {
         }
         free.occupant = player.getUniqueId();
         names.put(player.getUniqueId(), player.getName());
+        free.dispenser = findDispenser(free);
         manager.bind(player, this);
         player.teleport(free.sit);
         ArmorStand stand = spawnSeatStand(free);
@@ -219,6 +247,24 @@ public final class LiarBarTable {
             beginCountdown();
         }
         return true;
+    }
+
+    private Location findDispenser(Seat seat) {
+        World world = seat.chair.getWorld();
+        if (world == null) {
+            return null;
+        }
+        for (int dy = 1; dy <= 8; dy++) {
+            Block block = seat.chair.clone().add(0, dy, 0).getBlock();
+            if (block.getType() != Material.DISPENSER) {
+                continue;
+            }
+            if (block.getBlockData() instanceof Directional directional
+                    && directional.getFacing() == BlockFace.DOWN) {
+                return block.getLocation();
+            }
+        }
+        return null;
     }
 
     private ArmorStand spawnSeatStand(Seat seat) {
@@ -268,6 +314,11 @@ public final class LiarBarTable {
     private void clearSeat(Seat seat, Player player) {
         UUID id = seat.occupant;
         seat.occupant = null;
+        seat.dispenser = null;
+        if (seat.corpse != null) {
+            seat.corpse.remove();
+            seat.corpse = null;
+        }
         if (seat.stand != null) {
             ArmorStand stand = seat.stand;
             seat.stand = null;
@@ -295,12 +346,11 @@ public final class LiarBarTable {
         afterSeatChange();
     }
 
-    /** 对局中离座 = 放弃本局（座位腾出来，其他人可以继续观战/结束）。 */
+    /** 对局中离座 = 放弃本局。 */
     private void eliminateQuitter(UUID id) {
         if (!order.remove(id)) {
             return;
         }
-        guns.remove(id);
         broadcastSeated("&7" + nameOf(id) + " 离开了牌桌，视为出局。");
         if (order.size() <= 1) {
             endGame(order.isEmpty() ? null : order.get(0));
@@ -384,7 +434,6 @@ public final class LiarBarTable {
         transition = false;
         round = 0;
         order.clear();
-        guns.clear();
         selections.clear();
         names.clear();
         for (Seat seat : seats) {
@@ -394,9 +443,9 @@ public final class LiarBarTable {
             UUID id = seat.occupant;
             order.add(id);
             names.put(id, nameOf(id));
-            guns.put(id, new Revolver(settings.chambers));
             Player p = playerOf(id);
             if (p != null) {
+                manager.captureSnapshot(p);
                 HubAPI.setPlaying(id, LiarBarManager.GAME);
                 p.setGameMode(GameMode.ADVENTURE);
                 p.setFoodLevel(20);
@@ -404,8 +453,15 @@ public final class LiarBarTable {
                 p.playSound(p.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 0.8f, 0.7f);
             }
         }
+        reloadCylinder();
         manager.reportArena(this);
         startRound(null);
+    }
+
+    private void reloadCylinder() {
+        cylinderStart = ThreadLocalRandom.current().nextInt(settings.chambers);
+        bulletAt = ThreadLocalRandom.current().nextInt(settings.chambers);
+        pulls = 0;
     }
 
     // ---------- 回合 ----------
@@ -416,7 +472,7 @@ public final class LiarBarTable {
         }
         transition = false;
         round++;
-        tableRank = ThreadLocalRandom.current().nextInt(LiarBarCards.RANKS.length);
+        tableRank = ThreadLocalRandom.current().nextInt(LiarBarCards.NORMAL_RANKS);
         lastPlayOwner = null;
         lastPlayCards = null;
         pileCount = 0;
@@ -430,7 +486,7 @@ public final class LiarBarTable {
         for (UUID id : order) {
             Player p = playerOf(id);
             if (p != null) {
-                Chat.title(p, "&e第 " + round + " 回合", "&7桌面点数：&e" + LiarBarCards.RANKS[tableRank]
+                Chat.title(p, "&e第 " + round + " 回合", "&7目标牌：&f" + LiarBarCards.NAMES[tableRank]
                         + " &7（打出的牌都要声称是它）", 2);
                 p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 0.8f, 1.2f);
             }
@@ -453,7 +509,7 @@ public final class LiarBarTable {
                 p.getInventory().setItem(slot, manager.items().card(deck.get(index++), false));
             }
             p.getInventory().setItem(TABLE_SLOT,
-                    manager.items().tableCard(LiarBarCards.RANKS[tableRank]));
+                    manager.items().tableCard(tableRank));
             p.getInventory().setItem(BELL_SLOT, manager.items().bell());
             p.updateInventory();
             selections.computeIfAbsent(id, k -> new HashSet<>()).clear();
@@ -605,7 +661,7 @@ public final class LiarBarTable {
         lastPlayCards = cards;
         pileCount += cards.size();
         broadcastSeated("&e" + player.getName() + " &f打出 &e" + cards.size()
-                + " &f张牌，声称是 &e" + LiarBarCards.RANKS[tableRank]);
+                + " &f张牌，声称是 &f" + LiarBarCards.NAMES[tableRank]);
         tableSound(Sound.BLOCK_WOOD_PLACE, 0.7f, 1.1f);
         advanceTurn();
         return true;
@@ -625,37 +681,349 @@ public final class LiarBarTable {
         }
         UUID challenger = player.getUniqueId();
         UUID accused = lastPlayOwner;
-        List<LiarBarCards.Card> cards = lastPlayCards == null ? List.of() : lastPlayCards;
+        List<LiarBarCards.Card> cards = lastPlayCards == null
+                ? new ArrayList<>() : new ArrayList<>(lastPlayCards);
 
-        StringBuilder reveal = new StringBuilder();
-        boolean lie = false;
-        for (LiarBarCards.Card card : cards) {
-            if (reveal.length() > 0) {
-                reveal.append("&7、");
-            }
-            reveal.append(card.colored());
-            if (card.rank() != tableRank) {
-                lie = true;
-            }
-        }
-        transition = true;
-        broadcastSeated("&c" + nameOf(challenger) + " &f质疑 &e" + nameOf(accused) + "&f！翻开：&f" + reveal);
-        broadcastSeated(lie ? "&c&l他说谎了！" : "&a&l全是真牌！");
-        tableSound(Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.7f);
-        for (Seat seat : seats) {
-            Player p = playerOf(seat.occupant);
-            if (p != null) {
-                p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.35f, 1.7f);
-            }
-        }
-
+        boolean lie = cards.stream().anyMatch(card -> !card.matches(tableRank));
         UUID shooter = lie ? accused : challenger;
-        int shooterIndex = order.indexOf(shooter);
-        boolean died = pullTrigger(shooter);
 
-        lastPlayOwner = null;
-        lastPlayCards = null;
-        pileCount = 0;
+        transition = true;
+        pendingShooter = shooter;
+        pendingShooterIndex = Math.max(0, order.indexOf(shooter));
+        broadcastSeated("&c" + nameOf(challenger) + " &f质疑 &e" + nameOf(accused) + "&f！");
+        tableSound(Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.7f);
+        beginReveal(cards, lie, shooter);
+    }
+
+    /** 揭幕环节：每名玩家面前出现出牌数量个展示框，问号 → 从左到右翻开。 */
+    private void beginReveal(List<LiarBarCards.Card> cards, boolean lie, UUID shooter) {
+        List<LiarBarCards.Card> sorted = new ArrayList<>(cards);
+        // 目标牌（含万能牌）尽量放前面
+        sorted.sort(Comparator.comparingInt(card -> card.matches(tableRank) ? 0 : 1));
+        int count = Math.max(1, Math.min(settings.maxPlayCards, sorted.size()));
+
+        frames.clear();
+        for (Seat seat : seats) {
+            if (seat.occupant == null) {
+                continue;
+            }
+            List<Location> points = revealPoints(seat, count);
+            for (Location point : points) {
+                try {
+                    ItemFrame frame = seat.sit.getWorld().spawn(point, ItemFrame.class);
+                    frame.setFixed(true);
+                    frame.setVisible(true);
+                    frame.setInvulnerable(true);
+                    frame.setItem(manager.items().question(), false);
+                    frame.setFacingDirection(frameFacing(seat), true);
+                    frames.add(frame);
+                } catch (RuntimeException ignored) {
+                    // 位置不合法时跳过这一格
+                }
+            }
+        }
+
+        for (int i = 0; i < sorted.size(); i++) {
+            final int index = i;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (state != State.PLAYING) {
+                    return;
+                }
+                LiarBarCards.Card card = sorted.get(index);
+                for (ItemFrame frame : frames) {
+                    if (frame.isValid()) {
+                        frame.setItem(manager.items().face(card), false);
+                    }
+                }
+                broadcastSeated("&7揭晓第 &f" + (index + 1) + " &7张：&f" + card.display());
+                for (Seat seat : seats) {
+                    Player p = playerOf(seat.occupant);
+                    if (p != null) {
+                        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HARP, 0.7f,
+                                1.0f + index * 0.15f);
+                    }
+                }
+            }, (long) settings.revealDelayTicks * (i + 1));
+        }
+
+        long finish = (long) settings.revealDelayTicks * (sorted.size() + 2);
+        revealTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            removeFrames();
+            if (state != State.PLAYING) {
+                return;
+            }
+            broadcastSeated(lie ? "&c&l他说谎了！" : "&a&l全是真牌！");
+            broadcastSeated("&e" + nameOf(shooter) + " &f必须扣动左轮扳机…");
+            giveRevolver(shooter);
+            scheduleFireTimeout();
+        }, Math.max(20L, finish));
+    }
+
+    private List<Location> revealPoints(Seat seat, int count) {
+        List<Location> points = new ArrayList<>();
+        if (center == null) {
+            return points;
+        }
+        Location flat = new Location(seat.sit.getWorld(), seat.sit.getX(), seat.sit.getY(), seat.sit.getZ());
+        Vector dir = new Vector(flat.getX() - center.getX(), 0, flat.getZ() - center.getZ());
+        if (dir.lengthSquared() < 0.0001) {
+            dir = new Vector(0, 0, 1);
+        }
+        dir.normalize();
+        Vector perp = new Vector(-dir.getZ(), 0, dir.getX());
+        Location base = center.clone().add(dir.clone().multiply(2.2));
+        base.setY(seat.sit.getY() + 1.15);
+        double[] offsets = count >= 3 ? new double[]{-0.6, 0, 0.6}
+                : count == 2 ? new double[]{-0.35, 0.35} : new double[]{0};
+        for (double offset : offsets) {
+            points.add(base.clone().add(perp.clone().multiply(offset)));
+        }
+        return points;
+    }
+
+    private BlockFace frameFacing(Seat seat) {
+        if (center == null) {
+            return BlockFace.NORTH;
+        }
+        Vector dir = new Vector(center.getX() - seat.sit.getX(), 0, center.getZ() - seat.sit.getZ());
+        // 展示框的 facing 指向它背靠的方向，所以让它朝玩家
+        if (Math.abs(dir.getX()) > Math.abs(dir.getZ())) {
+            return dir.getX() > 0 ? BlockFace.WEST : BlockFace.EAST;
+        }
+        return dir.getZ() > 0 ? BlockFace.NORTH : BlockFace.SOUTH;
+    }
+
+    private void removeFrames() {
+        for (ItemFrame frame : frames) {
+            if (frame != null && frame.isValid()) {
+                frame.remove();
+            }
+        }
+        frames.clear();
+    }
+
+    private void giveRevolver(UUID id) {
+        Player p = playerOf(id);
+        if (p == null) {
+            return;
+        }
+        p.getInventory().setItem(7, manager.items().revolver());
+        p.updateInventory();
+        p.playSound(p.getLocation(), Sound.ITEM_ARMOR_EQUIP_IRON, 0.8f, 0.8f);
+        Chat.title(p, "&4&l轮到你开枪", "&7右键手里的铁锄头", 3);
+    }
+
+    private void scheduleFireTimeout() {
+        if (fireTimeout != null) {
+            fireTimeout.cancel();
+        }
+        fireTimeout = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            fireTimeout = null;
+            if (state == State.PLAYING && pendingShooter != null) {
+                Player p = playerOf(pendingShooter);
+                if (p != null) {
+                    Chat.actionBar(p, "&c超时，自动扣动扳机。");
+                }
+                fireRevolver(pendingShooter);
+            }
+        }, settings.fireWaitSeconds * 20L);
+    }
+
+    /** 玩家右键左轮（或超时自动）开枪。 */
+    public void fireRevolver(UUID id) {
+        if (state != State.PLAYING || pendingShooter == null || !pendingShooter.equals(id)) {
+            return;
+        }
+        if (fireTimeout != null) {
+            fireTimeout.cancel();
+            fireTimeout = null;
+        }
+        UUID shooter = pendingShooter;
+        pendingShooter = null;
+        Player p = playerOf(shooter);
+        if (p != null) {
+            p.getInventory().setItem(7, null);
+            p.updateInventory();
+        }
+
+        int chamber = Math.floorMod(cylinderStart + pulls, settings.chambers);
+        pulls++;
+        boolean fires = chamber == bulletAt;
+
+        Seat seat = seatOf(shooter);
+        Location dispenser = seat == null ? null : seat.dispenser;
+        if (fires) {
+            broadcastSeated("&4&l砰！&f" + nameOf(shooter) + " 的枪响了。");
+            tableSound(Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 0.7f);
+            reloadCylinder();
+            startBurn(shooter, seat, dispenser);
+        } else {
+            broadcastSeated("&a咔哒…&f" + nameOf(shooter) + " 是空枪，活了下来。");
+            tableSound(Sound.BLOCK_ANVIL_LAND, 0.6f, 1.6f);
+            startWater(shooter, seat, dispenser);
+        }
+    }
+
+    // ---------- 岩浆 / 水 ----------
+
+    private void startWater(UUID id, Seat seat, Location dispenser) {
+        placeColumn(seat, dispenser, Material.WATER);
+        Player p = playerOf(id);
+        if (p != null) {
+            Chat.title(p, "&a咔哒…", "&7空枪，你活了下来", 2);
+        }
+        waterTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            waterTask = null;
+            clearColumn();
+            afterShot(id, false);
+        }, settings.waterSeconds * 20L);
+    }
+
+    private void startBurn(UUID id, Seat seat, Location dispenser) {
+        int totalTicks = settings.burnSeconds * 20;
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = new BukkitRunnable() {
+            int elapsed = 0;
+
+            @Override
+            public void run() {
+                Player p = playerOf(id);
+                if (state != State.PLAYING || p == null) {
+                    cancel();
+                    burnTasks.remove(id);
+                    clearColumn();
+                    afterShot(id, true);
+                    return;
+                }
+                if (elapsed >= totalTicks || p.getHealth() <= 3.0) {
+                    cancel();
+                    burnTasks.remove(id);
+                    clearColumn();
+                    eliminateByFire(id);
+                    afterShot(id, true);
+                    return;
+                }
+                placeColumn(seat, dispenser, Material.LAVA);
+                p.setFireTicks(60);
+                p.setHealth(Math.max(2.0, p.getHealth() - 2.0));
+                p.getWorld().spawnParticle(Particle.FLAME, p.getLocation().add(0, 1, 0),
+                        12, 0.35, 0.5, 0.35, 0.02);
+                elapsed += 10;
+            }
+        }.runTaskTimer(plugin, 0L, 10L);
+        burnTasks.put(id, holder[0]);
+    }
+
+    /** 在座椅上方放一列水/岩浆；同时清掉两侧，防止水平蔓延。 */
+    private void placeColumn(Seat seat, Location dispenser, Material material) {
+        if (seat == null) {
+            return;
+        }
+        clearColumn();
+        World world = seat.chair.getWorld();
+        if (world == null) {
+            return;
+        }
+        int topY = dispenser != null ? dispenser.getBlockY() - 1 : seat.chair.getBlockY() + 3;
+        int bottomY = seat.chair.getBlockY() + 1;
+        for (int y = topY; y >= bottomY; y--) {
+            Block block = world.getBlockAt(seat.chair.getBlockX(), y, seat.chair.getBlockZ());
+            if (!block.getType().isAir() && block.getType() != Material.WATER
+                    && block.getType() != Material.LAVA) {
+                continue;
+            }
+            block.setType(material, false);
+            fluidBlocks.add(block);
+            for (BlockFace face : new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH,
+                    BlockFace.EAST, BlockFace.WEST}) {
+                Block side = block.getRelative(face);
+                if (side.getType() == Material.LAVA || side.getType() == Material.WATER) {
+                    side.setType(Material.AIR, false);
+                }
+            }
+        }
+        if (dispenser != null) {
+            world.playSound(dispenser, Sound.BLOCK_DISPENSER_DISPENSE, 1.0f, 1.0f);
+        }
+    }
+
+    private void clearColumn() {
+        for (Block block : fluidBlocks) {
+            if (block.getType() == Material.LAVA || block.getType() == Material.WATER) {
+                block.setType(Material.AIR, false);
+            }
+        }
+        fluidBlocks.clear();
+    }
+
+    private void eliminateByFire(UUID id) {
+        if (!order.remove(id)) {
+            return;
+        }
+        Seat seat = seatOf(id);
+        Player p = playerOf(id);
+        if (p != null) {
+            Chat.title(p, "&c&l你被岩浆吞没了", "&7留在座位上观战", 3);
+            p.setFireTicks(0);
+            if (seat != null) {
+                if (seat.stand != null) {
+                    manager.markForceDismount(id);
+                    try {
+                        if (p.getVehicle() == seat.stand) {
+                            p.leaveVehicle();
+                        }
+                    } finally {
+                        manager.clearForceDismount(id);
+                    }
+                    seat.stand.remove();
+                    seat.stand = null;
+                }
+                spawnCorpse(seat, p);
+                p.teleport(seat.sit.clone().add(0, 1.4, 0));
+            }
+            p.setGameMode(GameMode.SPECTATOR);
+            p.getWorld().spawnParticle(Particle.TOTEM_OF_UNDYING,
+                    p.getLocation(), 60, 0.5, 0.8, 0.5, 0.3);
+            p.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME,
+                    p.getLocation(), 40, 0.4, 0.6, 0.4, 0.02);
+            p.playSound(p.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 0.8f);
+        }
+        if (order.size() <= 1) {
+            endGame(order.isEmpty() ? null : order.get(0));
+        } else {
+            manager.reportArena(this);
+        }
+    }
+
+    private void spawnCorpse(Seat seat, Player player) {
+        World world = seat.sit.getWorld();
+        if (world == null) {
+            return;
+        }
+        ArmorStand corpse = (ArmorStand) world.spawnEntity(seat.sit, EntityType.ARMOR_STAND);
+        corpse.setGravity(false);
+        corpse.setInvulnerable(true);
+        corpse.setSilent(true);
+        corpse.setBasePlate(false);
+        corpse.setArms(true);
+        corpse.customName(Chat.color("&8" + player.getName() + " 的尸体"));
+        corpse.setCustomNameVisible(false);
+        corpse.setRotation(seat.sit.getYaw(), 0);
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        if (head.getItemMeta() instanceof SkullMeta skull) {
+            skull.setOwningPlayer(player);
+            head.setItemMeta(skull);
+        }
+        corpse.getEquipment().setHelmet(head);
+        corpse.getEquipment().setChestplate(player.getInventory().getChestplate());
+        corpse.getEquipment().setLeggings(player.getInventory().getLeggings());
+        corpse.getEquipment().setBoots(player.getInventory().getBoots());
+        corpse.getEquipment().setItemInMainHand(null);
+        seat.corpse = corpse;
+    }
+
+    /** 一次开枪流程结束：安排下一回合（或本局结束）。 */
+    private void afterShot(UUID shooter, boolean died) {
         if (state != State.PLAYING) {
             return;
         }
@@ -665,69 +1033,17 @@ public final class LiarBarTable {
         } else if (order.isEmpty()) {
             starter = null;
         } else {
-            int index = shooterIndex < 0 ? 0 : shooterIndex;
-            starter = order.get(index % order.size());
+            starter = order.get(pendingShooterIndex % order.size());
         }
+        lastPlayOwner = null;
+        lastPlayCards = null;
+        pileCount = 0;
         final UUID next = starter;
-        Bukkit.getScheduler().runTaskLater(plugin,
-                () -> {
-                    if (state == State.PLAYING) {
-                        startRound(next);
-                    }
-                }, settings.roundDelaySeconds * 20L);
-        updateActionBars();
-    }
-
-    /** 扣一次扳机，返回是否中弹出局。 */
-    private boolean pullTrigger(UUID shooter) {
-        Revolver gun = guns.computeIfAbsent(shooter, k -> new Revolver(settings.chambers));
-        int chamber = gun.pulls % settings.chambers;
-        gun.pulls++;
-        boolean fires = chamber == gun.bullet;
-        Player p = playerOf(shooter);
-        if (fires) {
-            broadcastSeated("&4&l砰！&f" + nameOf(shooter) + " 中枪倒下了。");
-            for (Seat seat : seats) {
-                Player viewer = playerOf(seat.occupant);
-                if (viewer != null) {
-                    Location loc = viewer.getLocation().add(0, 1, 0);
-                    viewer.getWorld().spawnParticle(Particle.CRIT, loc, 40, 0.4, 0.4, 0.4, 0.15);
-                    viewer.playSound(viewer.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.9f, 0.8f);
-                }
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (state == State.PLAYING) {
+                startRound(next);
             }
-            if (p != null) {
-                Chat.title(p, "&c&l你中枪了", "&7留在座位观战到本局结束", 3);
-                p.playSound(p.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 0.8f);
-            }
-            eliminate(shooter);
-            return true;
-        }
-        int untilBullet = Math.floorMod(gun.bullet - (gun.pulls % settings.chambers), settings.chambers);
-        broadcastSeated("&a咔哒…&f" + nameOf(shooter) + " 空枪，活了下来 &7（弹巢还剩 "
-                + untilBullet + " 格才到子弹）");
-        if (p != null) {
-            Chat.title(p, "&a咔哒…", "&7你活了下来", 2);
-            p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.6f, 1.6f);
-        }
-        return false;
-    }
-
-    private void eliminate(UUID id) {
-        if (!order.remove(id)) {
-            return;
-        }
-        Player p = playerOf(id);
-        if (p != null) {
-            p.getInventory().clear();
-            p.updateInventory();
-        }
-        guns.remove(id);
-        selections.remove(id);
-        if (order.size() <= 1) {
-            endGame(order.isEmpty() ? null : order.get(0));
-        } else {
-            manager.reportArena(this);
-        }
+        }, settings.roundDelaySeconds * 20L);
     }
 
     private void advanceTurn() {
@@ -757,8 +1073,8 @@ public final class LiarBarTable {
         }
         UUID current = currentPlayer();
         String currentName = current == null ? "—" : nameOf(current);
-        String bar = "&e桌面：&f" + LiarBarCards.RANKS[tableRank]
-                + " &7| &e已出：&f" + claimedCount()
+        String bar = "&e目标：&f" + LiarBarCards.NAMES[tableRank]
+                + " &7| &e已出：&f" + pileCount
                 + " &7| &e轮到：&f" + currentName
                 + " &7| &f剩余 &e" + Math.max(0, secondsLeft) + "s";
         for (Seat seat : seats) {
@@ -769,17 +1085,13 @@ public final class LiarBarTable {
             if (!order.contains(p.getUniqueId())) {
                 Chat.actionBar(p, "&7你已出局，观战中（剩 " + order.size() + " 人）");
             } else if (transition) {
-                Chat.actionBar(p, "&e正在结算本回合…");
+                Chat.actionBar(p, "&e结算中…");
             } else if (p.getUniqueId().equals(current)) {
                 Chat.actionBar(p, bar + " &a&l← 你的回合");
             } else {
                 Chat.actionBar(p, bar);
             }
         }
-    }
-
-    private int claimedCount() {
-        return pileCount;
     }
 
     // ---------- 结算 ----------
@@ -791,6 +1103,7 @@ public final class LiarBarTable {
         state = State.ENDING;
         transition = true;
         cancelTick();
+        cancelPendingTasks();
         if (winner != null) {
             broadcastSeated("&6&l" + nameOf(winner) + " &f赢得了本局！");
             Chat.broadcast("&4[骗子酒馆] &e" + nameOf(winner) + " &f在「" + name + "」赢得了本局！");
@@ -808,6 +1121,28 @@ public final class LiarBarTable {
                 settings.endDelaySeconds * 20L);
     }
 
+    private void cancelPendingTasks() {
+        removeFrames();
+        if (fireTimeout != null) {
+            fireTimeout.cancel();
+            fireTimeout = null;
+        }
+        if (revealTask != null) {
+            revealTask.cancel();
+            revealTask = null;
+        }
+        if (waterTask != null) {
+            waterTask.cancel();
+            waterTask = null;
+        }
+        for (BukkitTask task : burnTasks.values()) {
+            task.cancel();
+        }
+        burnTasks.clear();
+        pendingShooter = null;
+        clearColumn();
+    }
+
     /** 本局结束：全员从座椅上下来，留在房间里等下一局。 */
     private void finishRound() {
         endTask = null;
@@ -819,17 +1154,18 @@ public final class LiarBarTable {
             if (seat.occupant == null) {
                 continue;
             }
-            Player p = playerOf(seat.occupant);
+            UUID id = seat.occupant;
+            Player p = playerOf(id);
+            Location where = seat.sit.clone();
+            clearSeat(seat, p);
             if (p != null) {
-                clearSeat(seat, p);
-                p.getInventory().clear();
-                manager.giveLeaveItem(p);
+                manager.restoreSnapshot(p);
                 p.setGameMode(GameMode.ADVENTURE);
+                p.setFireTicks(0);
+                p.teleport(where);
                 p.updateInventory();
-                HubAPI.setGame(p.getUniqueId(), LiarBarManager.GAME);
+                HubAPI.setGame(id, LiarBarManager.GAME);
                 Chat.title(p, "&e本局结束", "&7从椅子上下来，想再来一局就重新坐下", 3);
-            } else {
-                clearSeat(seat, null);
             }
         }
         clearGameState();
@@ -838,7 +1174,6 @@ public final class LiarBarTable {
 
     private void clearGameState() {
         order.clear();
-        guns.clear();
         selections.clear();
         names.clear();
         lastPlayOwner = null;
@@ -858,39 +1193,46 @@ public final class LiarBarTable {
             endTask.cancel();
             endTask = null;
         }
+        cancelPendingTasks();
         state = State.WAITING;
         for (Seat seat : new ArrayList<>(seats)) {
             if (seat.occupant == null) {
                 continue;
             }
-            Player p = playerOf(seat.occupant);
+            UUID id = seat.occupant;
+            Player p = playerOf(id);
             clearSeat(seat, p);
             if (p != null) {
-                p.getInventory().clear();
-                manager.giveLeaveItem(p);
+                manager.restoreSnapshot(p);
+                p.setGameMode(GameMode.ADVENTURE);
+                p.setFireTicks(0);
                 p.updateInventory();
-                HubAPI.setGame(p.getUniqueId(), LiarBarManager.GAME);
+                HubAPI.setGame(id, LiarBarManager.GAME);
             }
         }
         clearGameState();
         manager.reportArena(this);
     }
 
-    /** 玩家离开房间/下线：清座位；对局中视为放弃。 */
+    /** 玩家离开座位/下线：清座位；对局中视为放弃。 */
     public void removePlayer(Player player) {
+        if (player == null) {
+            return;
+        }
         Seat seat = seatOf(player);
         if (seat != null) {
             clearSeat(seat, player);
         }
         selections.remove(player.getUniqueId());
         names.remove(player.getUniqueId());
+        if (player.getUniqueId().equals(pendingShooter)) {
+            fireRevolver(pendingShooter);
+        }
     }
 
     public void shutdown() {
         forceStop();
     }
-
-    // ---------- 辅助 ----------
 
     public void refreshArena() {
         manager.reportArena(this);
@@ -930,7 +1272,6 @@ public final class LiarBarTable {
         }
     }
 
-    /** 供 HubCore 中央菜单显示的场地状态。 */
     public GameState hubState() {
         return state == State.PLAYING || state == State.ENDING ? GameState.PLAYING : GameState.WAITING;
     }

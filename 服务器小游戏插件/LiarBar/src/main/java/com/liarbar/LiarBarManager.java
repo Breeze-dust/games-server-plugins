@@ -114,14 +114,14 @@ public final class LiarBarManager {
         return tables;
     }
 
-    // ---------- 进出房间 ----------
+    // ---------- 进出房间（按区域自动识别） ----------
 
     public boolean inRoom(Player player) {
-        return inRoom.contains(player.getUniqueId());
+        return player != null && inRoom.contains(player.getUniqueId());
     }
 
     public LiarBarTable tableOf(Player player) {
-        return seating.get(player.getUniqueId());
+        return player == null ? null : seating.get(player.getUniqueId());
     }
 
     public LiarBarTable tableAt(Block block) {
@@ -136,9 +136,44 @@ public final class LiarBarManager {
         return null;
     }
 
+    /** 玩家移动时调用：走进 pos1~pos2 区域自动加入，走出去自动退出。 */
+    public void checkRegion(Player player) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        UUID id = player.getUniqueId();
+        boolean seated = seating.containsKey(id);
+        boolean inside = seated || room.inRoom(player.getLocation());
+        if (inside && !inRoom.contains(id)) {
+            String currentGame = HubAPI.gameOf(id);
+            if (currentGame != null && !currentGame.equals(GAME)) {
+                return;
+            }
+            enterRegion(player);
+        } else if (!inside && inRoom.contains(id) && !seated) {
+            exitRegion(player);
+        }
+    }
+
+    private void enterRegion(Player player) {
+        UUID id = player.getUniqueId();
+        inRoom.add(id);
+        HubAPI.setGame(id, GAME);
+        Chat.send(player, "&a你已进入&6骗子酒馆&a：右键台阶椅子坐下就是准备，四人坐满自动开局。");
+        Chat.actionBar(player, "&e右键台阶椅子入座");
+    }
+
+    private void exitRegion(Player player) {
+        UUID id = player.getUniqueId();
+        inRoom.remove(id);
+        HubAPI.clearGame(id);
+        Chat.send(player, "&7你离开了骗子酒馆。");
+    }
+
+    /** /liarbar join：没在区域里就先传送到等待点。 */
     public void enter(Player player, String tableName) {
         if (!room.configured()) {
-            Chat.send(player, "&c骗子酒馆还没配置好：OP 需要先设置房间出生点并登记至少一张桌子。");
+            Chat.send(player, "&c骗子酒馆还没配置好：OP 需要先设置房间等待点并登记至少一张桌子。");
             return;
         }
         UUID id = player.getUniqueId();
@@ -147,33 +182,10 @@ public final class LiarBarManager {
             Chat.send(player, "&c你正在「" + currentGame + "」里，先回主城再来骗子酒馆。");
             return;
         }
-        if (inRoom.contains(id)) {
-            if (tableName != null && !tableName.isEmpty()) {
-                sitNamed(player, tableName);
-            } else {
-                Chat.send(player, "&7你已经在酒馆里了：右键台阶椅子入座。");
-            }
-            return;
+        if (!room.inRoom(player.getLocation()) && room.spawn() != null) {
+            player.teleport(room.spawn());
         }
-        snapshots.put(id, Snapshot.capture(player));
-        inRoom.add(id);
-        PlayerInventory inv = player.getInventory();
-        inv.clear();
-        inv.setArmorContents(new ItemStack[4]);
-        inv.setItemInOffHand(null);
-        player.setGameMode(GameMode.ADVENTURE);
-        player.setFoodLevel(20);
-        player.setSaturation(5f);
-        player.teleport(room.spawn());
-        giveLeaveItem(player);
-        player.setFireTicks(0);
-        player.updateInventory();
-
-        HubAPI.setGame(id, GAME);
-        HubAPI.announceJoin(plugin.getName(), player.getName());
-        Chat.send(player, "&e欢迎来到骗子酒馆：&f找一张桌子，右键台阶椅子坐下就是准备。");
-        Chat.send(player, "&7坐满 " + settings.playersPerTable + " 人自动开局；想走就右键手里的床或 &e/liarbar leave&7。");
-        Chat.actionBar(player, "&e右键台阶椅子入座");
+        checkRegion(player);
         if (tableName != null && !tableName.isEmpty()) {
             sitNamed(player, tableName);
         }
@@ -189,6 +201,9 @@ public final class LiarBarManager {
     }
 
     public void leave(Player player, boolean silent) {
+        if (player == null) {
+            return;
+        }
         UUID id = player.getUniqueId();
         LiarBarTable table = seating.get(id);
         boolean inside = inRoom.contains(id) || table != null;
@@ -201,11 +216,8 @@ public final class LiarBarManager {
         if (table != null) {
             table.removePlayer(player);
         }
+        restoreSnapshot(player);
         inRoom.remove(id);
-        Snapshot snapshot = snapshots.remove(id);
-        if (snapshot != null) {
-            snapshot.restore(player);
-        }
         HubAPI.clearGame(id);
         if (!silent) {
             HubAPI.teleportToLobby(player);
@@ -214,16 +226,16 @@ public final class LiarBarManager {
     }
 
     public void onQuit(Player player) {
+        if (player == null) {
+            return;
+        }
         UUID id = player.getUniqueId();
         LiarBarTable table = seating.get(id);
         if (table != null) {
             table.removePlayer(player);
         }
+        restoreSnapshot(player);
         inRoom.remove(id);
-        Snapshot snapshot = snapshots.remove(id);
-        if (snapshot != null) {
-            snapshot.restore(player);
-        }
     }
 
     public void sitOrStand(Player player, LiarBarTable table) {
@@ -261,8 +273,20 @@ public final class LiarBarManager {
         return forceDismounts.contains(id);
     }
 
-    public void giveLeaveItem(Player player) {
-        player.getInventory().setItem(8, items.leave());
+    // ---------- 背包快照（只在开局时保存，结束后还原） ----------
+
+    public void captureSnapshot(Player player) {
+        snapshots.computeIfAbsent(player.getUniqueId(), k -> Snapshot.capture(player));
+    }
+
+    public void restoreSnapshot(Player player) {
+        if (player == null) {
+            return;
+        }
+        Snapshot snapshot = snapshots.remove(player.getUniqueId());
+        if (snapshot != null) {
+            snapshot.restore(player);
+        }
     }
 
     // ---------- 管理员建场 ----------
@@ -271,11 +295,12 @@ public final class LiarBarManager {
     public boolean addChair(Player player, String tableName) {
         Block block = blockUnder(player);
         if (block == null) {
-            Chat.send(player, "&c请站在台阶方块上（或看着 5 格内的台阶）再执行。");
+            Chat.send(player, "&c请站在楼梯方块上（或看着 5 格内的楼梯）再执行。"
+                    + "注意：半砖（台阶）不算，需要的是橡木楼梯这类楼梯方块。");
             return false;
         }
         if (room.isChair(block)) {
-            Chat.send(player, "&c这个台阶已经是某张桌子的椅子了。");
+            Chat.send(player, "&c这个方块已经是某张桌子的椅子了。");
             return false;
         }
         LiarBarTable existing = tables.get(tableName);
@@ -304,7 +329,7 @@ public final class LiarBarManager {
             tables.put(tableName, table);
             reportArena(table);
         }
-        Chat.send(player, "&a已把台阶 &7(" + block.getX() + ", " + block.getY() + ", " + block.getZ()
+        Chat.send(player, "&a已把楼梯 &7(" + block.getX() + ", " + block.getY() + ", " + block.getZ()
                 + ")&a 登记为「&e" + tableName + "&a」的第 " + seats.size() + " 把椅子。");
         if (seats.size() < settings.playersPerTable) {
             Chat.send(player, "&7还差 &e" + (settings.playersPerTable - seats.size()) + " &7把椅子。");
@@ -385,7 +410,7 @@ public final class LiarBarManager {
         seating.clear();
     }
 
-    /** 进房间时保存的原背包/状态，离开或下线时还原。 */
+    /** 开局时保存的原背包/状态，结束或离开时还原。 */
     private static final class Snapshot {
         private final ItemStack[] contents;
         private final ItemStack[] armor;
@@ -428,6 +453,4 @@ public final class LiarBarManager {
             p.updateInventory();
         }
     }
-
-    // 供 HubCore 菜单用的提示
 }

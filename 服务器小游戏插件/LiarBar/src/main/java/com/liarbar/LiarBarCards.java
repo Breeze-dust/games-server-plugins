@@ -1,62 +1,64 @@
 package com.liarbar;
 
+import org.bukkit.Material;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** 牌面模型：6 种点数 × 4 种花色，共 24 张。 */
+/**
+ * 牌库：20 张 = 三种普通牌各 6 张 + 万能牌 2 张。
+ * 万能牌在手牌里是下界之星，结算时算作本回合的目标牌。
+ */
 public final class LiarBarCards {
 
-    public static final String[] RANKS = {"A", "2", "3", "4", "5", "6"};
-    public static final String[] SUITS = {"♠", "♥", "♣", "♦"};
-    public static final boolean[] RED_SUIT = {false, true, false, true};
+    /** 普通牌的点数：0=钻石 1=绿宝石 2=金锭。 */
+    public static final int RANK_DIAMOND = 0;
+    public static final int RANK_EMERALD = 1;
+    public static final int RANK_GOLD = 2;
+    /** 万能牌。 */
+    public static final int WILDCARD = 3;
 
-    public record Card(int rank, int suit) {
+    public static final int NORMAL_RANKS = 3;
+    public static final int COPIES_PER_RANK = 6;
+    public static final int WILDCARDS = 2;
+    public static final int DECK_SIZE = NORMAL_RANKS * COPIES_PER_RANK + WILDCARDS;
 
-        public String label() {
-            return SUITS[suit] + RANKS[rank];
+    public static final Material[] MATERIALS = {
+            Material.DIAMOND, Material.EMERALD, Material.GOLD_INGOT, Material.NETHER_STAR
+    };
+    public static final String[] NAMES = {"钻石", "绿宝石", "金锭", "万能牌"};
+    public static final String[] COLORS = {"&b", "&a", "&6", "&5"};
+
+    public record Card(int rank) {
+
+        /** 结算时：万能牌算作目标牌。 */
+        public boolean matches(int target) {
+            return rank == target || rank == WILDCARD;
         }
 
-        /** 带颜色的显示文本（红桃/方块红色）。 */
-        public String colored() {
-            return (RED_SUIT[suit] ? "&c" : "&f") + SUITS[suit] + "&e" + RANKS[rank];
+        public String display() {
+            return COLORS[rank] + NAMES[rank];
         }
 
-        public String save() {
-            return rank + ":" + suit;
-        }
-
-        public static Card parse(String raw) {
-            if (raw == null) {
-                return null;
-            }
-            String[] parts = raw.split(":");
-            if (parts.length != 2) {
-                return null;
-            }
-            try {
-                int rank = Integer.parseInt(parts[0]);
-                int suit = Integer.parseInt(parts[1]);
-                if (rank < 0 || rank >= RANKS.length || suit < 0 || suit >= SUITS.length) {
-                    return null;
-                }
-                return new Card(rank, suit);
-            } catch (NumberFormatException ex) {
-                return null;
-            }
+        public Material material() {
+            return MATERIALS[rank];
         }
     }
 
     private LiarBarCards() {
     }
 
-    /** 一副洗好的 24 张牌。 */
+    /** 洗好的 20 张牌。 */
     public static List<Card> shuffledDeck() {
-        List<Card> deck = new ArrayList<>(RANKS.length * SUITS.length);
-        for (int rank = 0; rank < RANKS.length; rank++) {
-            for (int suit = 0; suit < SUITS.length; suit++) {
-                deck.add(new Card(rank, suit));
+        List<Card> deck = new ArrayList<>(DECK_SIZE);
+        for (int rank = 0; rank < NORMAL_RANKS; rank++) {
+            for (int copy = 0; copy < COPIES_PER_RANK; copy++) {
+                deck.add(new Card(rank));
             }
+        }
+        for (int copy = 0; copy < WILDCARDS; copy++) {
+            deck.add(new Card(WILDCARD));
         }
         Collections.shuffle(deck);
         return deck;

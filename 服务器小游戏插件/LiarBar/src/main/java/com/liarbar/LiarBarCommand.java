@@ -191,19 +191,20 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
 
     private void help(CommandSender sender) {
         Chat.send(sender, "&6骗子酒馆 &7—— 大厅多桌牌局");
-        Chat.send(sender, "&e/liarbar join [桌名] &7进入酒馆（可指定桌子站到空位上）");
+        Chat.send(sender, "&e/liarbar join [桌名] &7进入酒馆（走进房间区域也算自动进入）");
         Chat.send(sender, "&e/liarbar leave &7离开酒馆");
         Chat.send(sender, "&e/liarbar list &7查看所有桌子状态");
         if (isAdmin(sender)) {
             Chat.send(sender, "&8管理：");
-            Chat.send(sender, "&e/liarbar pos1 &e/liarbar pos2 &7房间两个对角（保护区域）");
-            Chat.send(sender, "&e/liarbar setspawn &7酒馆等待点（进酒馆的落点）");
-            Chat.send(sender, "&e/liarbar addchair <桌名> &7站在台阶上登记一把椅子（每桌 4 把）");
+            Chat.send(sender, "&e/liarbar pos1 &e/liarbar pos2 &7房间两个对角（保护区域 + 自动进入判定）");
+            Chat.send(sender, "&e/liarbar setspawn &7酒馆等待点（/liarbar join 的落点）");
+            Chat.send(sender, "&e/liarbar addchair <桌名> &7站在楼梯方块上登记一把椅子（每桌 4 把）");
             Chat.send(sender, "&e/liarbar deltable <桌名> &7删除桌子");
             Chat.send(sender, "&e/liarbar start <桌名> &e/liarbar stop <桌名> &7强制开场/中止");
             Chat.send(sender, "&e/liarbar reload &7重载配置");
         }
-        Chat.send(sender, "&7玩法：右键台阶椅子坐下即准备，四人坐满自动开局；左键选牌、右键出牌、右键钟质疑。");
+        Chat.send(sender, "&7玩法：右键楼梯椅子坐下即准备，四人坐满自动开局；左键选牌、右键出牌、右键钟质疑，"
+                + "揭幕结束后按提示用铁锄头左轮开枪。");
     }
 
     @Override
