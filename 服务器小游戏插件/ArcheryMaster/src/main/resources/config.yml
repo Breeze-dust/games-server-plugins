@@ -1,17 +1,14 @@
 # ========== 箭术大师（主城限时射箭）配置 ==========
-# 靶场区域用编辑模式设置：
-#   /archery edit                  进入编辑模式
-#                                   木棍：左键/右键选两个对角
-#                                   下界之星：确认区域，然后输入基础分和移动轴，再输入靶子参数
-#                                   绿宝石：保存场地
-#                                   屏障：退出编辑模式（未保存的修改丢弃）
-#   /archery regions               查看已保存的区域
-#   /archery region remove <序号>  删除某个区域
-# 命令会写回 regions / start / leaderboards 段；手改请在停服后改，或改完 /archery reload。
+# 三个难度各自独立：/archery edit <normal|hard|evil> 进入对应难度的编辑模式，
+# 每个难度有自己的区域列表和可覆盖的靶子生成参数。
+#   /archery edit normal            编辑“正常”难度的区域
+#   /archery regions normal         查看该难度的区域
+#   /archery region set normal 1 count 5
+# 命令会写回 difficulties / start / leaderboards 段；手改请在停服后改，或改完 /archery reload。
 
 # 射击站位（可选）：站到射击位执行 /archery setstart。
 # 配置后玩家开局会被传送到这里；不配置时玩家就在执行 /archery 的位置开玩，
-# 两种情况结束时都会回到进入前的位置和视角。
+# 结束都会留在原地（不传送回原位）。
 start:
   world: ''
   x: 0.0
@@ -23,29 +20,79 @@ start:
 game:
   time-seconds: 60        # 每局时长（秒）
 
-# 靶子
+# 全局靶子默认参数（三个难度共用，可在 difficulties.<难度>.targets 里覆盖）
 targets:
-  safety-max: 256         # 全场安全上限；实际数量由每个区域的 count 决定
+  safety-max: 256         # 单个难度的全场安全上限；实际数量由区域 count 决定
   respawn-delay-ticks: 10 # 射中后隔多久补一个新靶（20 刻 = 1 秒）
   lifetime-seconds: 0     # 靶子最多存在多久；0 = 不自动消失
-  small-chance: 0.35      # 缩小靶概率（0~1）
   min-speed: 1.5          # 移动靶速度下限（格/秒）
-  max-speed: 6.0          # 移动靶速度上限（格/秒），每只靶随机取区间内速度
-  fast-speed: 4.5         # 速度 >= 这个值算「快速移动靶」（格/秒）
+  max-speed: 6.0          # 移动靶速度上限（格/秒）
+  fast-speed: 4.5         # 速度 >= 这个值算「快速靶」（格/秒）
   small-scale: 0.5        # 缩小靶的边长（正常靶是 1.0）
   small-glow-color: '#FF0000' # 缩小靶的发光颜色（#RRGGBB 或 RED/YELLOW/AQUA...）
 
-  # 三种靶子的方块（写 Bukkit 方块材质名；缩小靶按 small-scale 缩放）
-  blocks:
-    fixed: TARGET         # 固定靶
-    moving: REDSTONE_BLOCK # 移动靶
-    fast: GOLD_BLOCK      # 快速移动靶
+  blocks:                 # 三种运动类型的方块材质
+    fixed: TARGET
+    moving: REDSTONE_BLOCK
+    fast: GOLD_BLOCK
 
-  # 得分 = 区域基础分 + 以下三项独立加成（可叠加，互不影响）
-  bonuses:
-    moving: 1             # 移动靶额外 +1
-    fast: 2               # 快速移动靶额外 +2
-    small: 2              # 缩小靶额外 +2
+  bonuses:                # 得分 = 区域基础分 + 以下三项独立加成
+    moving: 1
+    fast: 2
+    small: 2
+
+# 三个难度：每个难度可以有独立的 targets 覆盖和独立的 regions
+difficulties:
+  normal:
+    name: 正常
+    color: '&a'
+    enabled: true
+    # targets:            # 需要和别的难度不同时，在这里覆盖全局 targets 的任意键
+    #   min-speed: 1.5
+    #   max-speed: 5.0
+    #   fast-speed: 4.0
+    regions: []
+    # 单个区域示例（/archery edit normal 写入）：
+    # - world: world
+    #   min-x: 0.0
+    #   min-y: 60.0
+    #   min-z: 0.0
+    #   max-x: 10.0
+    #   max-y: 70.0
+    #   max-z: 10.0
+    #   base-score: 3        # 命中基础分
+    #   axis: x              # 移动靶只沿 x 或 z 往返
+    #   count: 4             # 该区域同时刷多少个靶子
+    #   weights:             # 五项刷新权重
+    #     fixed: 5
+    #     moving: 3
+    #     fast: 2
+    #     normal: 65
+    #     small: 35
+    #   guaranteed:          # 四项保底（总和不能超过 count）
+    #     fixed: 0
+    #     moving: 0
+    #     fast: 0
+    #     small: 0
+  hard:
+    name: 困难
+    color: '&e'
+    enabled: true
+    # targets:
+    #   min-speed: 2.5
+    #   max-speed: 8.0
+    #   fast-speed: 6.0
+    regions: []
+  evil:
+    name: 恶意
+    color: '&c'
+    enabled: true
+    # targets:
+    #   min-speed: 4.0
+    #   max-speed: 12.0
+    #   fast-speed: 8.0
+    #   respawn-delay-ticks: 4
+    regions: []
 
 effects:
   sound: true
@@ -53,28 +100,8 @@ effects:
 
 top-size: 10              # 排行榜显示前几名
 
-# 靶场区域：/archery edit 写入。每项是一个长方体，参数在确认区域时输入，
-# 之后也可以用 /archery region set <序号> ... 在线修改。
-# 每个区域示例：
-#   - world: world
-#     min-x: 0.0
-#     min-y: 60.0
-#     min-z: 0.0
-#     max-x: 10.0
-#     max-y: 70.0
-#     max-z: 10.0
-#     base-score: 3          # 命中基础分
-#     axis: x                # 移动靶往返的方向：x 或 z（只沿这一条轴动）
-#     count: 4               # 这个区域同时刷多少个靶子
-#     weights:               # 三种类型的刷新权重
-#       fixed: 5
-#       moving: 3
-#       fast: 2
-#     guaranteed:            # 三种类型至少各刷几个（保底，总和不能超过 count）
-#       fixed: 0
-#       moving: 0
-#       fast: 0
-regions: []
+leaderboard:
+  default-difficulty: normal   # /archery top / top place 默认显示哪个难度
 
-# 浮空文字排行榜（/archery top place 在当前位置放置，top remove 移除）
+# 浮空文字排行榜（/archery top place [难度] 在当前位置放置，top remove 移除）
 leaderboards: []

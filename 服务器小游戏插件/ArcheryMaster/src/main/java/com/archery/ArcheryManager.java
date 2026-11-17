@@ -24,6 +24,7 @@ import org.bukkit.entity.Arrow;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.block.Action;
@@ -51,7 +52,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** 箭术大师主逻辑：区域编辑、开局、靶子、箭矢命中、结算、排行榜。 */
+/** 箭术大师主逻辑：难度、区域编辑、开局、靶子、箭矢命中、结算、排行榜。 */
 public class ArcheryManager {
 
     private static final String NAMESPACE = "archery";
@@ -59,6 +60,8 @@ public class ArcheryManager {
     private static final String GAME_NAME = "箭术大师";
     private static final int TICK_PERIOD = 1;
     private static final double LINE_HEIGHT = 0.25 * 1.3;
+    private static final double FOOTER_GAP = 0.35;
+    private static final String FOOTER_TEXT = "&e&l[ 下一页 >>> ]";
 
     private final ArcheryPlugin plugin;
     private final Map<UUID, ArcherySession> sessions = new LinkedHashMap<>();
@@ -106,6 +109,7 @@ public class ArcheryManager {
         if (data == null) {
             data = PlayerStats.load(NAMESPACE, new File(plugin.getDataFolder(), "data.yml"));
         }
+        migrateLegacyRecords();
         loadLeaderboards();
 
         if (tickTask == null) {
@@ -117,8 +121,15 @@ public class ArcheryManager {
         Bukkit.getScheduler().runTaskLater(plugin, this::refreshLeaderboards, 40L);
         Bukkit.getScheduler().runTaskLater(plugin, () -> purgeAll(true), 40L);
 
-        plugin.getLogger().info("箭术大师已加载：靶场区域 " + settings.regions.size()
-                + " 个，站位" + (start == null ? "未配置" : "已配置")
+        StringBuilder summary = new StringBuilder();
+        for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+            if (summary.length() > 0) {
+                summary.append("，");
+            }
+            summary.append(difficulty.name).append(' ').append(difficulty.regions.size()).append(" 区");
+        }
+        plugin.getLogger().info("箭术大师已加载：" + summary
+                + "，站位" + (start == null ? "未配置" : "已配置")
                 + "，时长 " + settings.gameSeconds + " 秒，记录 " + recordCount() + " 人。");
     }
 
@@ -159,24 +170,40 @@ public class ArcheryManager {
         load();
     }
 
-    private String configProblem(Player p) {
+    public List<ArcherySettings.Difficulty> difficulties() {
+        return settings.difficulties;
+    }
+
+    public ArcherySettings.Difficulty difficultyById(String id) {
+        return settings.difficulty(id);
+    }
+
+    public ArcherySettings.Difficulty defaultDifficulty() {
+        return settings.defaultDifficulty();
+    }
+
+    private String configProblem(Player p, ArcherySettings.Difficulty difficulty) {
+        if (!difficulty.enabled) {
+            return "&c这个难度还没有开放。";
+        }
         World playWorld = start != null ? start.getWorld() : p.getWorld();
         if (playWorld == null) {
             return "&c世界不可用，请联系管理员。";
         }
-        if (regionsFor(playWorld).isEmpty()) {
-            return "&c这个世界还没有配置靶场区域，请联系管理员（/archery edit）。";
+        if (regionsFor(difficulty, playWorld).isEmpty()) {
+            return "&c" + difficulty.name + "难度在这个世界还没有配置靶场区域，请联系管理员（/archery edit "
+                    + difficulty.id + "）。";
         }
         return null;
     }
 
-    /** 只取本局世界里的区域。 */
-    private List<TargetRegion> regionsFor(World world) {
+    /** 只取该难度、本局世界里的区域。 */
+    private List<TargetRegion> regionsFor(ArcherySettings.Difficulty difficulty, World world) {
         List<TargetRegion> out = new ArrayList<>();
-        if (world == null) {
+        if (difficulty == null || world == null) {
             return out;
         }
-        for (TargetRegion region : settings.regions) {
+        for (TargetRegion region : difficulty.regions) {
             if (region.world().equals(world)) {
                 out.add(region);
             }
@@ -184,9 +211,9 @@ public class ArcheryManager {
         return out;
     }
 
-    private void saveRegions() {
+    private void saveRegions(ArcherySettings.Difficulty difficulty) {
         List<Map<String, Object>> list = new ArrayList<>();
-        for (TargetRegion region : settings.regions) {
+        for (TargetRegion region : difficulty.regions) {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("world", region.world().getName());
             map.put("min-x", region.minX());
@@ -199,25 +226,39 @@ public class ArcheryManager {
             map.put("axis", region.axis().key);
             map.put("count", region.count());
             Map<String, Object> weights = new LinkedHashMap<>();
-            weights.put("fixed", region.weight(TargetType.FIXED));
-            weights.put("moving", region.weight(TargetType.MOVING));
-            weights.put("fast", region.weight(TargetType.FAST));
-            map.put("weights", weights);
             Map<String, Object> guaranteed = new LinkedHashMap<>();
-            guaranteed.put("fixed", region.minimum(TargetType.FIXED));
-            guaranteed.put("moving", region.minimum(TargetType.MOVING));
-            guaranteed.put("fast", region.minimum(TargetType.FAST));
+            for (RegionMetric metric : RegionMetric.values()) {
+                weights.put(metric.key, region.weight(metric));
+                guaranteed.put(metric.key, region.minimum(metric));
+            }
+            map.put("weights", weights);
             map.put("guaranteed", guaranteed);
             list.add(map);
         }
-        plugin.getConfig().set("regions", list);
+        plugin.getConfig().set("difficulties." + difficulty.id + ".regions", list);
         plugin.saveConfig();
     }
 
     // ---------- 开局 / 结束 ----------
 
-    public void join(Player p) {
+    public void openDifficultyMenu(Player p) {
+        if (edits.containsKey(p.getUniqueId())) {
+            Chat.send(p, "&e你正在编辑靶场，先右键屏障退出编辑模式。");
+            return;
+        }
+        if (sessions.containsKey(p.getUniqueId())) {
+            Chat.send(p, "&e你已经在射箭中，用 &f/archery leave &e退出。");
+            return;
+        }
+        p.openInventory(new DifficultyMenu(this, p).getInventory());
+    }
+
+    public void join(Player p, ArcherySettings.Difficulty difficulty) {
         UUID id = p.getUniqueId();
+        if (difficulty == null) {
+            Chat.send(p, "&c未知难度。");
+            return;
+        }
         if (edits.containsKey(id)) {
             Chat.send(p, "&e你正在编辑靶场，先右键屏障退出编辑模式。");
             return;
@@ -226,7 +267,7 @@ public class ArcheryManager {
             Chat.send(p, "&e你已经在射箭中，用 &f/archery leave &e退出。");
             return;
         }
-        String problem = configProblem(p);
+        String problem = configProblem(p, difficulty);
         if (problem != null) {
             Chat.send(p, problem);
             return;
@@ -259,15 +300,17 @@ public class ArcheryManager {
         p.getInventory().setItem(0, createBow());
         p.getInventory().setItem(1, createArrow());
 
-        ArcherySession session = new ArcherySession(id, p.getName(), playWorld,
+        ArcherySession session = new ArcherySession(id, p.getName(), playWorld, difficulty,
                 inventory, settings.gameSeconds * 20);
         sessions.put(id, session);
         HubAPI.setPlaying(id, GAME_NAME);
         resetScale(p);
         fillTargets(session);
 
-        Chat.title(p, "&6&l箭术大师", "&f" + settings.gameSeconds + " 秒内射中更多靶子！", 2);
-        Chat.send(p, "&6&l箭术大师 &7· &f命中得分 = 区域基础分 + 移动 +" + settings.bonusMoving
+        Chat.title(p, "&6&l箭术大师 · " + difficulty.color + difficulty.name,
+                "&f" + settings.gameSeconds + " 秒内射中更多靶子！", 2);
+        Chat.send(p, "&6&l箭术大师 &7· " + difficulty.color + difficulty.name
+                + " &7· &f命中得分 = 区域基础分 + 移动 +" + settings.bonusMoving
                 + " + 快速 +" + settings.bonusFast + " + 缩小 +" + settings.bonusSmall
                 + " &7（三项独立叠加）");
         Chat.actionBar(p, bar(session));
@@ -306,10 +349,10 @@ public class ArcheryManager {
         clearTargets(s);
         clearArrows(s);
 
-        int bestBefore = bestScore(s.playerId);
+        int bestBefore = bestScore(s.playerId, s.difficulty);
         boolean newBest = record && s.score > bestBefore;
         if (record) {
-            recordScore(s.playerId, s.playerName, s.score);
+            recordScore(s.playerId, s.playerName, s.score, s.difficulty);
         }
 
         if (p == null || !p.isOnline()) {
@@ -320,15 +363,16 @@ public class ArcheryManager {
         }
         Chat.actionBar(p, "");
 
-        StringBuilder msg = new StringBuilder("&8[&6箭术大师&8] &7本局 &6").append(s.score).append(" &7分");
+        StringBuilder msg = new StringBuilder("&8[&6箭术大师&8] &7").append(s.difficulty.color)
+                .append(s.difficulty.name).append(" &7· &f本局 &6").append(s.score).append(" &7分");
         if (newBest) {
             msg.append(" &a· 新纪录！");
         } else {
-            msg.append(" &7· 最高 &6").append(bestScore(s.playerId));
+            msg.append(" &7· 最高 &6").append(bestScore(s.playerId, s.difficulty));
         }
         msg.append(" &8(").append(reason).append(")");
         Chat.send(p, msg.toString());
-        Chat.title(p, "&6&l本局结束", "&f得分 &6" + s.score, 2);
+        Chat.title(p, "&6&l本局结束", "&f" + s.difficulty.name + " &7得分 &6" + s.score, 2);
         p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.2f);
     }
 
@@ -369,18 +413,20 @@ public class ArcheryManager {
     /** 启动/关服时清理所有残留靶子实体（崩溃后持久化实体可能留在世界里）。 */
     private void purgeAll(boolean loadRegions) {
         if (loadRegions && settings != null) {
-            for (TargetRegion region : settings.regions) {
-                World world = region.world();
-                if (world == null) {
-                    continue;
-                }
-                int minChunkX = ((int) Math.floor(region.minX())) >> 4;
-                int maxChunkX = ((int) Math.floor(region.maxX())) >> 4;
-                int minChunkZ = ((int) Math.floor(region.minZ())) >> 4;
-                int maxChunkZ = ((int) Math.floor(region.maxZ())) >> 4;
-                for (int cx = minChunkX; cx <= maxChunkX; cx++) {
-                    for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                        world.getChunkAt(cx, cz).load();
+            for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+                for (TargetRegion region : difficulty.regions) {
+                    World world = region.world();
+                    if (world == null) {
+                        continue;
+                    }
+                    int minChunkX = ((int) Math.floor(region.minX())) >> 4;
+                    int maxChunkX = ((int) Math.floor(region.maxX())) >> 4;
+                    int minChunkZ = ((int) Math.floor(region.minZ())) >> 4;
+                    int maxChunkZ = ((int) Math.floor(region.maxZ())) >> 4;
+                    for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+                        for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                            world.getChunkAt(cx, cz).load();
+                        }
                     }
                 }
             }
@@ -473,16 +519,18 @@ public class ArcheryManager {
 
     private String bar(ArcherySession s) {
         int seconds = Math.max(0, (s.ticksLeft + 19) / 20);
-        return "&6箭术大师 &8· &f剩余 &e" + seconds + "s &8· &f得分 &6" + s.score
-                + " &8· &f最高 &e" + bestScore(s.playerId);
+        return "&6箭术大师 &8· " + s.difficulty.color + s.difficulty.name
+                + " &8· &f剩余 &e" + seconds + "s &8· &f得分 &6" + s.score
+                + " &8· &f最高 &e" + bestScore(s.playerId, s.difficulty);
     }
 
     // ---------- 靶子 ----------
 
     private void fillTargets(ArcherySession s) {
-        for (TargetRegion region : regionsFor(s.world)) {
+        for (TargetRegion region : regionsFor(s.difficulty, s.world)) {
             int desired = region.count();
-            while (countInRegion(s, region) < desired && s.targets.size() < settings.safetyMax) {
+            while (countInRegion(s, region) < desired
+                    && s.targets.size() < s.difficulty.gen.safetyMax) {
                 if (!spawnTarget(s, region)) {
                     break;
                 }
@@ -510,49 +558,79 @@ public class ArcheryManager {
         return count;
     }
 
-    /** 先补未达保底的类型，再按权重随机。 */
+    private int countSmall(ArcherySession s, TargetRegion region) {
+        int count = 0;
+        for (TargetInstance target : s.targets) {
+            if (target.region == region && target.small) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private RegionMetric metricFor(TargetType type) {
+        return switch (type) {
+            case FIXED -> RegionMetric.FIXED;
+            case MOVING -> RegionMetric.MOVING;
+            case FAST -> RegionMetric.FAST;
+        };
+    }
+
+    /** 先补未达保底的运动类型，再按权重随机。 */
     private TargetType chooseType(ArcherySession s, TargetRegion region) {
         List<TargetType> deficits = new ArrayList<>();
         for (TargetType type : TargetType.values()) {
-            if (countType(s, region, type) < region.minimum(type)) {
+            if (countType(s, region, type) < region.minimum(metricFor(type))) {
                 deficits.add(type);
             }
         }
         if (!deficits.isEmpty()) {
             return deficits.get(random.nextInt(deficits.size()));
         }
-        int total = region.weight(TargetType.FIXED) + region.weight(TargetType.MOVING)
-                + region.weight(TargetType.FAST);
+        int fixed = region.weight(RegionMetric.FIXED);
+        int moving = region.weight(RegionMetric.MOVING);
+        int fast = region.weight(RegionMetric.FAST);
+        int total = fixed + moving + fast;
         if (total <= 0) {
             return TargetType.FIXED;
         }
         int roll = random.nextInt(total);
-        if (roll < region.weight(TargetType.FIXED)) {
+        if (roll < fixed) {
             return TargetType.FIXED;
         }
-        roll -= region.weight(TargetType.FIXED);
-        if (roll < region.weight(TargetType.MOVING)) {
-            return TargetType.MOVING;
-        }
-        return TargetType.FAST;
+        roll -= fixed;
+        return roll < moving ? TargetType.MOVING : TargetType.FAST;
     }
 
-    private double speedFor(TargetType type) {
+    /** 先补缩小保底，再按“正常/缩小”权重随机。 */
+    private boolean chooseSmall(ArcherySession s, TargetRegion region) {
+        if (countSmall(s, region) < region.minimum(RegionMetric.SMALL)) {
+            return true;
+        }
+        int normal = region.weight(RegionMetric.NORMAL);
+        int small = region.weight(RegionMetric.SMALL);
+        int total = normal + small;
+        if (total <= 0) {
+            return false;
+        }
+        return random.nextInt(total) >= normal;
+    }
+
+    private double speedFor(ArcherySettings.TargetGen gen, TargetType type) {
         if (type == TargetType.FIXED) {
             return 0.0;
         }
-        double fastLine = Math.max(settings.minSpeed,
-                Math.min(settings.maxSpeed, settings.fastSpeed));
+        double fastLine = Math.max(gen.minSpeed, Math.min(gen.maxSpeed, gen.fastSpeed));
         if (type == TargetType.MOVING) {
-            double low = settings.minSpeed;
+            double low = gen.minSpeed;
             double high = fastLine;
             if (high <= low) {
                 return Math.max(0.25, low);
             }
             return low + random.nextDouble() * (high - low);
         }
-        double low = Math.max(settings.minSpeed, settings.fastSpeed);
-        double high = Math.max(low, settings.maxSpeed);
+        double low = Math.max(gen.minSpeed, gen.fastSpeed);
+        double high = Math.max(low, gen.maxSpeed);
         if (high <= low) {
             return Math.max(0.25, low);
         }
@@ -560,14 +638,15 @@ public class ArcheryManager {
     }
 
     private boolean spawnTarget(ArcherySession s, TargetRegion region) {
-        if (s.finished || s.targets.size() >= settings.safetyMax) {
+        ArcherySettings.TargetGen gen = s.difficulty.gen;
+        if (s.finished || s.targets.size() >= gen.safetyMax) {
             return false;
         }
 
-        boolean small = random.nextDouble() < settings.smallChance;
-        double size = small ? settings.smallScale : 1.0;
+        boolean small = chooseSmall(s, region);
+        double size = small ? gen.smallScale : 1.0;
         TargetType type = chooseType(s, region);
-        double speed = speedFor(type);
+        double speed = speedFor(gen, type);
         boolean moving = type != TargetType.FIXED;
 
         Location point = region.randomPoint(random, size);
@@ -602,9 +681,9 @@ public class ArcheryManager {
         }
 
         Material material = switch (type) {
-            case FIXED -> settings.fixedBlock;
-            case MOVING -> settings.movingBlock;
-            case FAST -> settings.fastBlock;
+            case FIXED -> gen.fixedBlock;
+            case MOVING -> gen.movingBlock;
+            case FAST -> gen.fastBlock;
         };
         if (!point.getChunk().isLoaded()) {
             point.getChunk().load();
@@ -628,7 +707,7 @@ public class ArcheryManager {
                     new Quaternionf()));
             if (small) {
                 entity.setGlowing(true);
-                entity.setGlowColorOverride(settings.smallGlowColor);
+                entity.setGlowColorOverride(gen.smallGlowColor);
             }
         });
         for (Player other : Bukkit.getOnlinePlayers()) {
@@ -647,7 +726,7 @@ public class ArcheryManager {
             return;
         }
         long now = System.currentTimeMillis();
-        long lifetimeMs = settings.targetLifetimeSeconds * 1000L;
+        long lifetimeMs = s.difficulty.gen.lifetimeSeconds * 1000L;
         for (TargetInstance t : new ArrayList<>(s.targets)) {
             Entity entity = Bukkit.getEntity(t.displayId);
             if (!(entity instanceof BlockDisplay display) || !display.isValid()) {
@@ -700,10 +779,10 @@ public class ArcheryManager {
             ArcherySession current = sessions.get(id);
             if (current != null && !current.finished
                     && countInRegion(current, region) < region.count()
-                    && current.targets.size() < settings.safetyMax) {
+                    && current.targets.size() < current.difficulty.gen.safetyMax) {
                 spawnTarget(current, region);
             }
-        }, Math.max(1L, (long) settings.respawnDelayTicks));
+        }, Math.max(1L, (long) s.difficulty.gen.respawnDelayTicks));
     }
 
     // ---------- 箭矢 ----------
@@ -799,7 +878,7 @@ public class ArcheryManager {
     }
 
     private void awardHit(Player p, ArcherySession s, TargetInstance target, Vector point) {
-        // 原版命中事件和每 tick 扫掠可能同时到达，先移除成功的那一次才算分。
+        // 扫掠检测每 tick 只结算一次；移除成功才计分。
         if (!s.targets.remove(target)) {
             return;
         }
@@ -901,8 +980,12 @@ public class ArcheryManager {
 
     // ---------- 编辑模式 ----------
 
-    public void enterEdit(Player p) {
+    public void enterEdit(Player p, ArcherySettings.Difficulty difficulty) {
         UUID id = p.getUniqueId();
+        if (difficulty == null) {
+            Chat.send(p, "&c未知难度。");
+            return;
+        }
         if (edits.containsKey(id)) {
             Chat.send(p, "&e你已经在编辑模式。");
             return;
@@ -916,7 +999,7 @@ public class ArcheryManager {
             return;
         }
         SavedInventory inventory = new SavedInventory(p);
-        EditSession edit = new EditSession(inventory, new ArrayList<>(settings.regions));
+        EditSession edit = new EditSession(inventory, difficulty, new ArrayList<>(difficulty.regions));
         edits.put(id, edit);
 
         p.getInventory().clear();
@@ -925,12 +1008,12 @@ public class ArcheryManager {
         p.getInventory().setItem(2, createEditSave());
         p.getInventory().setItem(8, createEditExit());
 
-        Chat.send(p, "&6&l箭术大师 · 编辑模式");
+        Chat.send(p, "&6&l箭术大师 · 编辑模式 · " + difficulty.color + difficulty.name);
         Chat.send(p, "&f1. 木棍：左键/右键点两个对角方块");
-        Chat.send(p, "&f2. 下界之星：确认区域 → 聊天栏输入基础分 → 再输入该区域的靶子参数");
-        Chat.send(p, "&f3. 绿宝石：保存场地");
+        Chat.send(p, "&f2. 下界之星：确认区域 → 聊天栏输入基础分和移动轴 → 再输入区域参数");
+        Chat.send(p, "&f3. 绿宝石：保存场地（只保存当前难度）");
         Chat.send(p, "&f4. 屏障：退出（未保存的修改会丢弃）");
-        Chat.send(p, "&7当前已加载 &f" + edit.working.size() + " &7个区域。");
+        Chat.send(p, "&7当前 &f" + difficulty.name + " &7难度已加载 &f" + edit.working.size() + " &7个区域。");
     }
 
     public void exitEdit(Player p, boolean restoreInventory, boolean message) {
@@ -1044,10 +1127,12 @@ public class ArcheryManager {
         }
 
         if (isEditSave(item)) {
-            settings.regions = new ArrayList<>(edit.working);
-            saveRegions();
+            edit.difficulty.regions.clear();
+            edit.difficulty.regions.addAll(edit.working);
+            saveRegions(edit.difficulty);
             edit.dirty = false;
-            Chat.send(p, "&a已保存 &f" + edit.working.size() + " &a个靶场区域到 config.yml。");
+            Chat.send(p, "&a已保存 &f" + edit.working.size() + " &a个区域到 &f"
+                    + edit.difficulty.name + " &a难度的 config.yml。");
             return;
         }
 
@@ -1060,7 +1145,7 @@ public class ArcheryManager {
         }
     }
 
-    /** 聊天栏输入基础分；返回 true 表示这条聊天已被编辑模式消费。 */
+    /** 聊天栏输入基础分 + 移动轴；返回 true 表示这条聊天已被编辑模式消费。 */
     public boolean handleScoreInput(Player p, String raw) {
         UUID id = p.getUniqueId();
         if (!awaitingScore.remove(id)) {
@@ -1108,11 +1193,13 @@ public class ArcheryManager {
         edit.pendingAxis = axis;
         awaitingParams.add(id);
         Chat.send(p, "&a基础分 &f" + score + "&a、移动轴 &f" + axis.label + " &a已记录。接着输入该区域参数（空格分隔）：");
-        Chat.send(p, "&f<靶子总数> <固定权重> <移动权重> <快速权重> <固定保底> <移动保底> <快速保底>");
+        Chat.send(p, "&f<靶子总数> <固定权重> <移动权重> <快速权重> <正常权重> <缩小权重>");
+        Chat.send(p, "&f<固定保底> <移动保底> <快速保底> <缩小保底>");
         Chat.send(p, "&7直接输入 &fdone &7用默认值：&f" + TargetRegion.DEFAULT_COUNT + " "
                 + TargetRegion.DEFAULT_WEIGHT_FIXED + " " + TargetRegion.DEFAULT_WEIGHT_MOVING + " "
-                + TargetRegion.DEFAULT_WEIGHT_FAST + " 0 0 0&7；输入 cancel 取消。");
-        Chat.actionBar(p, "&e在聊天栏输入区域参数，或 done 用默认值");
+                + TargetRegion.DEFAULT_WEIGHT_FAST + " " + TargetRegion.DEFAULT_WEIGHT_NORMAL + " "
+                + TargetRegion.DEFAULT_WEIGHT_SMALL + " 0 0 0 0&7；输入 cancel 取消。");
+        Chat.actionBar(p, "&e聊天栏输入区域参数，或 done 用默认值");
         return true;
     }
 
@@ -1135,22 +1222,26 @@ public class ArcheryManager {
         }
 
         int count = TargetRegion.DEFAULT_COUNT;
-        int weightFixed = TargetRegion.DEFAULT_WEIGHT_FIXED;
-        int weightMoving = TargetRegion.DEFAULT_WEIGHT_MOVING;
-        int weightFast = TargetRegion.DEFAULT_WEIGHT_FAST;
-        int minFixed = 0;
-        int minMoving = 0;
-        int minFast = 0;
+        int[] weights = {
+                TargetRegion.DEFAULT_WEIGHT_FIXED,
+                TargetRegion.DEFAULT_WEIGHT_MOVING,
+                TargetRegion.DEFAULT_WEIGHT_FAST,
+                TargetRegion.DEFAULT_WEIGHT_NORMAL,
+                TargetRegion.DEFAULT_WEIGHT_SMALL
+        };
+        int[] minimums = new int[RegionMetric.values().length];
         boolean useDefaults = text.equalsIgnoreCase("done") || text.equals("默认")
                 || text.equals("skip") || text.isEmpty();
         if (!useDefaults) {
             String[] parts = text.split("\\s+");
-            if (parts.length > 7) {
+            if (parts.length > 10) {
                 awaitingParams.add(id);
-                Chat.send(p, "&c最多 7 个数字：总数 固权 移权 快权 固保 移保 快保。");
+                Chat.send(p, "&c最多 10 个数字：总数、五项权重、四项保底。");
                 return true;
             }
-            int[] values = {count, weightFixed, weightMoving, weightFast, minFixed, minMoving, minFast};
+            int[] values = new int[10];
+            values[0] = count;
+            System.arraycopy(weights, 0, values, 1, 5);
             for (int i = 0; i < parts.length; i++) {
                 try {
                     values[i] = Integer.parseInt(parts[i]);
@@ -1166,12 +1257,12 @@ public class ArcheryManager {
                 }
             }
             count = values[0];
-            weightFixed = values[1];
-            weightMoving = values[2];
-            weightFast = values[3];
-            minFixed = values[4];
-            minMoving = values[5];
-            minFast = values[6];
+            System.arraycopy(values, 1, weights, 0, 5);
+            // 第 7~10 个数字依次是固定/移动/快速/缩小保底。
+            minimums[RegionMetric.FIXED.ordinal()] = values[6];
+            minimums[RegionMetric.MOVING.ordinal()] = values[7];
+            minimums[RegionMetric.FAST.ordinal()] = values[8];
+            minimums[RegionMetric.SMALL.ordinal()] = values[9];
         }
 
         if (count > 64) {
@@ -1179,21 +1270,32 @@ public class ArcheryManager {
             Chat.send(p, "&c靶子总数最多 64（输入 cancel 取消）。");
             return true;
         }
-        if (count > 0 && weightFixed + weightMoving + weightFast <= 0) {
+        int typeWeight = weights[0] + weights[1] + weights[2];
+        int sizeWeight = weights[3] + weights[4];
+        if (count > 0 && typeWeight <= 0) {
             awaitingParams.add(id);
-            Chat.send(p, "&c三种权重不能全为 0（输入 cancel 取消）。");
+            Chat.send(p, "&c固定/移动/快速权重不能全为 0（输入 cancel 取消）。");
             return true;
         }
-        if (minFixed + minMoving + minFast > count) {
+        if (count > 0 && sizeWeight <= 0) {
             awaitingParams.add(id);
-            Chat.send(p, "&c三种保底数量之和不能超过靶子总数（输入 cancel 取消）。");
+            Chat.send(p, "&c正常/缩小权重不能全为 0（输入 cancel 取消）。");
+            return true;
+        }
+        int minimumSum = 0;
+        for (int value : minimums) {
+            minimumSum += value;
+        }
+        if (minimumSum > count) {
+            awaitingParams.add(id);
+            Chat.send(p, "&c保底数量之和不能超过靶子总数（输入 cancel 取消）。");
             return true;
         }
 
         TargetRegion base = TargetRegion.fromCorners(edit.pendingPos1.getWorld(),
                 edit.pendingPos1, edit.pendingPos2, edit.pendingBaseScore);
         TargetRegion region = base.withAxis(edit.pendingAxis).with(edit.pendingBaseScore, count,
-                weightFixed, weightMoving, weightFast, minFixed, minMoving, minFast);
+                weights, minimums);
         edit.working.add(region);
         edit.pendingPos1 = null;
         edit.pendingPos2 = null;
@@ -1211,12 +1313,12 @@ public class ArcheryManager {
 
     private ItemStack createEditConfirm() {
         return editItem(Material.NETHER_STAR, "&b确认区域",
-                List.of("&7两个对角都设置好后右键", "&7在聊天栏输入基础分和靶子参数"), editConfirmKey);
+                List.of("&7两个对角都设置好后右键", "&7输入基础分、移动轴和靶子参数"), editConfirmKey);
     }
 
     private ItemStack createEditSave() {
         return editItem(Material.EMERALD, "&a保存场地",
-                List.of("&7把当前所有区域写入 config.yml"), editSaveKey);
+                List.of("&7把当前难度的所有区域写入 config.yml"), editSaveKey);
     }
 
     private ItemStack createEditExit() {
@@ -1242,14 +1344,15 @@ public class ArcheryManager {
 
     // ---------- 管理命令 ----------
 
-    public List<String> listRegions() {
+    public List<String> listRegions(ArcherySettings.Difficulty difficulty) {
         List<String> out = new ArrayList<>();
-        if (settings.regions.isEmpty()) {
-            out.add("&7还没有配置靶场区域，用 /archery edit 添加。");
+        List<TargetRegion> regions = difficulty.regions;
+        if (regions.isEmpty()) {
+            out.add("&7" + difficulty.name + "难度还没有配置区域，用 /archery edit " + difficulty.id + " 添加。");
             return out;
         }
         int index = 1;
-        for (TargetRegion region : settings.regions) {
+        for (TargetRegion region : regions) {
             out.add("&e#" + index + " &f" + region.describe());
             out.add("&7   " + region.settingsLine());
             index++;
@@ -1257,85 +1360,75 @@ public class ArcheryManager {
         return out;
     }
 
-    public boolean removeRegion(int index) {
-        if (index < 1 || index > settings.regions.size()) {
+    public boolean removeRegion(ArcherySettings.Difficulty difficulty, int index) {
+        if (index < 1 || index > difficulty.regions.size()) {
             return false;
         }
-        settings.regions.remove(index - 1);
-        saveRegions();
+        difficulty.regions.remove(index - 1);
+        saveRegions(difficulty);
         return true;
     }
 
-    private TargetRegion regionAt(int index) {
-        if (index < 1 || index > settings.regions.size()) {
+    private TargetRegion regionAt(ArcherySettings.Difficulty difficulty, int index) {
+        if (index < 1 || index > difficulty.regions.size()) {
             return null;
         }
-        return settings.regions.get(index - 1);
+        return difficulty.regions.get(index - 1);
     }
 
-    private void replaceRegion(int index, TargetRegion region) {
-        settings.regions.set(index - 1, region);
-        saveRegions();
+    private void replaceRegion(ArcherySettings.Difficulty difficulty, int index, TargetRegion region) {
+        difficulty.regions.set(index - 1, region);
+        saveRegions(difficulty);
     }
 
-    public boolean setRegionCount(int index, int value) {
-        TargetRegion region = regionAt(index);
-        if (region == null || value < 0 || value > 64) {
+    public boolean setRegionCount(ArcherySettings.Difficulty difficulty, int index, int value) {
+        TargetRegion region = regionAt(difficulty, index);
+        if (region == null || value < 0 || value > 64 || region.minimumSum() > value) {
             return false;
         }
-        int guaranteed = region.minimum(TargetType.FIXED)
-                + region.minimum(TargetType.MOVING) + region.minimum(TargetType.FAST);
-        if (guaranteed > value) {
-            return false;
-        }
-        replaceRegion(index, region.with(-1, value, -1, -1, -1, -1, -1, -1));
+        replaceRegion(difficulty, index, region.with(-1, value, null, null));
         return true;
     }
 
-    public boolean setRegionWeight(int index, TargetType type, int value) {
-        TargetRegion region = regionAt(index);
-        if (region == null || type == null || value < 0 || value > 100000) {
+    public boolean setRegionWeight(ArcherySettings.Difficulty difficulty, int index,
+                                   RegionMetric metric, int value) {
+        TargetRegion region = regionAt(difficulty, index);
+        if (region == null || metric == null || value < 0 || value > 100000) {
             return false;
         }
-        int fixed = type == TargetType.FIXED ? value : -1;
-        int moving = type == TargetType.MOVING ? value : -1;
-        int fast = type == TargetType.FAST ? value : -1;
-        replaceRegion(index, region.with(-1, -1, fixed, moving, fast, -1, -1, -1));
+        replaceRegion(difficulty, index, region.withWeight(metric, value));
         return true;
     }
 
-    public boolean setRegionMinimum(int index, TargetType type, int value) {
-        TargetRegion region = regionAt(index);
-        if (region == null || type == null || value < 0 || value > region.count()) {
+    public boolean setRegionMinimum(ArcherySettings.Difficulty difficulty, int index,
+                                    RegionMetric metric, int value) {
+        TargetRegion region = regionAt(difficulty, index);
+        if (region == null || metric == null || value < 0 || value > region.count()) {
             return false;
         }
-        int total = region.minimum(TargetType.FIXED) + region.minimum(TargetType.MOVING)
-                + region.minimum(TargetType.FAST) - region.minimum(type) + value;
+        int total = region.minimumSum() - region.minimum(metric) + value;
         if (total > region.count()) {
             return false;
         }
-        int fixed = type == TargetType.FIXED ? value : -1;
-        int moving = type == TargetType.MOVING ? value : -1;
-        int fast = type == TargetType.FAST ? value : -1;
-        replaceRegion(index, region.with(-1, -1, -1, -1, -1, fixed, moving, fast));
+        replaceRegion(difficulty, index, region.withMinimum(metric, value));
         return true;
     }
 
-    public boolean setRegionScore(int index, int value) {
-        TargetRegion region = regionAt(index);
+    public boolean setRegionScore(ArcherySettings.Difficulty difficulty, int index, int value) {
+        TargetRegion region = regionAt(difficulty, index);
         if (region == null || value < 1 || value > 100000) {
             return false;
         }
-        replaceRegion(index, region.with(value, -1, -1, -1, -1, -1, -1, -1));
+        replaceRegion(difficulty, index, region.with(value, -1, null, null));
         return true;
     }
 
-    public boolean setRegionAxis(int index, TargetAxis axis) {
-        TargetRegion region = regionAt(index);
+    public boolean setRegionAxis(ArcherySettings.Difficulty difficulty, int index, TargetAxis axis) {
+        TargetRegion region = regionAt(difficulty, index);
         if (region == null || axis == null) {
             return false;
         }
-        replaceRegion(index, region.withAxis(axis));
+        replaceRegion(difficulty, index, region.withAxis(axis));
         return true;
     }
 
@@ -1350,8 +1443,13 @@ public class ArcheryManager {
         start = settings.start();
         saveStart();
         Chat.send(p, "&a射击站位已设置：&f" + locText(start));
-        if (start != null && regionsFor(start.getWorld()).isEmpty()) {
-            Chat.send(p, "&e注意：这个世界的靶场区域还没配置，用 /archery edit 添加。");
+        if (start != null) {
+            for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+                if (regionsFor(difficulty, start.getWorld()).isEmpty()) {
+                    Chat.send(p, "&e注意：" + difficulty.name + "难度在这个世界还没有配置区域（/archery edit "
+                            + difficulty.id + "）。");
+                }
+            }
         }
     }
 
@@ -1366,27 +1464,31 @@ public class ArcheryManager {
         plugin.saveConfig();
     }
 
-    public List<String> regionInfo() {
+    public List<String> difficultyInfo() {
         List<String> out = new ArrayList<>();
-        if (settings.regions.isEmpty()) {
-            out.add("&b靶场区域：&c未配置 &7（/archery edit 进入编辑模式）");
-        } else {
-            out.add("&b靶场区域：&f" + settings.regions.size() + " 个");
-            int index = 1;
-            for (TargetRegion region : settings.regions) {
-                out.add("&7#" + index + " &f" + region.describe());
-                out.add("&7   " + region.settingsLine());
-                index++;
-            }
+        for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+            out.add("&b" + difficulty.name + " &7(" + difficulty.id + ") &f- "
+                    + (difficulty.enabled ? "&a开放" : "&c关闭") + " &7· 区域 &f"
+                    + difficulty.regions.size() + " 个");
         }
         out.add("&b射击站位：&f" + (start == null
                 ? "&7未配置（从玩家当前位置开玩）" : locText(start)));
-        out.add("&b每局时长：&f" + settings.gameSeconds + " 秒 &7· &b全场安全上限：&f"
-                + settings.safetyMax + " &7· &b记录：&f" + recordCount() + " 人");
-        out.add("&b靶子速度：&f" + settings.minSpeed + "~" + settings.maxSpeed
-                + " 格/秒 &7· &b快速线：&f" + settings.fastSpeed + " 格/秒");
+        out.add("&b每局时长：&f" + settings.gameSeconds + " 秒 &7· &b记录：&f" + recordCount() + " 人");
         out.add("&b加成：&f移动 +" + settings.bonusMoving + " &7· &b快速 +"
                 + settings.bonusFast + " &7· &b缩小 +" + settings.bonusSmall);
+        return out;
+    }
+
+    public List<String> regionInfo(ArcherySettings.Difficulty difficulty) {
+        List<String> out = new ArrayList<>();
+        out.add("&b难度：&f" + difficulty.name + " &7(" + difficulty.id + ") &7· "
+                + (difficulty.enabled ? "&a开放" : "&c关闭"));
+        out.addAll(listRegions(difficulty));
+        ArcherySettings.TargetGen gen = difficulty.gen;
+        out.add("&b生成：&f安全上限 " + gen.safetyMax + " &7· &b刷新 " + gen.respawnDelayTicks
+                + " 刻 &7· &b存在 " + (gen.lifetimeSeconds <= 0 ? "永久" : gen.lifetimeSeconds + " 秒"));
+        out.add("&b速度：&f" + gen.minSpeed + "~" + gen.maxSpeed + " 格/秒 &7· &b快速线 "
+                + gen.fastSpeed + " &7· &b缩小比例 " + gen.smallScale);
         return out;
     }
 
@@ -1396,8 +1498,9 @@ public class ArcheryManager {
             return List.of("&7当前不在游戏中。");
         }
         List<String> out = new ArrayList<>();
-        out.add("&b本局：&f得分 " + s.score + " &7剩余 " + ((s.ticksLeft + 19) / 20)
-                + "s &7靶子 " + s.targets.size() + " &7飞行中的箭 " + s.arrows.size());
+        out.add("&b难度：" + s.difficulty.color + s.difficulty.name + " &7· &b得分 " + s.score
+                + " &7剩余 " + ((s.ticksLeft + 19) / 20) + "s &7靶子 " + s.targets.size()
+                + " &7飞行中的箭 " + s.arrows.size());
         for (TargetInstance t : s.targets) {
             out.add("&7- &f" + t.typeName() + " &7基础 " + t.baseScore
                     + " &7本次 " + t.score(settings) + " &7(" + fmt(t.x) + ", "
@@ -1429,8 +1532,16 @@ public class ArcheryManager {
                 continue;
             }
             Object entity = raw.get("entity");
+            Object footer = raw.get("footer");
+            Object interact = raw.get("interact");
+            Object difficulty = raw.get("difficulty");
+            String difficultyId = difficulty == null
+                    ? settings.defaultDifficulty().id : String.valueOf(difficulty);
             leaderboards.add(new LeaderBoard(loc,
-                    parseUuid(entity == null ? "" : String.valueOf(entity))));
+                    parseUuid(entity == null ? "" : String.valueOf(entity)),
+                    parseUuid(footer == null ? "" : String.valueOf(footer)),
+                    parseUuid(interact == null ? "" : String.valueOf(interact)),
+                    difficultyId));
         }
     }
 
@@ -1447,36 +1558,47 @@ public class ArcheryManager {
             map.put("z", board.loc.getZ());
             map.put("yaw", (double) board.loc.getYaw());
             map.put("pitch", (double) board.loc.getPitch());
+            map.put("difficulty", board.difficultyId);
             map.put("entity", board.entityId == null ? "" : board.entityId.toString());
+            map.put("footer", board.footerId == null ? "" : board.footerId.toString());
+            map.put("interact", board.interactionId == null ? "" : board.interactionId.toString());
             list.add(map);
         }
         plugin.getConfig().set("leaderboards", list);
         plugin.saveConfig();
     }
 
-    public void placeLeaderboard(Player p) {
+    public void placeLeaderboard(Player p, ArcherySettings.Difficulty difficulty) {
         Location loc = p.getLocation().clone().add(0, 0.5, 0);
         loc.setYaw(snapYaw(loc.getYaw()));
         loc.setPitch(0f);
-        LeaderBoard board = new LeaderBoard(loc, null);
+        LeaderBoard board = new LeaderBoard(loc, null, null, null, difficulty.id);
         leaderboards.add(board);
-        TextDisplay display = createDisplay(mainLocation(board), true);
+        TextDisplay display = createDisplay(mainLocation(board), true, difficulty);
         board.entityId = display == null ? null : display.getUniqueId();
+        board.footerId = spawnFooter(board.loc);
+        board.interactionId = spawnInteraction(board.loc);
         saveLeaderboards();
         refreshLeaderboards();
-        Chat.send(p, "&a已放置箭术大师排行榜（固定朝向，每 5 秒刷新）。");
+        Chat.send(p, "&a已放置 &f" + difficulty.name + " &a难度排行榜；右键底部「下一页 >>>」切换难度。");
     }
 
     public void removeLeaderboards(CommandSender sender) {
         for (LeaderBoard board : leaderboards) {
-            Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
-            if (entity != null) {
-                entity.remove();
-            }
+            removeEntity(board.entityId);
+            removeEntity(board.footerId);
+            removeEntity(board.interactionId);
         }
         leaderboards.clear();
         saveLeaderboards();
         Chat.send(sender, "&a已移除全部箭术大师排行榜。");
+    }
+
+    private void removeEntity(UUID id) {
+        Entity entity = id == null ? null : Bukkit.getEntity(id);
+        if (entity != null) {
+            entity.remove();
+        }
     }
 
     public void refreshLeaderboards() {
@@ -1491,19 +1613,42 @@ public class ArcheryManager {
             if (!board.loc.isChunkLoaded()) {
                 board.loc.getChunk().load();
             }
+            ArcherySettings.Difficulty difficulty = settings.difficulty(board.difficultyId);
+            if (difficulty == null) {
+                difficulty = settings.defaultDifficulty();
+                board.difficultyId = difficulty.id;
+                changed = true;
+            }
             Location main = mainLocation(board);
             Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
             if (!(entity instanceof TextDisplay display)) {
-                TextDisplay fresh = createDisplay(main, true);
+                TextDisplay fresh = createDisplay(main, true, difficulty);
                 board.entityId = fresh == null ? null : fresh.getUniqueId();
                 changed = changed || board.entityId != null;
             } else {
                 display.teleport(main);
                 display.setBillboard(Display.Billboard.FIXED);
                 display.setRotation(snapYaw(board.loc.getYaw() + 180f), 0f);
-                display.text(leaderboardText());
+                display.text(leaderboardText(difficulty));
                 display.setDefaultBackground(false);
                 display.setBackgroundColor(Color.fromARGB(130, 15, 15, 30));
+            }
+
+            Entity footer = board.footerId == null ? null : Bukkit.getEntity(board.footerId);
+            if (!(footer instanceof TextDisplay)) {
+                if (footer != null) {
+                    footer.remove();
+                }
+                board.footerId = spawnFooter(board.loc);
+                changed = changed || board.footerId != null;
+            }
+            Entity stand = board.interactionId == null ? null : Bukkit.getEntity(board.interactionId);
+            if (!(stand instanceof Interaction)) {
+                if (stand != null) {
+                    stand.remove();
+                }
+                board.interactionId = spawnInteraction(board.loc);
+                changed = changed || board.interactionId != null;
             }
         }
         if (changed) {
@@ -1513,11 +1658,110 @@ public class ArcheryManager {
 
     private Location mainLocation(LeaderBoard board) {
         Location main = board.loc.clone();
-        main.add(0, (1 + settings.topSize) / 2.0 * LINE_HEIGHT, 0);
+        main.add(0, (1 + settings.topSize) / 2.0 * LINE_HEIGHT + FOOTER_GAP, 0);
         return main;
     }
 
+    /** 底部「下一页 >>>」文字。 */
+    private UUID spawnFooter(Location loc) {
+        World world = loc.getWorld();
+        if (world == null) {
+            return null;
+        }
+        if (!loc.isChunkLoaded()) {
+            loc.getChunk().load();
+        }
+        Location spawnLoc = loc.clone();
+        spawnLoc.setPitch(0f);
+        TextDisplay display = world.spawn(spawnLoc, TextDisplay.class);
+        display.setBillboard(Display.Billboard.FIXED);
+        display.setRotation(snapYaw(loc.getYaw() + 180f), 0f);
+        display.setSeeThrough(false);
+        display.setShadowed(true);
+        display.setAlignment(TextDisplay.TextAlignment.CENTER);
+        display.setLineWidth(200);
+        display.setViewRange(64);
+        display.setPersistent(true);
+        display.setInvulnerable(true);
+        display.setGravity(false);
+        display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
+                new Vector3f(1.1f, 1.1f, 1.1f), new Quaternionf()));
+        display.text(Chat.color(FOOTER_TEXT));
+        display.setDefaultBackground(false);
+        display.setBackgroundColor(Color.fromARGB(130, 15, 15, 30));
+        return display.getUniqueId();
+    }
+
+    /** 只覆盖「下一页」那一行的点击区。 */
+    private UUID spawnInteraction(Location loc) {
+        World world = loc.getWorld();
+        if (world == null) {
+            return null;
+        }
+        Interaction interaction = world.spawn(loc.clone(), Interaction.class);
+        interaction.setInteractionWidth(3.2f);
+        interaction.setInteractionHeight(1.1f);
+        interaction.setResponsive(true);
+        interaction.setPersistent(false);
+        interaction.setInvulnerable(true);
+        interaction.setRotation(snapYaw(loc.getYaw() + 180f), 0f);
+        return interaction.getUniqueId();
+    }
+
+    public boolean isBoardInteraction(UUID id) {
+        if (id == null) {
+            return false;
+        }
+        for (LeaderBoard board : leaderboards) {
+            if (id.equals(board.interactionId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<ArcherySettings.Difficulty> enabledDifficulties() {
+        List<ArcherySettings.Difficulty> out = new ArrayList<>();
+        for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+            if (difficulty.enabled) {
+                out.add(difficulty);
+            }
+        }
+        return out;
+    }
+
+    /** 右键「下一页 >>>」：切到下一个已开放难度。 */
+    public void handleBoardClick(Player p, UUID interactionId) {
+        for (LeaderBoard board : leaderboards) {
+            if (!interactionId.equals(board.interactionId)) {
+                continue;
+            }
+            List<ArcherySettings.Difficulty> pages = enabledDifficulties();
+            if (pages.isEmpty()) {
+                return;
+            }
+            int index = -1;
+            for (int i = 0; i < pages.size(); i++) {
+                if (pages.get(i).id.equals(board.difficultyId)) {
+                    index = i;
+                    break;
+                }
+            }
+            ArcherySettings.Difficulty next = pages.get((index + 1) % pages.size());
+            board.difficultyId = next.id;
+            saveLeaderboards();
+            refreshLeaderboards();
+            Chat.actionBar(p, "&e排行榜已切到 " + next.color + next.name);
+            return;
+        }
+    }
+
     private TextDisplay createDisplay(Location loc, boolean persistent) {
+        return createDisplay(loc, persistent, settings.defaultDifficulty());
+    }
+
+    private TextDisplay createDisplay(Location loc, boolean persistent,
+                                      ArcherySettings.Difficulty difficulty) {
         World world = loc.getWorld();
         if (world == null) {
             return null;
@@ -1540,15 +1784,16 @@ public class ArcheryManager {
         display.setGravity(false);
         display.setTransformation(new Transformation(new Vector3f(), new Quaternionf(),
                 new Vector3f(1.3f, 1.3f, 1.3f), new Quaternionf()));
-        display.text(leaderboardText());
+        display.text(leaderboardText(difficulty));
         display.setDefaultBackground(false);
         display.setBackgroundColor(Color.fromARGB(130, 15, 15, 30));
         return display;
     }
 
-    private Component leaderboardText() {
-        StringBuilder sb = new StringBuilder("&6&l—— 箭术大师 · 排行榜 ——\n");
-        List<TopEntry> top = topEntries();
+    private Component leaderboardText(ArcherySettings.Difficulty difficulty) {
+        StringBuilder sb = new StringBuilder(difficulty.color)
+                .append("&l—— 箭术大师 · ").append(difficulty.name).append("榜 ——\n");
+        List<TopEntry> top = topEntries(difficulty);
         for (int i = 0; i < settings.topSize; i++) {
             if (i < top.size()) {
                 TopEntry entry = top.get(i);
@@ -1607,28 +1852,34 @@ public class ArcheryManager {
 
     // ---------- 记录 ----------
 
-    public int bestScore(UUID id) {
-        return data.getInt("best." + id, 0);
+    public int bestScore(UUID id, ArcherySettings.Difficulty difficulty) {
+        return data.getInt("best." + difficulty.id + "." + id, 0);
     }
 
     public int recordCount() {
-        ConfigurationSection best = data.getConfigurationSection("best");
-        return best == null ? 0 : best.getKeys(false).size();
+        int count = 0;
+        for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+            ConfigurationSection best = data.getConfigurationSection("best." + difficulty.id);
+            if (best != null) {
+                count += best.getKeys(false).size();
+            }
+        }
+        return count;
     }
 
     public record TopEntry(String id, String name, int score, long at) {
     }
 
-    private List<TopEntry> allEntries() {
+    private List<TopEntry> allEntries(ArcherySettings.Difficulty difficulty) {
         List<TopEntry> list = new ArrayList<>();
-        ConfigurationSection best = data.getConfigurationSection("best");
+        ConfigurationSection best = data.getConfigurationSection("best." + difficulty.id);
         if (best != null) {
             for (String id : best.getKeys(false)) {
                 int score = best.getInt(id);
                 if (score <= 0) {
                     continue;
                 }
-                long at = data.getLong("bestAt." + id, 0L);
+                long at = data.getLong("bestAt." + difficulty.id + "." + id, 0L);
                 String name = data.getString("names." + id, "未知玩家");
                 list.add(new TopEntry(id, name, score, at));
             }
@@ -1638,19 +1889,19 @@ public class ArcheryManager {
         return list;
     }
 
-    public List<TopEntry> topEntries() {
-        List<TopEntry> all = allEntries();
+    public List<TopEntry> topEntries(ArcherySettings.Difficulty difficulty) {
+        List<TopEntry> all = allEntries(difficulty);
         if (all.size() > settings.topSize) {
             return new ArrayList<>(all.subList(0, settings.topSize));
         }
         return all;
     }
 
-    public int rankOf(UUID id) {
-        if (bestScore(id) <= 0) {
+    public int rankOf(UUID id, ArcherySettings.Difficulty difficulty) {
+        if (bestScore(id, difficulty) <= 0) {
             return 0;
         }
-        List<TopEntry> all = allEntries();
+        List<TopEntry> all = allEntries(difficulty);
         for (int i = 0; i < all.size(); i++) {
             if (all.get(i).id().equals(id.toString())) {
                 return i + 1;
@@ -1659,24 +1910,26 @@ public class ArcheryManager {
         return 0;
     }
 
-    private void recordScore(UUID id, String name, int score) {
+    private void recordScore(UUID id, String name, int score, ArcherySettings.Difficulty difficulty) {
         if (score <= 0) {
             return;
         }
-        int best = data.getInt("best." + id, 0);
-        if (score <= best) {
+        String path = "best." + difficulty.id + "." + id;
+        if (score <= data.getInt(path, 0)) {
             return;
         }
-        data.set("best." + id, score);
-        data.set("bestAt." + id, System.currentTimeMillis());
+        data.set(path, score);
+        data.set("bestAt." + difficulty.id + "." + id, System.currentTimeMillis());
         data.set("names." + id, name);
         saveData();
         refreshLeaderboards();
     }
 
     public void resetRecord(UUID id) {
-        data.set("best." + id, null);
-        data.set("bestAt." + id, null);
+        for (ArcherySettings.Difficulty difficulty : settings.difficulties) {
+            data.set("best." + difficulty.id + "." + id, null);
+            data.set("bestAt." + difficulty.id + "." + id, null);
+        }
         data.set("names." + id, null);
         saveData();
         refreshLeaderboards();
@@ -1690,6 +1943,35 @@ public class ArcheryManager {
         refreshLeaderboards();
     }
 
+    /** 旧版单一分数：best.<uuid> -> best.normal.<uuid>。 */
+    private void migrateLegacyRecords() {
+        ConfigurationSection best = data.getConfigurationSection("best");
+        if (best == null) {
+            return;
+        }
+        boolean changed = false;
+        for (String key : new ArrayList<>(best.getKeys(false))) {
+            if (best.isConfigurationSection(key)) {
+                continue;
+            }
+            int score = best.getInt(key, 0);
+            if (score <= 0) {
+                continue;
+            }
+            data.set("best.normal." + key, score);
+            long at = data.getLong("bestAt." + key, 0L);
+            if (at > 0) {
+                data.set("bestAt.normal." + key, at);
+            }
+            data.set("best." + key, null);
+            data.set("bestAt." + key, null);
+            changed = true;
+        }
+        if (changed) {
+            saveData();
+        }
+    }
+
     private void saveData() {
         try {
             PlayerStats.save(NAMESPACE, data);
@@ -1701,15 +1983,22 @@ public class ArcheryManager {
     private static final class LeaderBoard {
         final Location loc;
         UUID entityId;
+        UUID footerId;
+        UUID interactionId;
+        String difficultyId;
 
-        LeaderBoard(Location loc, UUID entityId) {
+        LeaderBoard(Location loc, UUID entityId, UUID footerId, UUID interactionId, String difficultyId) {
             this.loc = loc;
             this.entityId = entityId;
+            this.footerId = footerId;
+            this.interactionId = interactionId;
+            this.difficultyId = difficultyId;
         }
     }
 
     private static final class EditSession {
         final SavedInventory inventory;
+        final ArcherySettings.Difficulty difficulty;
         final List<TargetRegion> working;
         Location pos1;
         Location pos2;
@@ -1719,8 +2008,10 @@ public class ArcheryManager {
         TargetAxis pendingAxis = TargetAxis.X;
         boolean dirty;
 
-        EditSession(SavedInventory inventory, List<TargetRegion> working) {
+        EditSession(SavedInventory inventory, ArcherySettings.Difficulty difficulty,
+                    List<TargetRegion> working) {
             this.inventory = inventory;
+            this.difficulty = difficulty;
             this.working = working;
         }
     }

@@ -1,5 +1,6 @@
 package com.archery;
 
+import com.hub.util.Chat;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
@@ -17,14 +18,17 @@ import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
@@ -36,6 +40,41 @@ public class ArcheryListener implements Listener {
 
     public ArcheryListener(ArcheryPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDifficultyClick(InventoryClickEvent event) {
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof DifficultyMenu menu)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getClickedInventory() != top) {
+            return;
+        }
+        ArcherySettings.Difficulty difficulty = menu.difficultyAt(event.getRawSlot());
+        if (difficulty == null || !(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        player.closeInventory();
+        if (!difficulty.enabled) {
+            Chat.send(player, "&c这个难度还没有开放。");
+            return;
+        }
+        plugin.getManager().join(player, difficulty);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBoardClick(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+        UUID id = event.getRightClicked().getUniqueId();
+        if (!plugin.getManager().isBoardInteraction(id)) {
+            return;
+        }
+        event.setCancelled(true);
+        plugin.getManager().handleBoardClick(event.getPlayer(), id);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

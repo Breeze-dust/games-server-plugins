@@ -10,7 +10,7 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.List;
 
-/** /archery（别名 /am、/箭术大师）。无参数直接开始。 */
+/** /archery（别名 /am、/箭术大师）。无参数打开难度选择。 */
 public class ArcheryCommand implements CommandExecutor, TabCompleter {
 
     private final ArcheryPlugin plugin;
@@ -25,7 +25,7 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         if (args.length == 0) {
             Player player = asPlayer(sender);
             if (player != null) {
-                manager.join(player);
+                manager.openDifficultyMenu(player);
             } else {
                 help(sender);
             }
@@ -36,8 +36,29 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "join", "start", "play", "射箭", "开始" -> {
                 Player player = asPlayer(sender);
-                if (player != null) {
-                    manager.join(player);
+                if (player == null) {
+                    return true;
+                }
+                if (args.length < 2) {
+                    manager.openDifficultyMenu(player);
+                    return true;
+                }
+                ArcherySettings.Difficulty difficulty = manager.difficultyById(args[1]);
+                if (difficulty == null) {
+                    Chat.send(sender, "&c未知难度：" + args[1] + "（可用 normal/hard/evil 或 正常/困难/恶意）");
+                    return true;
+                }
+                manager.join(player, difficulty);
+            }
+            case "normal", "hard", "evil", "正常", "困难", "恶意" -> {
+                Player player = asPlayer(sender);
+                ArcherySettings.Difficulty difficulty = switch (sub) {
+                    case "normal", "正常" -> manager.difficultyById("normal");
+                    case "hard", "困难" -> manager.difficultyById("hard");
+                    default -> manager.difficultyById("evil");
+                };
+                if (player != null && difficulty != null) {
+                    manager.join(player, difficulty);
                 }
             }
             case "leave", "quit", "exit", "退出" -> {
@@ -49,15 +70,28 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
             case "top", "rank" -> {
                 if (args.length >= 2 && args[1].equalsIgnoreCase("place")) {
                     Player player = adminPlayer(sender);
-                    if (player != null) {
-                        manager.placeLeaderboard(player);
+                    if (player == null) {
+                        return true;
                     }
+                    ArcherySettings.Difficulty difficulty = args.length >= 3
+                            ? manager.difficultyById(args[2]) : manager.defaultDifficulty();
+                    if (difficulty == null) {
+                        Chat.send(sender, "&c未知难度：" + args[2]);
+                        return true;
+                    }
+                    manager.placeLeaderboard(player, difficulty);
                 } else if (args.length >= 2 && args[1].equalsIgnoreCase("remove")) {
                     if (requireAdmin(sender)) {
                         manager.removeLeaderboards(sender);
                     }
                 } else {
-                    showTop(sender, manager);
+                    ArcherySettings.Difficulty difficulty = args.length >= 2
+                            ? manager.difficultyById(args[1]) : manager.defaultDifficulty();
+                    if (difficulty == null) {
+                        Chat.send(sender, "&c未知难度：" + args[1]);
+                        return true;
+                    }
+                    showTop(sender, manager, difficulty);
                 }
             }
             case "stats", "me" -> showStats(sender, manager, args);
@@ -70,98 +104,60 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
             }
             case "edit" -> {
                 Player player = adminPlayer(sender);
-                if (player != null) {
-                    manager.enterEdit(player);
+                if (player == null) {
+                    return true;
                 }
+                if (args.length < 2) {
+                    Chat.send(sender, "&c用法：/archery edit <normal|hard|evil>");
+                    return true;
+                }
+                ArcherySettings.Difficulty difficulty = manager.difficultyById(args[1]);
+                if (difficulty == null) {
+                    Chat.send(sender, "&c未知难度：" + args[1]);
+                    return true;
+                }
+                manager.enterEdit(player, difficulty);
             }
             case "regions", "regionlist" -> {
-                if (requireAdmin(sender)) {
-                    for (String line : manager.listRegions()) {
-                        Chat.send(sender, line);
-                    }
+                if (!requireAdmin(sender)) {
+                    return true;
+                }
+                if (args.length < 2) {
+                    Chat.send(sender, "&c用法：/archery regions <normal|hard|evil>");
+                    return true;
+                }
+                ArcherySettings.Difficulty difficulty = manager.difficultyById(args[1]);
+                if (difficulty == null) {
+                    Chat.send(sender, "&c未知难度：" + args[1]);
+                    return true;
+                }
+                for (String line : manager.listRegions(difficulty)) {
+                    Chat.send(sender, line);
                 }
             }
             case "region" -> {
                 if (!requireAdmin(sender)) {
                     return true;
                 }
-                if (args.length >= 3 && args[1].equalsIgnoreCase("remove")) {
-                    Integer index = integer(args[2]);
-                    if (index == null || !manager.removeRegion(index)) {
-                        Chat.send(sender, "&c序号不对。");
-                        return true;
-                    }
-                    Chat.send(sender, "&a已删除区域 #" + index + "。");
-                    return true;
-                }
-                if (args.length >= 3 && args[1].equalsIgnoreCase("set")) {
-                    Integer index = integer(args[2]);
-                    if (index == null) {
-                        Chat.send(sender, "&c序号不对。");
-                        return true;
-                    }
-                    if (args.length == 5) {
-                        String key = args[3].toLowerCase();
-                        if (key.equals("axis") || key.equals("轴") || key.equals("移动轴")) {
-                            TargetAxis axis = TargetAxis.fromKey(args[4]);
-                            if (axis == null || !manager.setRegionAxis(index, axis)) {
-                                Chat.send(sender, "&c移动轴只能是 x 或 z。");
-                                return true;
-                            }
-                            Chat.send(sender, "&a已更新区域 #" + index + "，用 /archery regions 查看。");
-                            return true;
-                        }
-                        Integer value = integer(args[4]);
-                        if (value == null) {
-                            Chat.send(sender, "&c数值不对。");
-                            return true;
-                        }
-                        boolean ok = switch (key) {
-                            case "count", "数量", "总数" -> manager.setRegionCount(index, value);
-                            case "score", "基础分", "基础" -> manager.setRegionScore(index, value);
-                            default -> false;
-                        };
-                        if (!ok) {
-                            Chat.send(sender, "&c设置失败：检查序号/数值（保底总和不能超过总数）。");
-                            return true;
-                        }
-                        Chat.send(sender, "&a已更新区域 #" + index + "，用 /archery regions 查看。");
-                        return true;
-                    }
-                    if (args.length == 6) {
-                        TargetType type = TargetType.fromKey(args[4]);
-                        Integer value = integer(args[5]);
-                        if (type == null || value == null) {
-                            Chat.send(sender, "&c类型或数值不对（类型：fixed/moving/fast）。");
-                            return true;
-                        }
-                        boolean ok = switch (args[3].toLowerCase()) {
-                            case "weight", "权重" -> manager.setRegionWeight(index, type, value);
-                            case "guarantee", "min", "保底" -> manager.setRegionMinimum(index, type, value);
-                            default -> false;
-                        };
-                        if (!ok) {
-                            Chat.send(sender, "&c设置失败：检查序号/数值（保底总和不能超过总数）。");
-                            return true;
-                        }
-                        Chat.send(sender, "&a已更新区域 #" + index + "，用 /archery regions 查看。");
-                        return true;
-                    }
-                }
-                Chat.send(sender, "&c用法：");
-                Chat.send(sender, "&f/archery region remove <序号>");
-                Chat.send(sender, "&f/archery region set <序号> count <数量>");
-                Chat.send(sender, "&f/archery region set <序号> weight <fixed|moving|fast> <数值>");
-                Chat.send(sender, "&f/archery region set <序号> guarantee <fixed|moving|fast> <数量>");
-                Chat.send(sender, "&f/archery region set <序号> score <基础分>");
-                Chat.send(sender, "&f/archery region set <序号> axis <x|z>");
+                handleRegion(sender, manager, args);
             }
             case "info" -> {
                 if (!requireAdmin(sender)) {
                     return true;
                 }
-                for (String line : manager.regionInfo()) {
-                    Chat.send(sender, line);
+                if (args.length >= 2) {
+                    ArcherySettings.Difficulty difficulty = manager.difficultyById(args[1]);
+                    if (difficulty == null) {
+                        Chat.send(sender, "&c未知难度：" + args[1]);
+                        return true;
+                    }
+                    for (String line : manager.regionInfo(difficulty)) {
+                        Chat.send(sender, line);
+                    }
+                } else {
+                    for (String line : manager.difficultyInfo()) {
+                        Chat.send(sender, line);
+                    }
                 }
             }
             case "debug" -> {
@@ -208,11 +204,99 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private void showTop(CommandSender sender, ArcheryManager manager) {
-        List<ArcheryManager.TopEntry> top = manager.topEntries();
-        Chat.send(sender, "&8&m----&r &6&l箭术大师 · 排行榜 &8&m----");
+    private void handleRegion(CommandSender sender, ArcheryManager manager, String[] args) {
+        if (args.length >= 4 && args[1].equalsIgnoreCase("remove")) {
+            ArcherySettings.Difficulty difficulty = manager.difficultyById(args[2]);
+            Integer index = integer(args[3]);
+            if (difficulty == null || index == null || !manager.removeRegion(difficulty, index)) {
+                Chat.send(sender, "&c难度或序号不对。");
+                return;
+            }
+            Chat.send(sender, "&a已删除 " + difficulty.name + " 难度的区域 #" + index + "。");
+            return;
+        }
+
+        if (args.length >= 6 && args[1].equalsIgnoreCase("set")) {
+            ArcherySettings.Difficulty difficulty = manager.difficultyById(args[2]);
+            Integer index = integer(args[3]);
+            if (difficulty == null || index == null) {
+                Chat.send(sender, "&c难度或序号不对。");
+                return;
+            }
+            String key = args[4].toLowerCase();
+            if (args.length == 6) {
+                if (isAxisKey(key)) {
+                    TargetAxis axis = TargetAxis.fromKey(args[5]);
+                    if (axis == null || !manager.setRegionAxis(difficulty, index, axis)) {
+                        Chat.send(sender, "&c移动轴只能是 x 或 z。");
+                        return;
+                    }
+                    updated(sender, difficulty, index);
+                    return;
+                }
+                Integer value = integer(args[5]);
+                if (value == null) {
+                    Chat.send(sender, "&c数值不对。");
+                    return;
+                }
+                boolean ok = switch (key) {
+                    case "count", "数量", "总数" -> manager.setRegionCount(difficulty, index, value);
+                    case "score", "基础分", "基础" -> manager.setRegionScore(difficulty, index, value);
+                    default -> false;
+                };
+                if (!ok) {
+                    Chat.send(sender, "&c设置失败：检查序号/数值（保底总和不能超过总数）。");
+                    return;
+                }
+                updated(sender, difficulty, index);
+                return;
+            }
+            if (args.length == 7) {
+                RegionMetric metric = RegionMetric.fromKey(args[5]);
+                Integer value = integer(args[6]);
+                if (metric == null || value == null) {
+                    Chat.send(sender, "&c类型或数值不对（类型：fixed/moving/fast/normal/small）。");
+                    return;
+                }
+                boolean ok = switch (key) {
+                    case "weight", "权重" -> manager.setRegionWeight(difficulty, index, metric, value);
+                    case "guarantee", "min", "保底" -> manager.setRegionMinimum(difficulty, index, metric, value);
+                    default -> false;
+                };
+                if (!ok) {
+                    Chat.send(sender, "&c设置失败：检查序号/数值（保底总和不能超过总数）。");
+                    return;
+                }
+                updated(sender, difficulty, index);
+                return;
+            }
+        }
+
+        Chat.send(sender, "&c用法：");
+        Chat.send(sender, "&f/archery region remove <难度> <序号>");
+        Chat.send(sender, "&f/archery region set <难度> <序号> count <数量>");
+        Chat.send(sender, "&f/archery region set <难度> <序号> score <基础分>");
+        Chat.send(sender, "&f/archery region set <难度> <序号> axis <x|z>");
+        Chat.send(sender, "&f/archery region set <难度> <序号> weight <fixed|moving|fast|normal|small> <数值>");
+        Chat.send(sender, "&f/archery region set <难度> <序号> guarantee <fixed|moving|fast|small> <数量>");
+    }
+
+    private static boolean isAxisKey(String key) {
+        return key.equals("axis") || key.equals("轴") || key.equals("移动轴");
+    }
+
+    private void updated(CommandSender sender, ArcherySettings.Difficulty difficulty, int index) {
+        Chat.send(sender, "&a已更新 " + difficulty.name + " 难度的区域 #" + index
+                + "，用 /archery regions " + difficulty.id + " 查看。");
+    }
+
+    private void showTop(CommandSender sender, ArcheryManager manager,
+                         ArcherySettings.Difficulty difficulty) {
+        List<ArcheryManager.TopEntry> top = manager.topEntries(difficulty);
+        Chat.send(sender, "&8&m----&r " + difficulty.color + "&l箭术大师 · " + difficulty.name
+                + "榜 &8&m----");
         if (top.isEmpty()) {
-            Chat.send(sender, "&7还没有记录。");
+            Chat.send(sender, "&7这个难度还没有记录。");
             return;
         }
         int rank = 1;
@@ -238,24 +322,29 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 return;
             }
         }
-        int best = manager.bestScore(target.getUniqueId());
-        int rank = manager.rankOf(target.getUniqueId());
-        Chat.send(sender, "&6" + target.getName() + " &f最高分：&6" + best
-                + (rank > 0 ? " &7（第 " + rank + " 名）" : " &7（暂无排名）"));
+        Chat.send(sender, "&6" + target.getName() + " &f各难度最高分：");
+        for (ArcherySettings.Difficulty difficulty : manager.difficulties()) {
+            int best = manager.bestScore(target.getUniqueId(), difficulty);
+            int rank = manager.rankOf(target.getUniqueId(), difficulty);
+            Chat.send(sender, "  " + difficulty.color + difficulty.name + " &7- &e" + best
+                    + (rank > 0 ? " &7（第 " + rank + " 名）" : ""));
+        }
     }
 
     private void help(CommandSender sender) {
         Chat.send(sender, "&8&m--------&r &6&l箭术大师 &8&m--------");
-        Chat.send(sender, "&f/archery &7- 开始射箭");
+        Chat.send(sender, "&f/archery &7- 选择难度并开始射箭");
+        Chat.send(sender, "&f/archery normal|hard|evil &7- 直接开始某个难度");
         Chat.send(sender, "&f/archery leave &7- 退出本局");
-        Chat.send(sender, "&f/archery top &7- 查看排行榜");
-        Chat.send(sender, "&f/archery stats [玩家] &7- 查看最高分和名次");
+        Chat.send(sender, "&f/archery top [难度] &7- 查看排行榜");
+        Chat.send(sender, "&f/archery stats [玩家] &7- 查看各难度最高分");
         if (hasAdmin(sender)) {
-            Chat.send(sender, "&7管理：&fedit &7/&f setstart &7/&f info &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
-            Chat.send(sender, "&7靶场：&f/archery edit &7进入编辑模式（木棍选对角、下界之星确认并输入基础分和参数、绿宝石保存、屏障退出）");
-            Chat.send(sender, "&7　　　&f/archery regions &7查看全部区域，&f/archery region remove <序号> &7删除");
-            Chat.send(sender, "&7　　　&f/archery region set <序号> count|weight|guarantee|score|axis ... &7在线改参数");
-            Chat.send(sender, "&7排行榜：&f/archery top place &7（当前位置放置）、&f/archery top remove");
+            Chat.send(sender, "&7管理：&fedit <难度> &7/&f setstart &7/&f info [难度] &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
+            Chat.send(sender, "&7靶场：&f/archery edit <normal|hard|evil> &7编辑对应难度；"
+                    + "&f/archery regions <难度> &7查看区域");
+            Chat.send(sender, "&7区域：&f/archery region remove <难度> <序号>，"
+                    + "&fset <难度> <序号> count|score|axis|weight|guarantee ...");
+            Chat.send(sender, "&7排行榜：&f/archery top place [难度] &7（当前位置放置）、&f/archery top remove");
         }
     }
 
@@ -294,11 +383,19 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private List<String> difficultyIds() {
+        List<String> ids = new ArrayList<>();
+        for (ArcherySettings.Difficulty difficulty : plugin.getManager().difficulties()) {
+            ids.add(difficulty.id);
+        }
+        return ids;
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> out = new ArrayList<>();
         if (args.length == 1) {
-            for (String sub : List.of("join", "leave", "top", "stats", "help")) {
+            for (String sub : List.of("join", "normal", "hard", "evil", "leave", "top", "stats", "help")) {
                 if (sub.startsWith(args[0].toLowerCase())) {
                     out.add(sub);
                 }
@@ -310,51 +407,84 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                     }
                 }
             }
-        } else if (args.length == 2 && "top".equalsIgnoreCase(args[0])) {
-            List<String> options = hasAdmin(sender) ? List.of("place", "remove") : List.of();
-            for (String option : options) {
-                if (option.startsWith(args[1].toLowerCase())) {
-                    out.add(option);
+            return out;
+        }
+
+        String first = args[0].toLowerCase();
+        String second = args[1].toLowerCase();
+        if (args.length == 2) {
+            if (first.equals("top")) {
+                if (hasAdmin(sender)) {
+                    for (String option : List.of("place", "remove")) {
+                        if (option.startsWith(second)) {
+                            out.add(option);
+                        }
+                    }
+                }
+                for (String id : difficultyIds()) {
+                    if (id.startsWith(second)) {
+                        out.add(id);
+                    }
+                }
+            } else if (first.equals("join") || first.equals("play") || first.equals("start")
+                    || first.equals("edit") || first.equals("regions") || first.equals("info")) {
+                for (String id : difficultyIds()) {
+                    if (id.startsWith(second)) {
+                        out.add(id);
+                    }
+                }
+            } else if (first.equals("region") && hasAdmin(sender)) {
+                for (String option : List.of("remove", "set")) {
+                    if (option.startsWith(second)) {
+                        out.add(option);
+                    }
+                }
+            } else if (first.equals("stats") || first.equals("reset")) {
+                if (first.equals("reset") && "all".startsWith(second)) {
+                    out.add("all");
+                }
+                for (Player player : plugin.getServer().getOnlinePlayers()) {
+                    if (player.getName().toLowerCase().startsWith(second)) {
+                        out.add(player.getName());
+                    }
                 }
             }
-        } else if (args.length == 2 && "region".equalsIgnoreCase(args[0]) && hasAdmin(sender)) {
-            for (String option : List.of("remove", "set")) {
-                if (option.startsWith(args[1].toLowerCase())) {
-                    out.add(option);
+        } else if (args.length == 3 && first.equals("top")
+                && ("place".equalsIgnoreCase(args[1]) || "remove".equalsIgnoreCase(args[1]))) {
+            for (String id : difficultyIds()) {
+                if (id.startsWith(args[2].toLowerCase())) {
+                    out.add(id);
                 }
             }
-        } else if (args.length == 4 && "region".equalsIgnoreCase(args[0])
-                && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)) {
-            for (String option : List.of("count", "weight", "guarantee", "score", "axis")) {
-                if (option.startsWith(args[3].toLowerCase())) {
-                    out.add(option);
+        } else if (args.length == 3 && first.equals("region") && hasAdmin(sender)
+                && ("remove".equalsIgnoreCase(args[1]) || "set".equalsIgnoreCase(args[1]))) {
+            for (String id : difficultyIds()) {
+                if (id.startsWith(args[2].toLowerCase())) {
+                    out.add(id);
                 }
             }
-        } else if (args.length == 5 && "region".equalsIgnoreCase(args[0])
-                && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)
-                && ("weight".equalsIgnoreCase(args[3]) || "guarantee".equalsIgnoreCase(args[3]))) {
-            for (String option : List.of("fixed", "moving", "fast")) {
+        } else if (args.length == 5 && first.equals("region") && hasAdmin(sender)
+                && "set".equalsIgnoreCase(args[1])) {
+            for (String option : List.of("count", "score", "axis", "weight", "guarantee")) {
                 if (option.startsWith(args[4].toLowerCase())) {
                     out.add(option);
                 }
             }
-        } else if (args.length == 5 && "region".equalsIgnoreCase(args[0])
-                && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)
-                && ("axis".equalsIgnoreCase(args[3]) || "轴".equals(args[3]) || "移动轴".equals(args[3]))) {
-            for (String option : List.of("x", "z")) {
-                if (option.startsWith(args[4].toLowerCase())) {
-                    out.add(option);
+        } else if (args.length == 6 && first.equals("region") && hasAdmin(sender)
+                && "set".equalsIgnoreCase(args[1])) {
+            String key = args[4].toLowerCase();
+            if (key.equals("axis") || key.equals("轴") || key.equals("移动轴")) {
+                for (String option : List.of("x", "z")) {
+                    if (option.startsWith(args[5].toLowerCase())) {
+                        out.add(option);
+                    }
                 }
-            }
-        } else if (args.length == 2
-                && ("stats".equalsIgnoreCase(args[0]) || "reset".equalsIgnoreCase(args[0]))) {
-            String prefix = args[1].toLowerCase();
-            if ("reset".equalsIgnoreCase(args[0]) && "all".startsWith(prefix)) {
-                out.add("all");
-            }
-            for (Player player : plugin.getServer().getOnlinePlayers()) {
-                if (player.getName().toLowerCase().startsWith(prefix)) {
-                    out.add(player.getName());
+            } else if (key.equals("weight") || key.equals("权重")
+                    || key.equals("guarantee") || key.equals("min") || key.equals("保底")) {
+                for (String option : List.of("fixed", "moving", "fast", "normal", "small")) {
+                    if (option.startsWith(args[5].toLowerCase())) {
+                        out.add(option);
+                    }
                 }
             }
         }

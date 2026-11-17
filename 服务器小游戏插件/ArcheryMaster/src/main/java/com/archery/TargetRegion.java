@@ -6,16 +6,17 @@ import org.bukkit.World;
 import java.util.Random;
 
 /**
- * 一个长方体靶子生成区域，带自己的基础分、靶子总数、类型权重和保底数量。
+ * 一个长方体靶子生成区域，带自己的基础分、靶子总数、类型/大小权重和保底数量、移动轴。
  * 坐标是连续坐标：编辑模式下选中的方块整格算进区域（max 加 1）。
  */
 public final class TargetRegion {
 
-    /** 新区域默认参数。 */
     public static final int DEFAULT_COUNT = 4;
     public static final int DEFAULT_WEIGHT_FIXED = 5;
     public static final int DEFAULT_WEIGHT_MOVING = 3;
     public static final int DEFAULT_WEIGHT_FAST = 2;
+    public static final int DEFAULT_WEIGHT_NORMAL = 65;
+    public static final int DEFAULT_WEIGHT_SMALL = 35;
     public static final int DEFAULT_MINIMUM = 0;
 
     private final World world;
@@ -26,21 +27,15 @@ public final class TargetRegion {
     private final double maxY;
     private final double maxZ;
     private final int baseScore;
-    /** 这个区域同时存在的靶子总数。 */
     private final int count;
-    private final int weightFixed;
-    private final int weightMoving;
-    private final int weightFast;
-    private final int minFixed;
-    private final int minMoving;
-    private final int minFast;
-    /** 移动靶往返运动所沿的轴：只在这一条轴上动，另一轴固定不动。 */
+    /** 下标 = {@link RegionMetric#ordinal()}。 */
+    private final int[] weights;
+    private final int[] minimums;
     private final TargetAxis axis;
 
     public TargetRegion(World world, double minX, double minY, double minZ,
                         double maxX, double maxY, double maxZ, int baseScore,
-                        int count, int weightFixed, int weightMoving, int weightFast,
-                        int minFixed, int minMoving, int minFast, TargetAxis axis) {
+                        int count, int[] weights, int[] minimums, TargetAxis axis) {
         this.world = world;
         this.minX = minX;
         this.minY = minY;
@@ -50,12 +45,8 @@ public final class TargetRegion {
         this.maxZ = maxZ;
         this.baseScore = baseScore;
         this.count = count;
-        this.weightFixed = weightFixed;
-        this.weightMoving = weightMoving;
-        this.weightFast = weightFast;
-        this.minFixed = minFixed;
-        this.minMoving = minMoving;
-        this.minFast = minFast;
+        this.weights = defaultWeights(weights);
+        this.minimums = defaultMinimums(minimums);
         this.axis = axis == null ? TargetAxis.X : axis;
     }
 
@@ -67,31 +58,67 @@ public final class TargetRegion {
         double maxY = Math.max(a.getY(), b.getY()) + 1.0;
         double maxZ = Math.max(a.getZ(), b.getZ()) + 1.0;
         return new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ, baseScore,
-                DEFAULT_COUNT, DEFAULT_WEIGHT_FIXED, DEFAULT_WEIGHT_MOVING, DEFAULT_WEIGHT_FAST,
-                DEFAULT_MINIMUM, DEFAULT_MINIMUM, DEFAULT_MINIMUM, TargetAxis.X);
+                DEFAULT_COUNT, defaultWeights(null), defaultMinimums(null), TargetAxis.X);
     }
 
-    /** 复制区域并替换部分参数；传 -1 表示保持原值。 */
-    public TargetRegion with(int newBaseScore, int newCount,
-                             int newWeightFixed, int newWeightMoving, int newWeightFast,
-                             int newMinFixed, int newMinMoving, int newMinFast) {
+    private static int[] defaultWeights(int[] source) {
+        int[] values = new int[RegionMetric.values().length];
+        values[RegionMetric.FIXED.ordinal()] = DEFAULT_WEIGHT_FIXED;
+        values[RegionMetric.MOVING.ordinal()] = DEFAULT_WEIGHT_MOVING;
+        values[RegionMetric.FAST.ordinal()] = DEFAULT_WEIGHT_FAST;
+        values[RegionMetric.NORMAL.ordinal()] = DEFAULT_WEIGHT_NORMAL;
+        values[RegionMetric.SMALL.ordinal()] = DEFAULT_WEIGHT_SMALL;
+        if (source != null) {
+            for (RegionMetric metric : RegionMetric.values()) {
+                int index = metric.ordinal();
+                if (index < source.length && source[index] >= 0) {
+                    values[index] = source[index];
+                }
+            }
+        }
+        return values;
+    }
+
+    private static int[] defaultMinimums(int[] source) {
+        int[] values = new int[RegionMetric.values().length];
+        if (source != null) {
+            for (RegionMetric metric : RegionMetric.values()) {
+                int index = metric.ordinal();
+                if (index < source.length) {
+                    values[index] = Math.max(0, source[index]);
+                }
+            }
+        }
+        return values;
+    }
+
+    /** 复制区域并替换部分参数；baseScore/count 传 -1 表示保持原值。 */
+    public TargetRegion with(int newBaseScore, int newCount, int[] newWeights, int[] newMinimums) {
         return new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ,
                 newBaseScore < 0 ? baseScore : newBaseScore,
                 newCount < 0 ? count : newCount,
-                newWeightFixed < 0 ? weightFixed : newWeightFixed,
-                newWeightMoving < 0 ? weightMoving : newWeightMoving,
-                newWeightFast < 0 ? weightFast : newWeightFast,
-                newMinFixed < 0 ? minFixed : newMinFixed,
-                newMinMoving < 0 ? minMoving : newMinMoving,
-                newMinFast < 0 ? minFast : newMinFast,
+                newWeights == null ? weights : newWeights,
+                newMinimums == null ? minimums : newMinimums,
                 axis);
     }
 
-    /** 复制区域并换一个移动轴。 */
     public TargetRegion withAxis(TargetAxis newAxis) {
         return new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ, baseScore,
-                count, weightFixed, weightMoving, weightFast,
-                minFixed, minMoving, minFast, newAxis == null ? axis : newAxis);
+                count, weights.clone(), minimums.clone(), newAxis == null ? axis : newAxis);
+    }
+
+    /** 改单项权重（其他项保持）。 */
+    public TargetRegion withWeight(RegionMetric metric, int value) {
+        int[] next = weights.clone();
+        next[metric.ordinal()] = Math.max(0, value);
+        return with(-1, -1, next, null);
+    }
+
+    /** 改单项保底（其他项保持）。 */
+    public TargetRegion withMinimum(RegionMetric metric, int value) {
+        int[] next = minimums.clone();
+        next[metric.ordinal()] = Math.max(0, value);
+        return with(-1, -1, null, next);
     }
 
     public World world() {
@@ -126,28 +153,36 @@ public final class TargetRegion {
         return baseScore;
     }
 
-    public TargetAxis axis() {
-        return axis;
-    }
-
     public int count() {
         return count;
     }
 
-    public int weight(TargetType type) {
-        return switch (type) {
-            case FIXED -> weightFixed;
-            case MOVING -> weightMoving;
-            case FAST -> weightFast;
-        };
+    public TargetAxis axis() {
+        return axis;
     }
 
-    public int minimum(TargetType type) {
-        return switch (type) {
-            case FIXED -> minFixed;
-            case MOVING -> minMoving;
-            case FAST -> minFast;
-        };
+    public int weight(RegionMetric metric) {
+        return weights[metric.ordinal()];
+    }
+
+    public int minimum(RegionMetric metric) {
+        return minimums[metric.ordinal()];
+    }
+
+    public int minimumSum() {
+        int total = 0;
+        for (int value : minimums) {
+            total += value;
+        }
+        return total;
+    }
+
+    public int[] weightsCopy() {
+        return weights.clone();
+    }
+
+    public int[] minimumsCopy() {
+        return minimums.clone();
     }
 
     /** 区域里均匀取一个点，size 是靶子边长，尽量把整个靶子留在区域内。 */
@@ -174,9 +209,12 @@ public final class TargetRegion {
 
     /** 一行展示靶子数量、权重、保底和移动轴。 */
     public String settingsLine() {
-        return "靶子 " + count + " 个 · 权重 固定" + weightFixed + "/移动" + weightMoving
-                + "/快速" + weightFast + " · 保底 固定" + minFixed + "/移动" + minMoving
-                + "/快速" + minFast + " · 移动轴 " + axis.label;
+        return "靶子 " + count + " 个 · 权重 固定" + weight(RegionMetric.FIXED)
+                + "/移动" + weight(RegionMetric.MOVING) + "/快速" + weight(RegionMetric.FAST)
+                + "/正常" + weight(RegionMetric.NORMAL) + "/缩小" + weight(RegionMetric.SMALL)
+                + " · 保底 固定" + minimum(RegionMetric.FIXED)
+                + "/移动" + minimum(RegionMetric.MOVING) + "/快速" + minimum(RegionMetric.FAST)
+                + "/缩小" + minimum(RegionMetric.SMALL) + " · 移动轴 " + axis.label;
     }
 
     private static String fmt(double value) {

@@ -16,6 +16,7 @@ public final class ArcherySession {
     public final String playerName;
     /** 本局所在世界：靶子只从这个世界的区域里生成。 */
     public final World world;
+    public final ArcherySettings.Difficulty difficulty;
     public final SavedInventory inventory;
     public final List<TargetInstance> targets = new ArrayList<>();
     /** 自己射出的、还在飞行的箭：记录上一刻位置用于扫掠命中检测。 */
@@ -27,10 +28,12 @@ public final class ArcherySession {
     public boolean finished;
 
     public ArcherySession(UUID playerId, String playerName, World world,
+                          ArcherySettings.Difficulty difficulty,
                           SavedInventory inventory, int ticksLeft) {
         this.playerId = playerId;
         this.playerName = playerName;
         this.world = world;
+        this.difficulty = difficulty;
         this.inventory = inventory;
         this.ticksLeft = ticksLeft;
     }
