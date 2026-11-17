@@ -113,14 +113,19 @@ public class TntRunListener implements Listener {
         if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
+        // 只认本局的等待道具：别的游戏也发床/纸，不加这层会把别人的右键当成自己的退出/开局
+        Player p = event.getPlayer();
+        if (plugin.getManager().arenaOf(p.getUniqueId()) == null) {
+            return;
+        }
         ItemStack item = event.getItem();
         if (item == null) return;
         if (item.getType() == Material.PAPER) {
-            plugin.getManager().handleStartPaper(event.getPlayer());
+            plugin.getManager().handleStartPaper(p);
             return;
         }
         if (item.getType() == Material.RED_BED) {
-            plugin.getManager().handleLeaveBed(event.getPlayer());
+            plugin.getManager().handleLeaveBed(p);
         }
     }
 

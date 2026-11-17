@@ -37,6 +37,10 @@ public final class AnvilBattleListener implements Listener {
             return;
         }
         Player player = event.getPlayer();
+        // 只认本局的等待道具：别的游戏也发床/纸，不加这层会把别人的右键当成自己的退出/开局
+        if (!manager.isInGame(player)) {
+            return;
+        }
         ItemStack item = event.getItem();
         if (item == null) {
             return;

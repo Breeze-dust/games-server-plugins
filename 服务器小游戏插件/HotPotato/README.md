@@ -36,6 +36,7 @@
   - ⑧ **场地配置改动后必须重新上报中央菜单**：`saveAll()`（`/hp create`、`/hp pos1|pos2|center|lobby|save`、配置模式工具、删除、改名都会走它）末尾调 `reportAllArenas()` 把 `arenas` 全量 `reportArena`。`reportArena` 只在开服延迟 40 tick、玩家进出场、开局/结束时调用，运行中新建/刚圈好地的场不上报，就会「主菜单点烫手山芋 → 打开一块羊毛都没有的场地子菜单」（HubCore `arenasOf` 空表）。以后新增场地改动路径别绕开 `saveAll()`。
   - ⑨ `HotPotatoListener#onMove` 里"只转头不算移动"的早退**必须先比世界**：`if (!p.getWorld().equals(event.getFrom().getWorld())) return;`。别的小游戏（真实案例：TntRun 雪塔大作战 `endGame`）会在自己的 `PlayerMoveEvent` 里把玩家跨世界传回主城，此时 `event.getFrom()` 还是旧世界坐标，直接 `p.getLocation().distanceSquared(event.getFrom())` 会抛 `Cannot measure distance between …`（`docs/已知坑.md` §2）。出圈另有 `startBoundsCheck` 轮询兜底，跳过这一次移动事件不会漏判。
 - **验证方法**：
+  - 在**别的游戏**的等待室右键退出床/开始纸：本插件不应有任何反应、不刷「你不在任何场中」（右键处理先查 `arenaOf`，只认本局的床和纸）。
   - 进服 / 右键"回主城"道具：**不应**出现"你不在任何场中"（验证静默版 lobby handler）。
   - `/hp list` 看场与状态；`/hp join 群系` 应被传到等待点、背包被清空、快捷栏第 9 格（槽位 8）是"退出游戏 (右键)"红床；再 `/hp join` 别的场应提示"你已在其他场"。
   - 中央菜单：**运行中**建场（`/hp create` + `/hp pos1|pos2|center` + `/hp save`）后**不重启**，回主城点「烫手山芋」应直接进唯一的场（内部就是 `hp join <场名>`），不再弹空的场地子菜单；控制台不应出现 `[HubCore] 已为「烫手山芋」生成 0 个场地子菜单槽位`。老 jar 的临时绕过办法：先 `/hp join <场名>` 再 `/hp leave`（进出场会触发一次上报）。

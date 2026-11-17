@@ -50,6 +50,7 @@
   - **菜单入口**：HubCore 主菜单不会自动加。先在 HubCore 的 `games` 段加一条：`name: 铁砧掘战` / `icon: ANVIL` / `color: '7'` / `command: anvil join` / `join-prefix: anvil join`，然后用 `/hub menu set <槽位> ANVIL game:铁砧掘战 &7&l铁砧掘战` 摆一格（动作是一个 token，不能写成带空格的 `cmd:anvil join`；要执行命令可以先摆物品再用 `/hub menu action <槽位> cmd anvil join`）。
   - 本游戏不需要 PvP；场内所有伤害都被取消，别在世界规则里依赖 PvP。
 - **验证方法**：
+  - 在**别的游戏**的等待室右键退出床/开始纸：本插件不应有任何反应、不刷「你不在等待队列或对局中」/「只有管理员可以开始游戏」（右键处理先查 `isInGame`）。
   1. `/anvil list` → 场地已配置、无 missing；`/hub games` 有 **铁砧掘战**。
   2. `/anvil genspawns 12` → 提示「自动生成 N 个并保存」，`/anvil list` 的出生点数量应增加；`server/plugins/AnvilBattle/config.yml` 的 `arena.spawns` 应出现 12 条左右（洞/水多或平台太小时会少于请求数并给出提示）。
   2. 2 人 `/anvil join` → OP 右键开始纸/`/anvil start`：两人被随机传送到平台出生点，背包清空。

@@ -53,6 +53,7 @@
   - **过渡/颁奖计时不会再被异常卡死**（1.3.15）：过渡计时任务改成**在任何 `join`/传送之前**挂上（`beginTransition` 先 `cancelTransition()`，防止旧任务按 `state` 把新任务 cancel 掉），`startRound` 的守护/超时任务也提到 `dispatchCommand(start)` 之前——小游戏的开局处理器一抛异常，本局照样会被推进。颁奖 Tick 整段包了 try/catch，出错直接 `endParty`。这两处正是「所有人能转头、走不动」的冻结来源：`state` 一旦卡在 `TRANSITION`（或前三名卡在 `podiumFrozen`），冻结就永远不解。
   - **Hub 菜单入口**：先在产品目录的 HubCore `games` 段加 `name: 街机派对 / icon: FIREWORK_ROCKET / color: 'e' / command: arcade join / join-prefix: arcade join`，再用 `/hub menu set <槽位> FIREWORK_ROCKET game:街机派对 &e&l街机派对`；管理员菜单可直接用 `/arcade menu`，要挂到 Hub 菜单就再加一个动作 `cmd arcade menu` 的物品。
 - **验证**：
+  - 在**别的游戏**的等待室右键退出床/开始纸：本插件不应有任何反应、不刷「你不在此派对中」（右键处理先查 `isInParty`；回主城时钟不受影响）。
   1. `/arcade list` 看到等待区已配置、4 个小游戏启用；`/arcade menu` 能打开并改数值。
   2. 2 人 `/arcade join` → OP 右键开始纸：进入准备阶段，右侧显示星星榜，15 秒后自动开局。
   3. 一局小游戏结束 → 播报前三名带 ★，星星累加；过渡阶段计分板更新。

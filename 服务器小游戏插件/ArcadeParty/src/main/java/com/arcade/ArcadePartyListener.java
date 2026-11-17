@@ -52,6 +52,10 @@ public final class ArcadePartyListener implements Listener {
             manager.handleHubCommand(player);
             return;
         }
+        // 只认本派对的等待道具：别的游戏也发床/纸，不加这层会把别人的右键当成自己的退出/开局
+        if (!manager.isInParty(player)) {
+            return;
+        }
         if (manager.isReturnItem(item)) {
             event.setCancelled(true);
             manager.leave(player, false);
