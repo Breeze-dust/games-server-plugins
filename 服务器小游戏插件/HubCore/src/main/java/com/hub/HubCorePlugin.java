@@ -98,6 +98,8 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
 
         // 每秒刷新 tab
         getServer().getScheduler().runTaskTimer(this, manager::refreshTab, 20L, 20L);
+        // 头部/底部动画：每 tick 推进一帧，帧变了才重发（见 TabLayout/HeaderFooter 的 animations）
+        getServer().getScheduler().runTaskTimer(this, manager::tickTabAnimations, 1L, 1L);
         // 每秒刷新观战提示；被观战的对局一结束就把观众送回大厅
         getServer().getScheduler().runTaskTimer(this, manager::tickSpectate, 20L, 20L);
 
@@ -111,6 +113,23 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
             getConfig().set("tab.footer", java.util.List.of(
                     "&7时间 &f{time} &8| &7在线 &f{online}&8/&f{max} &8| &7延迟 &f{ping}ms",
                     "&7内存 &f{mem-used}&8/&f{mem-max} MB"));
+            changed = true;
+        }
+        if (!getConfig().isSet("tab.show-ping")) {
+            getConfig().set("tab.show-ping", true);
+            changed = true;
+        }
+        if (!getConfig().isSet("tab.header-title")) {
+            getConfig().set("tab.header-title", "{anim:title}");
+            changed = true;
+        }
+        if (!getConfig().isSet("tab.animations.title.frames")) {
+            getConfig().set("tab.animations.title.interval", 12);
+            getConfig().set("tab.animations.title.frames", java.util.List.of(
+                    "&6&l========== 小游戏服 ==========",
+                    "&e&l========== 小游戏服 ==========",
+                    "&f&l========== 小游戏服 ==========",
+                    "&e&l========== 小游戏服 =========="));
             changed = true;
         }
         if (!getConfig().isSet("tab.layout.enabled")) {
@@ -281,6 +300,7 @@ public class HubCorePlugin extends JavaPlugin implements CommandExecutor, TabCom
                 reloadConfig();
                 registry.rescan();
                 manager.getTabLayout().reload();
+                manager.reloadTabAnimations();
                 manager.refreshTab();
                 sender.sendMessage(LEGACY.deserialize("&a已重载配置并重新扫描小游戏插件。"));
             }

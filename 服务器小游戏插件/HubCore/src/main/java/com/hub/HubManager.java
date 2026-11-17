@@ -38,10 +38,31 @@ public class HubManager implements HubService {
     private final Map<UUID, String> tabNameColor = new LinkedHashMap<>();
     /** TAB 式固定格子（4 列 × 20 行 + 假条目）。 */
     private final TabLayout tabLayout;
+    /** 头部/底部动画（`tab.animations`），键是名字，文本里用 {anim:名字} 引用。 */
+    private final Map<String, Animation> animations = new LinkedHashMap<>();
+    /** 最近一次 refreshTab 生成的头部文字（动画任务只重发它）。 */
+    private String headerBase;
+
+    private static final class Animation {
+        final int interval;
+        final List<String> frames;
+        int tick;
+        int frame;
+
+        Animation(int interval, List<String> frames) {
+            this.interval = interval;
+            this.frames = frames;
+        }
+
+        String current() {
+            return frames.get(frame % frames.size());
+        }
+    }
 
     public HubManager(HubCorePlugin plugin) {
         this.plugin = plugin;
         this.tabLayout = new TabLayout(plugin);
+        reloadTabAnimations();
     }
 
     public TabLayout getTabLayout() {
@@ -931,7 +952,10 @@ public class HubManager implements HubService {
         int lobbyOrder = (keys.size() + 1) * 100;
 
         StringBuilder hb = new StringBuilder();
-        hb.append("&6&l========== 小游戏服 ==========\n");
+        String title = plugin.getConfig().getString("tab.header-title", "&6&l========== 小游戏服 ==========");
+        if (title != null && !title.isEmpty()) {
+            hb.append(title).append('\n');
+        }
         if (!lobby.isEmpty()) {
             hb.append("&7&l■ 大厅 &7(").append(lobby.size()).append(")\n");
             hb.append("&7").append(lobby.stream().map(Player::getName).collect(Collectors.joining("&7, "))).append("\n");
@@ -954,16 +978,8 @@ public class HubManager implements HubService {
                 hb.append("  &a[已加入] ").append(ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.joining("&7, "))).append("\n");
             }
         }
-        // 头部/底部文字：支持 {time} {date} {online} {max} {mem-used} {mem-max} {tps} {ping}
-        // （{ping} 是每个玩家自己的延迟，所以底部按玩家逐个生成）
-        TabStats stats = tabStats();
-        List<String> headerExtra = configLines("tab.header-extra");
-        List<String> footerLines = configLines("tab.footer");
-        String headerBase = hb.toString();
-        boolean headerNeedsPlayer = headerExtra.stream().anyMatch(l -> l.contains("{ping}"));
-        Component staticHeader = headerExtra.isEmpty()
-                ? LEGACY.deserialize(headerBase)
-                : LEGACY.deserialize(fillLines(headerExtra, null, stats) + headerBase);
+        // 头部文字先缓存下来：动画任务只重发头部/底部，不重建整份名单
+        headerBase = hb.toString();
 
         // 固定格子布局：把玩家按 大厅 → 各游戏 的顺序填进槽位（其余槽位由假条目占满）
         boolean layoutOn = tabLayout.isEnabled();
@@ -986,29 +1002,87 @@ public class HubManager implements HubService {
             PlayerGame pg = gameMap.get(p.getUniqueId());
             String name = p.getName();
             int order = lobbyOrder;
+            String ping = pingTag(p);
             if (pg == null) {
-                p.playerListName(LEGACY.deserialize("&7" + name));
+                p.playerListName(LEGACY.deserialize("&7" + name + ping));
             } else {
                 Integer gameOrder = orderByGame.get(pg.game());
                 if (gameOrder != null) {
                     order = gameOrder;
                 }
                 if (pg.state() == GameState.WAITING) {
-                    p.playerListName(LEGACY.deserialize("&e[等待中·" + pg.game() + "] " + coloredName(p)));
+                    p.playerListName(LEGACY.deserialize("&e[等待中·" + pg.game() + "] " + coloredName(p) + ping));
                 } else {
-                    p.playerListName(LEGACY.deserialize("&a[已加入·" + pg.game() + "] " + coloredName(p)));
+                    p.playerListName(LEGACY.deserialize("&a[已加入·" + pg.game() + "] " + coloredName(p) + ping));
                 }
             }
             if (!layoutOn) {
                 p.setPlayerListOrder(order);
             }
-            Component header = headerNeedsPlayer
-                    ? LEGACY.deserialize(fillLines(headerExtra, p, stats) + headerBase)
-                    : staticHeader;
+        }
+        sendHeaderFooter(headerBase);
+    }
+
+    /** 玩家名字后面的延迟数字（`tab.show-ping`）。 */
+    private String pingTag(Player p) {
+        if (!plugin.getConfig().getBoolean("tab.show-ping", true)) {
+            return "";
+        }
+        int ping = Math.max(0, p.getPing());
+        char color = ping < 100 ? 'a' : ping < 200 ? 'e' : ping < 400 ? '6' : 'c';
+        return " &8[&" + color + ping + "ms&8]";
+    }
+
+    /** 只重发头部/底部（动画任务用，不重建玩家列表）。 */
+    private void sendHeaderFooter(String base) {
+        TabStats stats = tabStats();
+        List<String> headerExtra = configLines("tab.header-extra");
+        List<String> footerLines = configLines("tab.footer");
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            String head = (headerExtra.isEmpty() ? "" : fillLines(headerExtra, p, stats)) + fill(base, p, stats);
+            Component header = LEGACY.deserialize(head);
             Component footer = footerLines.isEmpty()
                     ? Component.empty()
                     : LEGACY.deserialize(fillLines(footerLines, p, stats));
             p.sendPlayerListHeaderAndFooter(header, footer);
+        }
+    }
+
+    /** 每秒推进动画帧；任何一帧变化就重发头部/底部。 */
+    public void tickTabAnimations() {
+        if (animations.isEmpty() || headerBase == null) {
+            return;
+        }
+        boolean changed = false;
+        for (Animation animation : animations.values()) {
+            if (++animation.tick >= animation.interval) {
+                animation.tick = 0;
+                animation.frame++;
+                changed = true;
+            }
+        }
+        if (changed) {
+            sendHeaderFooter(headerBase);
+        }
+    }
+
+    /** 从配置读 `tab.animations`（启动与 /hub reload 时调用）。 */
+    public void reloadTabAnimations() {
+        animations.clear();
+        var section = plugin.getConfig().getConfigurationSection("tab.animations");
+        if (section == null) {
+            return;
+        }
+        for (String name : section.getKeys(false)) {
+            var one = section.getConfigurationSection(name);
+            if (one == null) {
+                continue;
+            }
+            List<String> frames = new ArrayList<>(one.getStringList("frames"));
+            if (frames.isEmpty()) {
+                continue;
+            }
+            animations.put(name, new Animation(Math.max(1, one.getInt("interval", 10)), frames));
         }
     }
 
@@ -1054,6 +1128,11 @@ public class HubManager implements HubService {
                 .replace("{tps}", stats.tps());
         if (out.contains("{ping}")) {
             out = out.replace("{ping}", String.valueOf(player == null ? 0 : player.getPing()));
+        }
+        for (Map.Entry<String, Animation> entry : animations.entrySet()) {
+            if (out.contains("{anim:")) {
+                out = out.replace("{anim:" + entry.getKey() + "}", entry.getValue().current());
+            }
         }
         return out;
     }

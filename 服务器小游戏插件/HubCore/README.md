@@ -13,8 +13,13 @@
 - **配置 / 数据**：`server/plugins/HubCore/config.yml`（源码 `HubCore/src/main/resources/config.yml` 只是模板，改的时候要连线上那份一起改）—— `lobby.*`（`/hub set` 写）、`menu-item`（默认 COMPASS）/ `menu-item-slot`（默认 4）、`menu-title`（旧键，只在 `menu.title` 不存在时兜底）、`games` 段（`name` 显示名 / `alias` / `color` / `icon` / `command` 无场地信息时的兜底命令 / `join-prefix` 拼成 `"<前缀> <场地名>"`）、`menu` 段（`rows` / `title` / `items.<槽位>` / `sub.<游戏>.items.<场地名或槽位>` / `arena-desc.<游戏>.<场地>`）、`tab.show-empty-games`、`lock-inventory`。**改菜单布局/提示不用改代码**：编辑每一步都立即 `saveConfig()` 落盘。
 - **tab 名字颜色**：tab（头部分区名单 + 玩家列表名）每秒重刷成"大厅灰 / 等待黄 / 已加入绿"，会盖掉记分板队伍色；小游戏要对局内按队伍染色（如绿茵足球红/蓝队）时调 `HubAPI.setTabNameColor(uuid, "c"/"9")`，刷新只换名字段颜色、状态前缀不变；`clearGame`（退出游戏/下线）自动清除。实现：`HubManager#setTabNameColor` + `refreshTab`。
 - **tab 名单排版**：头部保持原样式（游戏名居中、每个分区名单一行逗号分隔），底部取 `tab.footer`（字符串数组，一行一项）。
-  头部/底部都支持占位符：`{time}` `{date}` `{online}` `{max}` `{mem-used}` `{mem-max}` `{tps}` `{ping}`
-  （`{ping}` 是**每个玩家自己**的延迟，底部按玩家逐个生成）；`tab.header-extra` 是在分区名单上方追加的行。
+  头部/底部都支持占位符：`{time}` `{date}` `{online}` `{max}` `{mem-used}` `{mem-max}` `{tps}` `{ping}` `{anim:名字}`
+  （`{ping}` 是**每个玩家自己**的延迟，底部按玩家逐个生成）；`tab.header-extra` 是在分区名单上方追加的行，
+  `tab.header-title` 是头部第一行（默认引用 `{anim:title}`）。
+  `tab.show-ping`（默认开）会在每个玩家的条目名字后面加 `[23ms]`（绿<100 / 黄<200 / 金<400 / 红）。
+  **注意**：Tab 条目右侧的信号图标是客户端画的，服务端无法隐藏或替换，只能在名字后面补数字。
+  `tab.animations.<名字>` 是逐帧动画（`interval` 单位 tick + `frames` 文本列表，用 `{anim:名字}` 引用）；
+  原理与 TAB 一样是**逐帧换文本**（改颜色、`&n`、移动字符），真正的字体上下抖动需要资源包自定义字体。
   玩家列表条目用 `Player#setPlayerListOrder` 排序：按 **大厅 → 各游戏** 分组排列，同一游戏的人挨在一起；
   条目数就是真实玩家数，人数少时只有一列（与 NEZNAMY/TAB 默认行为一致）。
   **固定格子布局**（`tab.layout.enabled`，**默认关**）：打开后用假条目占满 `columns × rows`（默认 4×20=80）个槽位，
