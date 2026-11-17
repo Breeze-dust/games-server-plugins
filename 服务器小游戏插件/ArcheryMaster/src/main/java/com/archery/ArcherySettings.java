@@ -25,11 +25,11 @@ public final class ArcherySettings {
 
     public int gameSeconds = 60;
 
-    public int maxTargets = 8;
+    /** 全场上限只作安全保护；实际数量由每个区域的 count 决定。 */
+    public int safetyMax = 256;
     public int respawnDelayTicks = 10;
     public int targetLifetimeSeconds = 0;
     public double smallChance = 0.35;
-    public double movingChance = 0.50;
     public double minSpeed = 1.5;
     public double maxSpeed = 6.0;
     public double fastSpeed = 4.5;
@@ -67,11 +67,10 @@ public final class ArcherySettings {
 
         s.gameSeconds = (int) clamp(cfg.getInt("game.time-seconds", 60), 10, 3600);
 
-        s.maxTargets = (int) clamp(cfg.getInt("targets.max", 8), 1, 64);
+        s.safetyMax = (int) clamp(cfg.getInt("targets.safety-max", 256), 1, 1024);
         s.respawnDelayTicks = (int) clamp(cfg.getInt("targets.respawn-delay-ticks", 10), 0, 200);
         s.targetLifetimeSeconds = (int) clamp(cfg.getInt("targets.lifetime-seconds", 0), 0, 3600);
         s.smallChance = clamp(cfg.getDouble("targets.small-chance", 0.35), 0.0, 1.0);
-        s.movingChance = clamp(cfg.getDouble("targets.moving-chance", 0.50), 0.0, 1.0);
         s.minSpeed = Math.max(0.0, cfg.getDouble("targets.min-speed", 1.5));
         s.maxSpeed = Math.max(s.minSpeed, cfg.getDouble("targets.max-speed", 6.0));
         s.fastSpeed = Math.max(0.0, cfg.getDouble("targets.fast-speed", 4.5));
@@ -109,7 +108,21 @@ public final class ArcherySettings {
                 continue;
             }
             int base = (int) clamp(number(raw.get("base-score"), 1.0), 1, 100000);
-            s.regions.add(new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ, base));
+            int count = (int) clamp(number(raw.get("count"), TargetRegion.DEFAULT_COUNT), 0, 64);
+            Map<?, ?> weights = raw.get("weights") instanceof Map<?, ?> map ? map : Map.of();
+            Map<?, ?> guaranteed = raw.get("guaranteed") instanceof Map<?, ?> map ? map : Map.of();
+            int weightFixed = (int) clamp(number(weights.get("fixed"),
+                    TargetRegion.DEFAULT_WEIGHT_FIXED), 0, 100000);
+            int weightMoving = (int) clamp(number(weights.get("moving"),
+                    TargetRegion.DEFAULT_WEIGHT_MOVING), 0, 100000);
+            int weightFast = (int) clamp(number(weights.get("fast"),
+                    TargetRegion.DEFAULT_WEIGHT_FAST), 0, 100000);
+            int minFixed = (int) clamp(number(guaranteed.get("fixed"), 0), 0, count);
+            int minMoving = (int) clamp(number(guaranteed.get("moving"), 0), 0, count);
+            int minFast = (int) clamp(number(guaranteed.get("fast"), 0), 0, count);
+            s.regions.add(new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ,
+                    base, count, weightFixed, weightMoving, weightFast,
+                    minFixed, minMoving, minFast));
         }
         return s;
     }

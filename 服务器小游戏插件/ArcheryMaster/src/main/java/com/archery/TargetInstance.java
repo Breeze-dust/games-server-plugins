@@ -8,8 +8,9 @@ import java.util.UUID;
 public final class TargetInstance {
 
     public final UUID displayId;
-    /** 所属区域，决定基础分和移动边界。 */
+    /** 所属区域，决定基础分、刷新参数和移动边界。 */
     public final TargetRegion region;
+    public final TargetType type;
     public double x;
     public double y;
     public double z;
@@ -20,16 +21,16 @@ public final class TargetInstance {
     public final boolean small;
     /** 移动速度（格/秒），固定靶是 0。 */
     public final double speed;
-    public final boolean fast;
     public final long spawnedAt;
     public final double size;
     public final int baseScore;
 
-    public TargetInstance(UUID displayId, TargetRegion region, double x, double y, double z,
-                          double vx, double vz, boolean small, double speed, boolean fast,
-                          long spawnedAt, double size, int baseScore) {
+    public TargetInstance(UUID displayId, TargetRegion region, TargetType type,
+                          double x, double y, double z, double vx, double vz,
+                          boolean small, double speed, long spawnedAt, double size, int baseScore) {
         this.displayId = displayId;
         this.region = region;
+        this.type = type;
         this.x = x;
         this.y = y;
         this.z = z;
@@ -37,14 +38,17 @@ public final class TargetInstance {
         this.vz = vz;
         this.small = small;
         this.speed = speed;
-        this.fast = fast;
         this.spawnedAt = spawnedAt;
         this.size = size;
         this.baseScore = baseScore;
     }
 
     public boolean moving() {
-        return speed > 0.0;
+        return type != TargetType.FIXED;
+    }
+
+    public boolean fast() {
+        return type == TargetType.FAST;
     }
 
     public BoundingBox box() {
@@ -58,7 +62,7 @@ public final class TargetInstance {
         if (moving()) {
             total += settings.bonusMoving;
         }
-        if (fast) {
+        if (fast()) {
             total += settings.bonusFast;
         }
         if (small) {
@@ -73,7 +77,7 @@ public final class TargetInstance {
         if (moving()) {
             sb.append(" + 移动 ").append(settings.bonusMoving);
         }
-        if (fast) {
+        if (fast()) {
             sb.append(" + 快速 ").append(settings.bonusFast);
         }
         if (small) {
@@ -83,7 +87,6 @@ public final class TargetInstance {
     }
 
     public String typeName() {
-        String motion = !moving() ? "固定" : (fast ? "快速移动" : "移动");
-        return (small ? "缩小" : "正常") + motion + "靶";
+        return (small ? "缩小" : "正常") + type.label + "靶";
     }
 }

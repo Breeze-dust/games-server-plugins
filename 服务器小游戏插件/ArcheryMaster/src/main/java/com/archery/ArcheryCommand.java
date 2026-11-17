@@ -85,16 +85,65 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 if (!requireAdmin(sender)) {
                     return true;
                 }
-                if (args.length < 3 || !args[1].equalsIgnoreCase("remove")) {
-                    Chat.send(sender, "&c用法：/archery region remove <序号>（序号用 /archery regions 查看）");
+                if (args.length >= 3 && args[1].equalsIgnoreCase("remove")) {
+                    Integer index = integer(args[2]);
+                    if (index == null || !manager.removeRegion(index)) {
+                        Chat.send(sender, "&c序号不对。");
+                        return true;
+                    }
+                    Chat.send(sender, "&a已删除区域 #" + index + "。");
                     return true;
                 }
-                Integer index = integer(args[2]);
-                if (index == null || !manager.removeRegion(index)) {
-                    Chat.send(sender, "&c序号不对。");
-                    return true;
+                if (args.length >= 3 && args[1].equalsIgnoreCase("set")) {
+                    Integer index = integer(args[2]);
+                    if (index == null) {
+                        Chat.send(sender, "&c序号不对。");
+                        return true;
+                    }
+                    if (args.length == 5) {
+                        Integer value = integer(args[4]);
+                        if (value == null) {
+                            Chat.send(sender, "&c数值不对。");
+                            return true;
+                        }
+                        boolean ok = switch (args[3].toLowerCase()) {
+                            case "count", "数量", "总数" -> manager.setRegionCount(index, value);
+                            case "score", "基础分", "基础" -> manager.setRegionScore(index, value);
+                            default -> false;
+                        };
+                        if (!ok) {
+                            Chat.send(sender, "&c设置失败：检查序号/数值（保底总和不能超过总数）。");
+                            return true;
+                        }
+                        Chat.send(sender, "&a已更新区域 #" + index + "，用 /archery regions 查看。");
+                        return true;
+                    }
+                    if (args.length == 6) {
+                        TargetType type = TargetType.fromKey(args[4]);
+                        Integer value = integer(args[5]);
+                        if (type == null || value == null) {
+                            Chat.send(sender, "&c类型或数值不对（类型：fixed/moving/fast）。");
+                            return true;
+                        }
+                        boolean ok = switch (args[3].toLowerCase()) {
+                            case "weight", "权重" -> manager.setRegionWeight(index, type, value);
+                            case "guarantee", "min", "保底" -> manager.setRegionMinimum(index, type, value);
+                            default -> false;
+                        };
+                        if (!ok) {
+                            Chat.send(sender, "&c设置失败：检查序号/数值（保底总和不能超过总数）。");
+                            return true;
+                        }
+                        Chat.send(sender, "&a已更新区域 #" + index + "，用 /archery regions 查看。");
+                        return true;
+                    }
                 }
-                Chat.send(sender, "&a已删除区域 #" + index + "。");
+                Chat.send(sender, "&c用法：");
+                Chat.send(sender, "&f/archery region remove <序号>");
+                Chat.send(sender, "&f/archery region set <序号> count <数量>");
+                Chat.send(sender, "&f/archery region set <序号> weight <fixed|moving|fast> <数值>");
+                Chat.send(sender, "&f/archery region set <序号> guarantee <fixed|moving|fast> <数量>");
+                Chat.send(sender, "&f/archery region set <序号> score <基础分>");
             }
             case "info" -> {
                 if (!requireAdmin(sender)) {
@@ -192,8 +241,9 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&f/archery stats [玩家] &7- 查看最高分和名次");
         if (hasAdmin(sender)) {
             Chat.send(sender, "&7管理：&fedit &7/&f setstart &7/&f info &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
-            Chat.send(sender, "&7靶场：&f/archery edit &7进入编辑模式（木棍选对角、下界之星确认并输入基础分、绿宝石保存、屏障退出）");
+            Chat.send(sender, "&7靶场：&f/archery edit &7进入编辑模式（木棍选对角、下界之星确认并输入基础分和参数、绿宝石保存、屏障退出）");
             Chat.send(sender, "&7　　　&f/archery regions &7查看全部区域，&f/archery region remove <序号> &7删除");
+            Chat.send(sender, "&7　　　&f/archery region set <序号> count|weight|guarantee|score ... &7在线改参数");
             Chat.send(sender, "&7排行榜：&f/archery top place &7（当前位置放置）、&f/archery top remove");
         }
     }
@@ -257,8 +307,25 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 }
             }
         } else if (args.length == 2 && "region".equalsIgnoreCase(args[0]) && hasAdmin(sender)) {
-            if ("remove".startsWith(args[1].toLowerCase())) {
-                out.add("remove");
+            for (String option : List.of("remove", "set")) {
+                if (option.startsWith(args[1].toLowerCase())) {
+                    out.add(option);
+                }
+            }
+        } else if (args.length == 4 && "region".equalsIgnoreCase(args[0])
+                && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)) {
+            for (String option : List.of("count", "weight", "guarantee", "score")) {
+                if (option.startsWith(args[3].toLowerCase())) {
+                    out.add(option);
+                }
+            }
+        } else if (args.length == 5 && "region".equalsIgnoreCase(args[0])
+                && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)
+                && ("weight".equalsIgnoreCase(args[3]) || "guarantee".equalsIgnoreCase(args[3]))) {
+            for (String option : List.of("fixed", "moving", "fast")) {
+                if (option.startsWith(args[4].toLowerCase())) {
+                    out.add(option);
+                }
             }
         } else if (args.length == 2
                 && ("stats".equalsIgnoreCase(args[0]) || "reset".equalsIgnoreCase(args[0]))) {

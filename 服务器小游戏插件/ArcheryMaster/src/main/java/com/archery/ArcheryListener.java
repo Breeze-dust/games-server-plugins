@@ -27,6 +27,8 @@ import org.bukkit.event.player.PlayerToggleFlightEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.UUID;
+
 /** 把射箭之外的各种出口都收束成「结束本局」，并处理编辑模式和聊天栏分数输入。 */
 public class ArcheryListener implements Listener {
 
@@ -39,7 +41,7 @@ public class ArcheryListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onQuit(PlayerQuitEvent event) {
         ArcheryManager manager = plugin.getManager();
-        manager.stop(event.getPlayer(), "下线", true, true, false);
+        manager.stop(event.getPlayer(), "下线", true, true);
         manager.exitEdit(event.getPlayer(), true, false);
     }
 
@@ -68,19 +70,19 @@ public class ArcheryListener implements Listener {
         if (event.getCause() == PlayerTeleportEvent.TeleportCause.UNKNOWN) {
             return;
         }
-        plugin.getManager().stop(event.getPlayer(), "传送离开", true, true, true);
+        plugin.getManager().stop(event.getPlayer(), "传送离开", true, true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onDeath(PlayerDeathEvent event) {
-        plugin.getManager().stop(event.getEntity(), "死亡", true, true, false);
+        plugin.getManager().stop(event.getEntity(), "死亡", true, true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onGameMode(PlayerGameModeChangeEvent event) {
         if (event.getNewGameMode() == GameMode.CREATIVE
                 || event.getNewGameMode() == GameMode.SPECTATOR) {
-            plugin.getManager().stop(event.getPlayer(), "切换游戏模式", true, true, true);
+            plugin.getManager().stop(event.getPlayer(), "切换游戏模式", true, true);
         }
     }
 
@@ -101,7 +103,7 @@ public class ArcheryListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        plugin.getManager().stop(player, "尝试滑翔", true, true, true);
+        plugin.getManager().stop(player, "尝试滑翔", true, true);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -135,17 +137,22 @@ public class ArcheryListener implements Listener {
         }
     }
 
-    /** 编辑模式下在聊天栏输入基础分；其他聊天不拦截。 */
+    /** 编辑模式下在聊天栏输入基础分 / 区域参数；其他聊天不拦截。 */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onChat(AsyncChatEvent event) {
         Player player = event.getPlayer();
         ArcheryManager manager = plugin.getManager();
-        if (!manager.isAwaitingScore(player.getUniqueId())) {
+        UUID id = player.getUniqueId();
+        if (!manager.isAwaitingScore(id) && !manager.isAwaitingParams(id)) {
             return;
         }
         String text = PlainTextComponentSerializer.plainText().serialize(event.message());
         event.setCancelled(true);
-        Bukkit.getScheduler().runTask(plugin, () -> manager.handleScoreInput(player, text));
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!manager.handleScoreInput(player, text)) {
+                manager.handleParamsInput(player, text);
+            }
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -173,7 +180,7 @@ public class ArcheryListener implements Listener {
         if (item != null && (item.getType() == Material.ENDER_PEARL
                 || item.getType() == Material.FIREWORK_ROCKET)) {
             event.setCancelled(true);
-            manager.stop(player, "使用了违禁物品", true, true, true);
+            manager.stop(player, "使用了违禁物品", true, true);
         }
     }
 }

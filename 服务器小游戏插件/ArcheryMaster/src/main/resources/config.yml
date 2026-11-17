@@ -25,11 +25,10 @@ game:
 
 # 靶子
 targets:
-  max: 8                  # 场上同时存在的靶子数
+  safety-max: 256         # 全场安全上限；实际数量由每个区域的 count 决定
   respawn-delay-ticks: 10 # 射中后隔多久补一个新靶（20 刻 = 1 秒）
   lifetime-seconds: 0     # 靶子最多存在多久；0 = 不自动消失
   small-chance: 0.35      # 缩小靶概率（0~1）
-  moving-chance: 0.50     # 移动靶概率（0~1），未抽中就是固定靶
   min-speed: 1.5          # 移动靶速度下限（格/秒）
   max-speed: 6.0          # 移动靶速度上限（格/秒），每只靶随机取区间内速度
   fast-speed: 4.5         # 速度 >= 这个值算「快速移动靶」（格/秒）
@@ -54,7 +53,26 @@ effects:
 
 top-size: 10              # 排行榜显示前几名
 
-# 靶场区域：/archery edit 写入。每项是一个长方体，基础分在确认区域时输入。
+# 靶场区域：/archery edit 写入。每项是一个长方体，参数在确认区域时输入，
+# 之后也可以用 /archery region set <序号> ... 在线修改。
+# 每个区域示例：
+#   - world: world
+#     min-x: 0.0
+#     min-y: 60.0
+#     min-z: 0.0
+#     max-x: 10.0
+#     max-y: 70.0
+#     max-z: 10.0
+#     base-score: 3          # 命中基础分
+#     count: 4               # 这个区域同时刷多少个靶子
+#     weights:               # 三种类型的刷新权重
+#       fixed: 5
+#       moving: 3
+#       fast: 2
+#     guaranteed:            # 三种类型至少各刷几个（保底，总和不能超过 count）
+#       fixed: 0
+#       moving: 0
+#       fast: 0
 regions: []
 
 # 浮空文字排行榜（/archery top place 在当前位置放置，top remove 移除）
