@@ -120,9 +120,10 @@ public final class ArcherySettings {
             int minFixed = (int) clamp(number(guaranteed.get("fixed"), 0), 0, count);
             int minMoving = (int) clamp(number(guaranteed.get("moving"), 0), 0, count);
             int minFast = (int) clamp(number(guaranteed.get("fast"), 0), 0, count);
+            TargetAxis axis = TargetAxis.fromKey(string(raw.get("axis"), "x"));
             s.regions.add(new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ,
                     base, count, weightFixed, weightMoving, weightFast,
-                    minFixed, minMoving, minFast));
+                    minFixed, minMoving, minFast, axis));
         }
         return s;
     }
@@ -144,6 +145,10 @@ public final class ArcherySettings {
 
     private static double number(Object value, double fallback) {
         return value instanceof Number number ? number.doubleValue() : fallback;
+    }
+
+    private static String string(Object value, String fallback) {
+        return value == null ? fallback : String.valueOf(value);
     }
 
     private static Material block(String name, Material fallback) {

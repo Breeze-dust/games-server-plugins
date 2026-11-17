@@ -16,8 +16,8 @@
   会因此拒绝缩小药水；结束/退出时 `HubAPI.clearGame`。局内 tab 会显示 `[已加入·箭术大师]`。
 - **靶场区域（编辑模式）**：`/archery edit` 进入编辑模式，保存并清空物品栏，发四个道具：
   - **木棍「区域选择棒」**：左键 = 对角 1，右键 = 对角 2（必须对着方块点）。
-  - **下界之星「确认区域」**：两个对角都设好后右键 → 在**聊天栏输入 1-100000 的基础分**，
-    紧接着再输入该区域的**靶子参数**：`<靶子总数> <固定权重> <移动权重> <快速权重> <固定保底> <移动保底> <快速保底>`
+  - **下界之星「确认区域」**：两个对角都设好后右键 → 在**聊天栏输入基础分和移动轴**，例如 `3 x` 或 `3 z`
+    （只写数字默认 X 轴），紧接着再输入该区域的**靶子参数**：`<靶子总数> <固定权重> <移动权重> <快速权重> <固定保底> <移动保底> <快速保底>`
     （空格分隔，后面的可以省略；直接输入 `done` 用默认值 `4 5 3 2 0 0 0`；`cancel` 取消）。
   - **绿宝石「保存场地」**：右键把当前所有区域写入 `config.yml` 的 `regions` 段。
   - **屏障「退出编辑模式」**：右键退出并还原物品栏；**未保存的修改丢弃**。
@@ -35,7 +35,7 @@
   - **缩小靶**按 `targets.small-scale`（默认 0.5）缩放，并用 `targets.small-glow-color`（默认 `#FF0000`）发光；
     正常靶不发光，所以一眼能区分大小。缩小概率由全局 `targets.small-chance` 决定。
   - 移动靶速度在 `min-speed ~ fast-speed` 之间随机；快速靶速度在 `max(min-speed, fast-speed) ~ max-speed` 之间随机。
-  - 移动靶只在**自己所属区域的 X/Z 范围内**水平移动，撞到区域边界反弹，Y 不变。
+  - 移动靶只沿该区域设置的 **`axis`（x 或 z）** 来回运动，撞到区域边界反弹；另一轴保持不动，Y 不变。
   - **每名玩家有自己的一套靶子**，靶子只对本人可见（生成时对其他人 `hideEntity`，
     中途进服的玩家在 `PlayerJoinEvent` 里补隐藏），所以多人同时玩互不干扰。
 - **计分**：`总分 = 区域基础分 + 移动加成 + 快速加成 + 缩小加成`，三项加成互相独立、可叠加；
@@ -63,7 +63,7 @@
 - **命令**：
   - 玩家：无参数 / `join` / `start` / `play` 开始；`leave` 退出；`top` 排行榜；`stats [玩家]` 最高分和名次；`help`
   - 管理（OP 或 `archery.admin`）：`edit`（编辑靶场）、`regions`（列出区域和参数）、
-    `region remove <序号>`、`region set <序号> count|weight|guarantee|score ...`、
+    `region remove <序号>`、`region set <序号> count|weight|guarantee|score|axis ...`、
     `setstart`、`info`、`reload`、`reset <在线玩家|all>`、`debug`、`top place` / `top remove`
 - **配置**：`server/plugins/ArcheryMaster/config.yml`（模板 `ArcheryMaster/src/main/resources/config.yml`）
   - `regions` / `start` / `leaderboards`：由命令写入；**命令会立即 `saveConfig`**，

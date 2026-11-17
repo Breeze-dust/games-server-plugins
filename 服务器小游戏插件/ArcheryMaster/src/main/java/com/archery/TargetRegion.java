@@ -34,11 +34,13 @@ public final class TargetRegion {
     private final int minFixed;
     private final int minMoving;
     private final int minFast;
+    /** 移动靶往返运动所沿的轴：只在这一条轴上动，另一轴固定不动。 */
+    private final TargetAxis axis;
 
     public TargetRegion(World world, double minX, double minY, double minZ,
                         double maxX, double maxY, double maxZ, int baseScore,
                         int count, int weightFixed, int weightMoving, int weightFast,
-                        int minFixed, int minMoving, int minFast) {
+                        int minFixed, int minMoving, int minFast, TargetAxis axis) {
         this.world = world;
         this.minX = minX;
         this.minY = minY;
@@ -54,6 +56,7 @@ public final class TargetRegion {
         this.minFixed = minFixed;
         this.minMoving = minMoving;
         this.minFast = minFast;
+        this.axis = axis == null ? TargetAxis.X : axis;
     }
 
     public static TargetRegion fromCorners(World world, Location a, Location b, int baseScore) {
@@ -65,7 +68,7 @@ public final class TargetRegion {
         double maxZ = Math.max(a.getZ(), b.getZ()) + 1.0;
         return new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ, baseScore,
                 DEFAULT_COUNT, DEFAULT_WEIGHT_FIXED, DEFAULT_WEIGHT_MOVING, DEFAULT_WEIGHT_FAST,
-                DEFAULT_MINIMUM, DEFAULT_MINIMUM, DEFAULT_MINIMUM);
+                DEFAULT_MINIMUM, DEFAULT_MINIMUM, DEFAULT_MINIMUM, TargetAxis.X);
     }
 
     /** 复制区域并替换部分参数；传 -1 表示保持原值。 */
@@ -80,7 +83,15 @@ public final class TargetRegion {
                 newWeightFast < 0 ? weightFast : newWeightFast,
                 newMinFixed < 0 ? minFixed : newMinFixed,
                 newMinMoving < 0 ? minMoving : newMinMoving,
-                newMinFast < 0 ? minFast : newMinFast);
+                newMinFast < 0 ? minFast : newMinFast,
+                axis);
+    }
+
+    /** 复制区域并换一个移动轴。 */
+    public TargetRegion withAxis(TargetAxis newAxis) {
+        return new TargetRegion(world, minX, minY, minZ, maxX, maxY, maxZ, baseScore,
+                count, weightFixed, weightMoving, weightFast,
+                minFixed, minMoving, minFast, newAxis == null ? axis : newAxis);
     }
 
     public World world() {
@@ -113,6 +124,10 @@ public final class TargetRegion {
 
     public int baseScore() {
         return baseScore;
+    }
+
+    public TargetAxis axis() {
+        return axis;
     }
 
     public int count() {
@@ -157,11 +172,11 @@ public final class TargetRegion {
                 + ") 基础分 " + baseScore;
     }
 
-    /** 一行展示靶子数量、权重和保底。 */
+    /** 一行展示靶子数量、权重、保底和移动轴。 */
     public String settingsLine() {
         return "靶子 " + count + " 个 · 权重 固定" + weightFixed + "/移动" + weightMoving
                 + "/快速" + weightFast + " · 保底 固定" + minFixed + "/移动" + minMoving
-                + "/快速" + minFast;
+                + "/快速" + minFast + " · 移动轴 " + axis.label;
     }
 
     private static String fmt(double value) {

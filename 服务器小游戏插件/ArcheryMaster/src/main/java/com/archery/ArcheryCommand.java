@@ -101,12 +101,22 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                         return true;
                     }
                     if (args.length == 5) {
+                        String key = args[3].toLowerCase();
+                        if (key.equals("axis") || key.equals("轴") || key.equals("移动轴")) {
+                            TargetAxis axis = TargetAxis.fromKey(args[4]);
+                            if (axis == null || !manager.setRegionAxis(index, axis)) {
+                                Chat.send(sender, "&c移动轴只能是 x 或 z。");
+                                return true;
+                            }
+                            Chat.send(sender, "&a已更新区域 #" + index + "，用 /archery regions 查看。");
+                            return true;
+                        }
                         Integer value = integer(args[4]);
                         if (value == null) {
                             Chat.send(sender, "&c数值不对。");
                             return true;
                         }
-                        boolean ok = switch (args[3].toLowerCase()) {
+                        boolean ok = switch (key) {
                             case "count", "数量", "总数" -> manager.setRegionCount(index, value);
                             case "score", "基础分", "基础" -> manager.setRegionScore(index, value);
                             default -> false;
@@ -144,6 +154,7 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 Chat.send(sender, "&f/archery region set <序号> weight <fixed|moving|fast> <数值>");
                 Chat.send(sender, "&f/archery region set <序号> guarantee <fixed|moving|fast> <数量>");
                 Chat.send(sender, "&f/archery region set <序号> score <基础分>");
+                Chat.send(sender, "&f/archery region set <序号> axis <x|z>");
             }
             case "info" -> {
                 if (!requireAdmin(sender)) {
@@ -243,7 +254,7 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&7管理：&fedit &7/&f setstart &7/&f info &7/&f reload &7/&f reset <玩家|all> &7/&f debug");
             Chat.send(sender, "&7靶场：&f/archery edit &7进入编辑模式（木棍选对角、下界之星确认并输入基础分和参数、绿宝石保存、屏障退出）");
             Chat.send(sender, "&7　　　&f/archery regions &7查看全部区域，&f/archery region remove <序号> &7删除");
-            Chat.send(sender, "&7　　　&f/archery region set <序号> count|weight|guarantee|score ... &7在线改参数");
+            Chat.send(sender, "&7　　　&f/archery region set <序号> count|weight|guarantee|score|axis ... &7在线改参数");
             Chat.send(sender, "&7排行榜：&f/archery top place &7（当前位置放置）、&f/archery top remove");
         }
     }
@@ -314,7 +325,7 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
             }
         } else if (args.length == 4 && "region".equalsIgnoreCase(args[0])
                 && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)) {
-            for (String option : List.of("count", "weight", "guarantee", "score")) {
+            for (String option : List.of("count", "weight", "guarantee", "score", "axis")) {
                 if (option.startsWith(args[3].toLowerCase())) {
                     out.add(option);
                 }
@@ -323,6 +334,14 @@ public class ArcheryCommand implements CommandExecutor, TabCompleter {
                 && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)
                 && ("weight".equalsIgnoreCase(args[3]) || "guarantee".equalsIgnoreCase(args[3]))) {
             for (String option : List.of("fixed", "moving", "fast")) {
+                if (option.startsWith(args[4].toLowerCase())) {
+                    out.add(option);
+                }
+            }
+        } else if (args.length == 5 && "region".equalsIgnoreCase(args[0])
+                && "set".equalsIgnoreCase(args[1]) && hasAdmin(sender)
+                && ("axis".equalsIgnoreCase(args[3]) || "轴".equals(args[3]) || "移动轴".equals(args[3]))) {
+            for (String option : List.of("x", "z")) {
                 if (option.startsWith(args[4].toLowerCase())) {
                     out.add(option);
                 }

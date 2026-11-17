@@ -191,6 +191,7 @@ public class ArcheryManager {
             map.put("max-y", region.maxY());
             map.put("max-z", region.maxZ());
             map.put("base-score", region.baseScore());
+            map.put("axis", region.axis().key);
             map.put("count", region.count());
             Map<String, Object> weights = new LinkedHashMap<>();
             weights.put("fixed", region.weight(TargetType.FIXED));
@@ -521,9 +522,14 @@ public class ArcheryManager {
         double vx = 0.0;
         double vz = 0.0;
         if (moving) {
-            double angle = random.nextDouble() * Math.PI * 2.0;
-            vx = Math.cos(angle) * speed / 20.0;
-            vz = Math.sin(angle) * speed / 20.0;
+            // 只在区域指定的那条轴上往返，另一轴保持不动。
+            double direction = random.nextBoolean() ? 1.0 : -1.0;
+            double magnitude = speed / 20.0;
+            if (region.axis() == TargetAxis.X) {
+                vx = direction * magnitude;
+            } else {
+                vz = direction * magnitude;
+            }
         }
 
         Material material = switch (type) {
@@ -960,8 +966,8 @@ public class ArcheryManager {
             edit.pos1 = null;
             edit.pos2 = null;
             awaitingScore.add(p.getUniqueId());
-            Chat.send(p, "&e请输入这个区域的基础得分（1-100000，输入 cancel 取消）：");
-            Chat.actionBar(p, "&e在聊天栏输入区域基础得分");
+            Chat.send(p, "&e请输入这个区域的基础分和移动轴，例如 &f3 x &e或 &f3 z &7（只写数字默认 X 轴，cancel 取消）：");
+            Chat.actionBar(p, "&e聊天栏输入：基础分 [x|z]");
             return;
         }
 
@@ -1000,19 +1006,36 @@ public class ArcheryManager {
             return true;
         }
         int score;
+        String[] parts = text.split("\\s+");
+        if (parts.length > 2) {
+            awaitingScore.add(id);
+            Chat.send(p, "&c格式：基础分 [x|z]（输入 cancel 取消）。");
+            return true;
+        }
         try {
-            score = Integer.parseInt(text);
+            score = Integer.parseInt(parts[0]);
         } catch (NumberFormatException ex) {
             score = -1;
         }
         if (score < 1 || score > 100000) {
             awaitingScore.add(id);
-            Chat.send(p, "&c请输入 1-100000 的整数（输入 cancel 取消）。");
+            Chat.send(p, "&c请输入 1-100000 的基础分，可带轴：3 x（输入 cancel 取消）。");
             return true;
         }
+        TargetAxis axis = TargetAxis.X;
+        if (parts.length == 2) {
+            TargetAxis parsed = TargetAxis.fromKey(parts[1]);
+            if (parsed == null) {
+                awaitingScore.add(id);
+                Chat.send(p, "&c移动轴只能是 &fx &c或 &fz&c（输入 cancel 取消）。");
+                return true;
+            }
+            axis = parsed;
+        }
         edit.pendingBaseScore = score;
+        edit.pendingAxis = axis;
         awaitingParams.add(id);
-        Chat.send(p, "&a基础分 &f" + score + " &a已记录。接着输入该区域参数（空格分隔）：");
+        Chat.send(p, "&a基础分 &f" + score + "&a、移动轴 &f" + axis.label + " &a已记录。接着输入该区域参数（空格分隔）：");
         Chat.send(p, "&f<靶子总数> <固定权重> <移动权重> <快速权重> <固定保底> <移动保底> <快速保底>");
         Chat.send(p, "&7直接输入 &fdone &7用默认值：&f" + TargetRegion.DEFAULT_COUNT + " "
                 + TargetRegion.DEFAULT_WEIGHT_FIXED + " " + TargetRegion.DEFAULT_WEIGHT_MOVING + " "
@@ -1097,7 +1120,7 @@ public class ArcheryManager {
 
         TargetRegion base = TargetRegion.fromCorners(edit.pendingPos1.getWorld(),
                 edit.pendingPos1, edit.pendingPos2, edit.pendingBaseScore);
-        TargetRegion region = base.with(edit.pendingBaseScore, count,
+        TargetRegion region = base.withAxis(edit.pendingAxis).with(edit.pendingBaseScore, count,
                 weightFixed, weightMoving, weightFast, minFixed, minMoving, minFast);
         edit.working.add(region);
         edit.pendingPos1 = null;
@@ -1232,6 +1255,15 @@ public class ArcheryManager {
             return false;
         }
         replaceRegion(index, region.with(value, -1, -1, -1, -1, -1, -1, -1));
+        return true;
+    }
+
+    public boolean setRegionAxis(int index, TargetAxis axis) {
+        TargetRegion region = regionAt(index);
+        if (region == null || axis == null) {
+            return false;
+        }
+        replaceRegion(index, region.withAxis(axis));
         return true;
     }
 
@@ -1612,6 +1644,7 @@ public class ArcheryManager {
         Location pendingPos1;
         Location pendingPos2;
         int pendingBaseScore;
+        TargetAxis pendingAxis = TargetAxis.X;
         boolean dirty;
 
         EditSession(SavedInventory inventory, List<TargetRegion> working) {
