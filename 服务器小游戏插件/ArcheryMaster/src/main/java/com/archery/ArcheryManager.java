@@ -12,6 +12,8 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
@@ -53,6 +55,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ArcheryManager {
 
     private static final String NAMESPACE = "archery";
+    /** 上报给 HubCore / LobbyToys 的显示名。 */
+    private static final String GAME_NAME = "箭术大师";
     private static final int TICK_PERIOD = 1;
     private static final double LINE_HEIGHT = 0.25 * 1.3;
 
@@ -252,6 +256,8 @@ public class ArcheryManager {
         ArcherySession session = new ArcherySession(id, p.getName(), playWorld,
                 inventory, settings.gameSeconds * 20);
         sessions.put(id, session);
+        HubAPI.setPlaying(id, GAME_NAME);
+        resetScale(p);
         fillTargets(session);
 
         Chat.title(p, "&6&l箭术大师", "&f" + settings.gameSeconds + " 秒内射中更多靶子！", 2);
@@ -290,6 +296,7 @@ public class ArcheryManager {
         }
         s.finished = true;
         sessions.remove(s.playerId);
+        HubAPI.clearGame(s.playerId);
         clearTargets(s);
         clearArrows(s);
 
@@ -384,6 +391,7 @@ public class ArcheryManager {
             s.tickCounter++;
             if (s.tickCounter % 20 == 0) {
                 ensureItems(p);
+                resetScale(p);
             }
             tickTargets(s);
             detectHits(p, s);
@@ -787,6 +795,14 @@ public class ArcheryManager {
         }
         if (!hasArrow) {
             p.getInventory().setItem(1, createArrow());
+        }
+    }
+
+    /** 局内不允许缩小：LobbyToys 的缩小药水靠 SCALE 基础值实现，进入时和局内每秒都恢复。 */
+    private static void resetScale(Player p) {
+        AttributeInstance scale = p.getAttribute(Attribute.SCALE);
+        if (scale != null && Math.abs(scale.getBaseValue() - 1.0) > 1.0e-6) {
+            scale.setBaseValue(1.0);
         }
     }
 
