@@ -75,6 +75,8 @@ public class ArcheryManager {
     private final NamespacedKey editConfirmKey;
     private final NamespacedKey editSaveKey;
     private final NamespacedKey editExitKey;
+    /** 靶子展示实体的标记（值是所属玩家 UUID），用于兜底清理残留。 */
+    private final NamespacedKey targetKey;
 
     private ArcherySettings settings;
     private Location start;
@@ -92,6 +94,7 @@ public class ArcheryManager {
         this.editConfirmKey = new NamespacedKey(plugin, "edit_confirm");
         this.editSaveKey = new NamespacedKey(plugin, "edit_save");
         this.editExitKey = new NamespacedKey(plugin, "edit_exit");
+        this.targetKey = new NamespacedKey(plugin, "target_display");
     }
 
     // ---------- 加载 / 保存 ----------
@@ -112,6 +115,7 @@ public class ArcheryManager {
             maintenanceTask = Bukkit.getScheduler().runTaskTimer(plugin, this::refreshLeaderboards, 100L, 100L);
         }
         Bukkit.getScheduler().runTaskLater(plugin, this::refreshLeaderboards, 40L);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> purgeAll(true), 40L);
 
         plugin.getLogger().info("箭术大师已加载：靶场区域 " + settings.regions.size()
                 + " 个，站位" + (start == null ? "未配置" : "已配置")
@@ -133,6 +137,7 @@ public class ArcheryManager {
             Player p = Bukkit.getPlayer(s.playerId);
             finish(p, s, "服务器关闭", false, true);
         }
+        purgeAll(false);
     }
 
     public void reload() {
@@ -329,12 +334,76 @@ public class ArcheryManager {
 
     private void clearTargets(ArcherySession s) {
         for (TargetInstance t : new ArrayList<>(s.targets)) {
-            Entity entity = Bukkit.getEntity(t.displayId);
-            if (entity != null) {
-                entity.remove();
-            }
+            removeDisplay(s.world, t.displayId, t.x, t.y, t.z);
         }
         s.targets.clear();
+        purgeOrphans(s.playerId, s.world);
+    }
+
+    /** 删除靶子实体；区块已卸载时先加载区块再删，避免客户端只留下贴图。 */
+    private void removeDisplay(World world, UUID displayId, double x, double y, double z) {
+        Entity entity = Bukkit.getEntity(displayId);
+        if (entity == null && world != null) {
+            world.getChunkAt(((int) Math.floor(x)) >> 4, ((int) Math.floor(z)) >> 4).load();
+            entity = Bukkit.getEntity(displayId);
+        }
+        if (entity != null) {
+            entity.remove();
+        }
+    }
+
+    /** 兜底：清掉该玩家遗留在世界里的靶子展示实体。 */
+    private void purgeOrphans(UUID owner, World world) {
+        if (world == null) {
+            return;
+        }
+        String marker = owner.toString();
+        for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) {
+            String value = display.getPersistentDataContainer().get(targetKey, PersistentDataType.STRING);
+            if (marker.equals(value)) {
+                display.remove();
+            }
+        }
+    }
+
+    /** 启动/关服时清理所有残留靶子实体（崩溃后持久化实体可能留在世界里）。 */
+    private void purgeAll(boolean loadRegions) {
+        if (loadRegions && settings != null) {
+            for (TargetRegion region : settings.regions) {
+                World world = region.world();
+                if (world == null) {
+                    continue;
+                }
+                int minChunkX = ((int) Math.floor(region.minX())) >> 4;
+                int maxChunkX = ((int) Math.floor(region.maxX())) >> 4;
+                int minChunkZ = ((int) Math.floor(region.minZ())) >> 4;
+                int maxChunkZ = ((int) Math.floor(region.maxZ())) >> 4;
+                for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+                    for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                        world.getChunkAt(cx, cz).load();
+                    }
+                }
+            }
+        }
+        for (World world : Bukkit.getWorlds()) {
+            for (BlockDisplay display : world.getEntitiesByClass(BlockDisplay.class)) {
+                if (display.getPersistentDataContainer().has(targetKey, PersistentDataType.STRING)
+                        && !isActiveTarget(display.getUniqueId())) {
+                    display.remove();
+                }
+            }
+        }
+    }
+
+    private boolean isActiveTarget(UUID displayId) {
+        for (ArcherySession s : sessions.values()) {
+            for (TargetInstance target : s.targets) {
+                if (target.displayId.equals(displayId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void clearArrows(ArcherySession s) {
@@ -544,7 +613,10 @@ public class ArcheryManager {
         float offset = (float) (-size / 2.0);
         BlockDisplay display = s.world.spawn(spawnLocation, BlockDisplay.class, entity -> {
             entity.setBlock(material.createBlockData());
-            entity.setPersistent(false);
+            // 持久化：区块卸载时实体不会被服务端静默丢弃，结束才能可靠地发销毁包。
+            entity.setPersistent(true);
+            entity.getPersistentDataContainer().set(targetKey, PersistentDataType.STRING,
+                    s.playerId.toString());
             entity.setInvulnerable(true);
             entity.setGravity(false);
             entity.setShadowRadius(0f);
@@ -579,6 +651,9 @@ public class ArcheryManager {
         for (TargetInstance t : new ArrayList<>(s.targets)) {
             Entity entity = Bukkit.getEntity(t.displayId);
             if (!(entity instanceof BlockDisplay display) || !display.isValid()) {
+                if (entity != null) {
+                    entity.remove();
+                }
                 s.targets.remove(t);
                 scheduleRespawn(s, t.region);
                 continue;
@@ -731,10 +806,7 @@ public class ArcheryManager {
         int gained = target.score(settings);
         s.score += gained;
 
-        Entity entity = Bukkit.getEntity(target.displayId);
-        if (entity != null) {
-            entity.remove();
-        }
+        removeDisplay(s.world, target.displayId, target.x, target.y, target.z);
         scheduleRespawn(s, target.region);
 
         if (settings.sound) {
