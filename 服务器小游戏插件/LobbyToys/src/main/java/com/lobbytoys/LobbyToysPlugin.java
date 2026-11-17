@@ -64,9 +64,17 @@ public final class LobbyToysPlugin extends JavaPlugin {
         return settings;
     }
 
-    /** 玩家当前是否在小游戏里（HubCore 上报的游戏状态，跨世界/同世界区域都算）。 */
+    /**
+     * 玩家当前是否在小游戏里（HubCore 上报的游戏状态，跨世界/同世界区域都算）。
+     * 云间漫步虽然也上报状态（tab 显示），但它是主城活动：隐藏头衔需要在跑酷中使用缩小药水，
+     * 所以这里不把它当成“游戏中”，小玩具照常可用。
+     */
     public boolean isPlaying(org.bukkit.entity.Player player) {
-        return com.hub.api.HubAPI.gameOf(player.getUniqueId()) != null;
+        String game = com.hub.api.HubAPI.gameOf(player.getUniqueId());
+        if (game == null) {
+            return false;
+        }
+        return !"云中漫步".equals(game) && !"CloudWalk".equalsIgnoreCase(game);
     }
 
     public void reloadSettings() {
