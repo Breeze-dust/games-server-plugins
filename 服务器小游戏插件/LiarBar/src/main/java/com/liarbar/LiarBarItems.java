@@ -117,6 +117,47 @@ public final class LiarBarItems {
         return "revolver".equals(uiOf(item));
     }
 
+    /** 准备道具（槽位 2）：未准备灰色染料，已准备青柠染料。 */
+    public ItemStack readyItem(boolean ready) {
+        ItemStack item = new ItemStack(ready ? Material.LIME_DYE : Material.GRAY_DYE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        meta.displayName(Chat.noItalic(Chat.color(ready
+                ? "&a&l已准备 &7(右键取消)"
+                : "&f&l准备 &7(右键)")));
+        meta.lore(lore(ready
+                ? "&7已准备，等待其他玩家"
+                : "&7所有入座玩家都准备后自动开始"));
+        meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "ready");
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    public boolean isReadyItem(ItemStack item) {
+        return "ready".equals(uiOf(item));
+    }
+
+    /** 给别人看的伪装手牌：一张普通的纸。 */
+    public ItemStack paperDisguise() {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color("&7牌")));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    /** 这张物品是否需要对手牌做伪装（手牌本身与目标牌提示）。 */
+    public boolean isConcealable(ItemStack item) {
+        if (item == null) {
+            return false;
+        }
+        return cardOf(item) != null || "table".equals(uiOf(item));
+    }
+
     /** 揭幕时展示框里的问号。 */
     public ItemStack question() {
         ItemStack item = new ItemStack(Material.PAPER);

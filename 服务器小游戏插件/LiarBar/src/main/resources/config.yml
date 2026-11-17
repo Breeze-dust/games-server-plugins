@@ -19,6 +19,8 @@ tables: {}
 settings:
   # 每桌玩家数（同时也是每桌需要的椅子数）
   players-per-table: 4
+  # 不够坐满时，至少几人全部点「准备」才能开局（支持两人局 / 三人局）
+  min-players: 2
   # 四人坐满后自动开局的倒计时（秒）
   start-countdown-seconds: 3
   # 每人每回合手牌数（牌库固定 20 张：钻石/绿宝石/金锭各 6 张 + 万能牌 2 张）
@@ -41,3 +43,5 @@ settings:
   burn-seconds: 6
   # 空枪放水持续多少秒
   water-seconds: 3
+  # 水/岩浆每次往下流一格间隔多少 tick（20 tick = 1 秒；越大流得越慢）
+  flow-ticks-per-block: 6

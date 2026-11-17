@@ -6,7 +6,7 @@
 
     <groupId>com.liarbar</groupId>
     <artifactId>liar-bar</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.1</version>
     <packaging>jar</packaging>
 
     <name>LiarBar</name>

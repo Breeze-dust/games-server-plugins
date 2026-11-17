@@ -6,6 +6,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 public final class LiarBarSettings {
 
     public int playersPerTable = 4;
+    /** 少于坐满时，至少几人全部准备好才能开局（两人局 / 三人局）。 */
+    public int minPlayers = 2;
     public int startCountdownSeconds = 3;
     public int handSize = 5;
     public int maxPlayCards = 3;
@@ -21,9 +23,12 @@ public final class LiarBarSettings {
     public int burnSeconds = 6;
     /** 空枪出水持续时间（秒）。 */
     public int waterSeconds = 3;
+    /** 水/岩浆每往下流一格间隔多少 tick。 */
+    public int flowTicksPerBlock = 6;
 
     public void load(FileConfiguration c) {
         playersPerTable = clamp(c.getInt("settings.players-per-table", 4), 2, 4);
+        minPlayers = clamp(c.getInt("settings.min-players", 2), 2, playersPerTable);
         startCountdownSeconds = clamp(c.getInt("settings.start-countdown-seconds", 3), 1, 30);
         handSize = clamp(c.getInt("settings.hand-size", 5), 1, 5);
         maxPlayCards = clamp(c.getInt("settings.max-play-cards", 3), 1, 5);
@@ -35,6 +40,7 @@ public final class LiarBarSettings {
         fireWaitSeconds = clamp(c.getInt("settings.fire-wait-seconds", 15), 5, 120);
         burnSeconds = clamp(c.getInt("settings.burn-seconds", 6), 2, 30);
         waterSeconds = clamp(c.getInt("settings.water-seconds", 3), 1, 20);
+        flowTicksPerBlock = clamp(c.getInt("settings.flow-ticks-per-block", 6), 1, 40);
     }
 
     private static int clamp(int value, int min, int max) {

@@ -103,6 +103,20 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
                     Chat.send(sender, "&c没有叫「" + args[1] + "」的桌子。");
                 }
             }
+            case "build" -> {
+                if (!admin(sender)) {
+                    return true;
+                }
+                if (!(sender instanceof Player player)) {
+                    Chat.send(sender, "&c该命令需要玩家执行。");
+                    return true;
+                }
+                if (manager.toggleBuild(player)) {
+                    Chat.send(sender, "&a建场模式已开启：在骗子酒馆区域内可以破坏/放置方块。");
+                } else {
+                    Chat.send(sender, "&7建场模式已关闭，房间区域恢复保护。");
+                }
+            }
             case "start" -> {
                 if (!admin(sender)) {
                     return true;
@@ -120,9 +134,9 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
                     Chat.send(sender, "&c这张桌子正在对局/倒计时中。");
                     return true;
                 }
-                if (table.occupiedCount() < manager.settings().playersPerTable) {
-                    Chat.send(sender, "&c「" + args[1] + "」需要 "
-                            + manager.settings().playersPerTable + " 人全部入座才能开局（现在 "
+                if (table.occupiedCount() < manager.settings().minPlayers) {
+                    Chat.send(sender, "&c「" + args[1] + "」至少需要 "
+                            + manager.settings().minPlayers + " 人入座才能开局（现在 "
                             + table.occupiedCount() + " 人）。");
                     return true;
                 }
@@ -201,10 +215,11 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/liarbar addchair <桌名> &7站在楼梯方块上登记一把椅子（每桌 4 把）");
             Chat.send(sender, "&e/liarbar deltable <桌名> &7删除桌子");
             Chat.send(sender, "&e/liarbar start <桌名> &e/liarbar stop <桌名> &7强制开场/中止");
+            Chat.send(sender, "&e/liarbar build &7切换建场模式（区域内可破坏/放置方块）");
             Chat.send(sender, "&e/liarbar reload &7重载配置");
         }
-        Chat.send(sender, "&7玩法：右键楼梯椅子坐下即准备，四人坐满自动开局；左键选牌、右键出牌、右键钟质疑，"
-                + "揭幕结束后按提示用铁锄头左轮开枪。");
+        Chat.send(sender, "&7玩法：右键楼梯椅子坐下，再右键准备道具；四人坐满自动开局，"
+                + "2~3 人全员准备也能开局。左键选牌、右键出牌、右键钟质疑，揭幕后用铁锄头左轮开枪。");
     }
 
     @Override
@@ -213,7 +228,7 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
             List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "help"));
             if (isAdmin(sender)) {
                 subs.addAll(List.of("pos1", "pos2", "setspawn", "addchair", "deltable",
-                        "start", "stop", "reload"));
+                        "start", "stop", "build", "reload"));
             }
             return filter(subs, args[0]);
         }

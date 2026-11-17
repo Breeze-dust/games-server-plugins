@@ -61,6 +61,13 @@ public class LiarBarListener implements Listener {
     }
 
     @EventHandler
+    public void onItemHeld(org.bukkit.event.player.PlayerItemHeldEvent event) {
+        if (manager.inRoom(event.getPlayer())) {
+            manager.refreshDisguise(event.getPlayer());
+        }
+    }
+
+    @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Bukkit.getScheduler().runTaskLater(plugin, () -> manager.checkRegion(event.getPlayer()), 20L);
     }
@@ -124,6 +131,15 @@ public class LiarBarListener implements Listener {
             }
         }
 
+        if (right && manager.items().isReadyItem(event.getItem())) {
+            event.setCancelled(true);
+            LiarBarTable seated = manager.tableOf(player);
+            if (seated != null && debounce(player)) {
+                seated.toggleReady(player);
+            }
+            return;
+        }
+
         // 房间内其它方块一律不响应（避免打开箱子、按按钮等）
         if (right && event.getClickedBlock() != null) {
             event.setCancelled(true);
@@ -161,7 +177,7 @@ public class LiarBarListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         if (manager.room().inRoom(event.getBlock().getLocation())
-                && !event.getPlayer().hasPermission("liarbar.admin")) {
+                && !manager.isBuilder(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
@@ -169,7 +185,7 @@ public class LiarBarListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
         if (manager.room().inRoom(event.getBlock().getLocation())
-                && !event.getPlayer().hasPermission("liarbar.admin")) {
+                && !manager.isBuilder(event.getPlayer())) {
             event.setCancelled(true);
         }
     }

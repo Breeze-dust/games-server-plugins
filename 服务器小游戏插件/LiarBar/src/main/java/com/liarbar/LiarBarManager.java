@@ -12,6 +12,7 @@ import org.bukkit.block.Block;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.PlayerInventory;
 
 import java.io.File;
@@ -39,6 +40,8 @@ public final class LiarBarManager {
     private final Set<UUID> inRoom = new HashSet<>();
     private final Map<UUID, Snapshot> snapshots = new HashMap<>();
     private final Set<UUID> forceDismounts = new HashSet<>();
+    /** 打开「建场模式」的玩家：在房间区域内可以破坏/放置方块。 */
+    private final Set<UUID> builders = new HashSet<>();
 
     private YamlConfiguration stats;
     private int loadRetries;
@@ -159,8 +162,9 @@ public final class LiarBarManager {
         UUID id = player.getUniqueId();
         inRoom.add(id);
         HubAPI.setGame(id, GAME);
-        Chat.send(player, "&a你已进入&6骗子酒馆&a：右键台阶椅子坐下就是准备，四人坐满自动开局。");
-        Chat.actionBar(player, "&e右键台阶椅子入座");
+        Chat.send(player, "&a你已进入&6骗子酒馆&a：右键楼梯椅子坐下，再右键准备道具就能开局。");
+        Chat.actionBar(player, "&e右键楼梯椅子入座");
+        refreshDisguises();
     }
 
     private void exitRegion(Player player) {
@@ -230,6 +234,7 @@ public final class LiarBarManager {
             return;
         }
         UUID id = player.getUniqueId();
+        builders.remove(id);
         LiarBarTable table = seating.get(id);
         if (table != null) {
             table.removePlayer(player);
@@ -273,6 +278,29 @@ public final class LiarBarManager {
         return forceDismounts.contains(id);
     }
 
+    /** 切换建场模式：开启后在房间区域内允许破坏/放置方块。 */
+    public boolean toggleBuild(Player player) {
+        UUID id = player.getUniqueId();
+        boolean now;
+        if (builders.remove(id)) {
+            now = false;
+        } else {
+            builders.add(id);
+            now = true;
+        }
+        return now;
+    }
+
+    public boolean isBuilder(Player player) {
+        return player != null && builders.contains(player.getUniqueId());
+    }
+
+    public void clearBuild(Player player) {
+        if (player != null) {
+            builders.remove(player.getUniqueId());
+        }
+    }
+
     // ---------- 背包快照（只在开局时保存，结束后还原） ----------
 
     public void captureSnapshot(Player player) {
@@ -286,6 +314,34 @@ public final class LiarBarManager {
         Snapshot snapshot = snapshots.remove(player.getUniqueId());
         if (snapshot != null) {
             snapshot.restore(player);
+        }
+        refreshDisguise(player);
+    }
+
+    // ---------- 手牌伪装（别人看你手里只是一张纸） ----------
+
+    /** 把某个玩家当前手持物品按「是否手牌」伪装后发给所有其他玩家。 */
+    public void refreshDisguise(Player target) {
+        if (target == null || !target.isOnline()) {
+            return;
+        }
+        ItemStack held = target.getInventory()
+                .getItem(target.getInventory().getHeldItemSlot());
+        ItemStack shown = items.isConcealable(held) ? items.paperDisguise() : held;
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            if (!viewer.equals(target)) {
+                viewer.sendEquipmentChange(target, EquipmentSlot.HAND, shown);
+            }
+        }
+    }
+
+    /** 刷新所有入座玩家的伪装（进服、进区域、发牌、出牌后调用）。 */
+    public void refreshDisguises() {
+        for (UUID id : seating.keySet()) {
+            Player player = Bukkit.getPlayer(id);
+            if (player != null) {
+                refreshDisguise(player);
+            }
         }
     }
 

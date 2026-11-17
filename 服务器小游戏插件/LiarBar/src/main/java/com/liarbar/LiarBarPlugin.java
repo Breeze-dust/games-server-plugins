@@ -28,6 +28,9 @@ public class LiarBarPlugin extends JavaPlugin {
         HubAPI.registerGame(getName(), LiarBarManager.GAME, "BELL", "4");
         HubAPI.registerLobbyHandler(player -> manager.leave(player, true));
 
+        // 兜底：每隔 1 秒重新发送手牌伪装，防止客户端在收牌/换手时看到真实牌面。
+        getServer().getScheduler().runTaskTimer(this, manager::refreshDisguises, 20L, 20L);
+
         getLogger().info("LiarBar 已启用（/liarbar，别名 /lb /liars），已加载 "
                 + manager.tables().size() + " 张桌子。");
     }
