@@ -11,6 +11,8 @@ public final class HubNPCPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
+
         try {
             skins = new SkinService(this);
         } catch (Throwable t) {
@@ -30,6 +32,11 @@ public final class HubNPCPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new NpcListener(manager), this);
         manager.reapplyLoaded();
+
+        boolean gaze = getConfig().getBoolean("look-at-player.enabled", true);
+        double gazeRange = gaze ? getConfig().getDouble("look-at-player.range", 8.0) : 0.0;
+        int gazeInterval = getConfig().getInt("look-at-player.interval", 10);
+        manager.startGaze(gazeRange, gazeInterval);
 
         getLogger().info("HubNPC 已启用，共 " + manager.size() + " 个 NPC"
                 + (skins != null && skins.available() ? "，已连接 SkinsRestorer。" : "。"));

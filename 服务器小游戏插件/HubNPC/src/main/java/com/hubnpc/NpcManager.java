@@ -2,6 +2,7 @@ package com.hubnpc;
 
 import com.destroystokyo.paper.SkinParts;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -13,6 +14,7 @@ import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.IOException;
@@ -257,8 +259,95 @@ final class NpcManager {
         if (mannequin != null) {
             mannequin.teleport(location);
             mannequin.setRotation(location.getYaw(), location.getPitch());
+            mannequin.setBodyYaw(location.getYaw());
         }
         save();
+    }
+
+    // ---------------------------------------------------------------- 朝向玩家
+
+    private double gazeRange;
+    private BukkitTask gazeTask;
+
+    /** 玩家进入 range 格时 NPC 转身看他；range <= 0 表示关闭。 */
+    void startGaze(double range, int intervalTicks) {
+        if (gazeTask != null) {
+            gazeTask.cancel();
+            gazeTask = null;
+        }
+        gazeRange = range;
+        if (range <= 0) {
+            return;
+        }
+        long period = Math.max(1, intervalTicks);
+        gazeTask = Bukkit.getScheduler().runTaskTimer(plugin, this::updateGaze, period, period);
+    }
+
+    private void updateGaze() {
+        if (npcs.isEmpty()) {
+            return;
+        }
+        double rangeSq = gazeRange * gazeRange;
+        for (NpcData data : npcs.values()) {
+            Mannequin mannequin = entity(data);
+            if (mannequin == null) {
+                continue;
+            }
+            Player target = nearestPlayer(mannequin, rangeSq);
+            if (target == null) {
+                face(mannequin, data.yaw, data.pitch);
+            } else {
+                faceToward(mannequin, target);
+            }
+        }
+    }
+
+    private static Player nearestPlayer(Mannequin mannequin, double rangeSq) {
+        Player nearest = null;
+        double best = rangeSq;
+        Location at = mannequin.getLocation();
+        for (Player player : mannequin.getWorld().getPlayers()) {
+            if (player.getGameMode() == GameMode.SPECTATOR) {
+                continue;
+            }
+            double distance = player.getLocation().distanceSquared(at);
+            if (distance <= best) {
+                best = distance;
+                nearest = player;
+            }
+        }
+        return nearest;
+    }
+
+    private static void faceToward(Mannequin mannequin, Player player) {
+        double dx = player.getX() - mannequin.getX();
+        double dz = player.getZ() - mannequin.getZ();
+        double dy = player.getEyeLocation().getY() - mannequin.getEyeLocation().getY();
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = (float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
+        face(mannequin, yaw, pitch);
+    }
+
+    /** 角度没变就不写，省掉每轮无意义的实体元数据包。 */
+    private static void face(Mannequin mannequin, float yaw, float pitch) {
+        boolean same = Math.abs(wrapDegrees(mannequin.getYaw() - yaw)) < 0.5f
+                && Math.abs(mannequin.getPitch() - pitch) < 0.5f
+                && Math.abs(wrapDegrees(mannequin.getBodyYaw() - yaw)) < 0.5f;
+        if (same) {
+            return;
+        }
+        mannequin.setRotation(yaw, pitch);
+        mannequin.setBodyYaw(yaw);
+    }
+
+    private static float wrapDegrees(float angle) {
+        angle %= 360f;
+        if (angle >= 180f) {
+            angle -= 360f;
+        } else if (angle < -180f) {
+            angle += 360f;
+        }
+        return angle;
     }
 
     void setSkin(NpcData data, String playerName, SkinService.SkinData skin) {

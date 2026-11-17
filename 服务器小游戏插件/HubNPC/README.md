@@ -85,6 +85,30 @@ NPC 右键有 400ms 防连点冷却；只处理主手。
 - `setSkinParts(allParts)`、`setDescription(null)`（隐藏名字下方的描述行）、`setAI(false)`
 - 名字组件 + 可见名牌；皮肤 profile 存在实体 NBT 和 `npcs.yml` 里，重启后不用重新联网拉取。
 
+## 朝向玩家
+
+玩家走近时 NPC 会转头看向他，走远后恢复 `/npc create`、`/npc move` 设定的朝向。
+配置在 `server/plugins/HubNPC/config.yml`（首次启动自动生成）：
+
+```yaml
+look-at-player:
+  enabled: true    # 关掉后 NPC 始终不动
+  range: 8.0       # 玩家进入多少格内开始看他
+  interval: 10     # 刷新间隔（tick），20 tick = 1 秒
+```
+
+实现要点（`NpcManager`）：
+
+- 每 `interval` tick 遍历全部 NPC，只在**同一世界**找 `range` 内最近的玩家；
+  隐身观察者（`GameMode.SPECTATOR`）不参与。
+- 朝向按「NPC 眼睛 → 玩家眼睛」算 yaw + pitch；**头部和身体分开写**：
+  `setRotation(yaw, pitch)` 管头，`setBodyYaw(yaw)` 管身子，只写前者会变成「头扭过来、身子不转」。
+- 角度变化小于 0.5° 时不发包；NPC 所在区块未加载时直接跳过。
+- 找不到玩家（或 `enabled: false`）时用 `npcs.yml` 里存的 yaw/pitch 复位。
+- 玩家在附近时用 `/npc move` 改朝向不会立刻看到效果（会被下一轮朝向玩家覆盖），
+  等人走开就会显示新朝向；想固定朝向就把 `enabled` 关掉。
+
+
 ## 皮肤联动
 
 `/npc skin <id> <玩家名>` 通过 SkinsRestorer 的 `SkinStorage#getPlayerSkin` 读取
@@ -103,7 +127,8 @@ textures 值+签名，异步请求后回主线程写入 `Mannequin#setProfile`�
 - `/npc rename testnpc <gradient:#FF0000:#00AAFF>Grad</gradient>` → 控制台输出逐字渐变；
 - `/npc command add/list/remove` 与 `/npc remove` 均正常，`npcs.yml` 随之更新。
 
-未验证：真实客户端右键执行（本地无玩家客户端接入），逻辑走标准 `PlayerInteractAtEntityEvent`。
+未验证：真实客户端右键执行（本地无玩家客户端接入），逻辑走标准 `PlayerInteractAtEntityEvent`；
+朝向玩家同理，只做了编译与配置自检，没在客户端里实际看转身效果。
 
 ## 注意
 

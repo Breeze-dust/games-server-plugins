@@ -1,0 +1,8 @@
+# NPC 转身面向附近的玩家。
+look-at-player:
+  # 关掉后 NPC 始终保持 /npc create、/npc move 设定的朝向。
+  enabled: true
+  # 玩家进入这个距离（格）时 NPC 转身看他；建议 6 ~ 12。
+  range: 8.0
+  # 刷新间隔（tick，20 tick = 1 秒）。越小越跟手，越大越省性能。
+  interval: 10
