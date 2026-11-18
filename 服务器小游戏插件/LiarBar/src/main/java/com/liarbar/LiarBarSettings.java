@@ -22,6 +22,10 @@ public final class LiarBarSettings {
     public int burnSeconds = 6;
     /** 每次灼烧伤害（半颗心 = 1）。 */
     public double burnDamage = 2.0;
+    /** 灼烧伤害的间隔（tick）。 */
+    public int burnIntervalTicks = 10;
+    /** 血条降到这个值就转观战（不会真的死）。 */
+    public double burnStopHealth = 3.0;
     /** 空枪出水持续时间（秒）。 */
     public int waterSeconds = 3;
     /** 水/岩浆每往下流一格间隔多少 tick。 */
@@ -44,6 +48,9 @@ public final class LiarBarSettings {
         fireWaitSeconds = clamp(c.getInt("settings.fire-wait-seconds", 15), 5, 120);
         burnSeconds = clamp(c.getInt("settings.burn-seconds", 6), 2, 30);
         burnDamage = Math.max(0.5, Math.min(20.0, c.getDouble("settings.burn-damage", 2.0)));
+        burnIntervalTicks = clamp(c.getInt("settings.burn-interval-ticks", 10), 2, 100);
+        burnStopHealth = Math.max(2.0, Math.min(18.0,
+                c.getDouble("settings.burn-stop-health", 3.0)));
         waterSeconds = clamp(c.getInt("settings.water-seconds", 3), 1, 20);
         flowTicksPerBlock = clamp(c.getInt("settings.flow-ticks-per-block", 6), 1, 40);
         lavaFlowTicksPerBlock = clamp(

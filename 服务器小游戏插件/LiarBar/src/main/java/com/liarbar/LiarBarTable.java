@@ -1155,7 +1155,7 @@ public final class LiarBarTable {
                     afterShot(id, true);
                     return;
                 }
-                if (elapsed >= totalTicks || p.getHealth() <= 3.0) {
+                if (elapsed >= totalTicks || p.getHealth() <= settings.burnStopHealth) {
                     cancel();
                     burnTasks.remove(id);
                     eliminateByFire(id);
@@ -1165,7 +1165,7 @@ public final class LiarBarTable {
                 p.setFireTicks(60);
                 // 走一次真实伤害事件，其他玩家能看到受击变红；伤害量压住，保证不会真的死。
                 double damage = Math.min(settings.burnDamage,
-                        Math.max(1.0, p.getHealth() - 1.5));
+                        Math.max(0.5, p.getHealth() - settings.burnStopHealth));
                 p.setNoDamageTicks(0);
                 manager.allowNextDamage(id);
                 try {
@@ -1175,9 +1175,9 @@ public final class LiarBarTable {
                 }
                 p.getWorld().spawnParticle(Particle.FLAME, p.getLocation().add(0, 1, 0),
                         12, 0.35, 0.5, 0.35, 0.02);
-                elapsed += 10;
+                elapsed += settings.burnIntervalTicks;
             }
-        }.runTaskTimer(plugin, 0L, 10L);
+        }.runTaskTimer(plugin, 0L, settings.burnIntervalTicks);
         burnTasks.put(id, holder[0]);
     }
 

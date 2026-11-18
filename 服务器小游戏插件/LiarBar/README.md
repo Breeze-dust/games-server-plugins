@@ -82,7 +82,7 @@
   - `hand-size`（5）、`max-play-cards`（3）
   - `turn-seconds`（30）、`round-delay-seconds`（4）、`end-delay-seconds`（5）
   - `chambers`（6）、`reveal-delay-ticks`（14）、`fire-wait-seconds`（15）
-  - `burn-seconds`（6）、`burn-damage`（2.0）、`water-seconds`（3）
+  - `burn-seconds`（6）、`burn-damage`（2.0）、`burn-interval-ticks`（10）、`burn-stop-health`（3.0）、`water-seconds`（3）
   - `flow-ticks-per-block`（6）、`lava-flow-ticks-per-block`（6）、`water-flow-ticks-per-block`（6）
     —— 水流/岩浆每下一格的间隔（tick），越大越慢；后两个不写就沿用第一个
   - `room.*` 与 `tables.*` 由命令写入，不用手改

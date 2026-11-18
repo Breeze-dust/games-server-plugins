@@ -38,10 +38,14 @@ settings:
   reveal-delay-ticks: 14
   # 拿到左轮后多少秒不开枪就自动扣扳机
   fire-wait-seconds: 15
-  # 被岩浆浇头后焚烧多少秒（血条清零前就转观战）
+  # 被岩浆浇头后焚烧多少秒（血条降到 burn-stop-health 就转观战）
   burn-seconds: 6
-  # 每 0.5 秒灼烧造成的伤害（半颗心 = 1）
+  # 每次灼烧造成的伤害（半颗心 = 1）
   burn-damage: 2.0
+  # 灼烧伤害间隔多少 tick（20 tick = 1 秒）
+  burn-interval-ticks: 10
+  # 血条降到这个值就转观战（不会真的死；2.0 = 1 颗心）
+  burn-stop-health: 3.0
   # 空枪放水持续多少秒
   water-seconds: 3
   # 水/岩浆每次往下流一格间隔多少 tick（20 tick = 1 秒；越大流得越慢）
