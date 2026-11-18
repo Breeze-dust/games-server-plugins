@@ -572,6 +572,7 @@ public final class LiarBarTable {
         if (state != State.PLAYING) {
             return;
         }
+        clearColumn();
         transition = false;
         round++;
         tableRank = ThreadLocalRandom.current().nextInt(LiarBarCards.NORMAL_RANKS);
@@ -1002,20 +1003,27 @@ public final class LiarBarTable {
                 if (state != State.PLAYING || p == null) {
                     cancel();
                     burnTasks.remove(id);
-                    clearColumn();
                     afterShot(id, true);
                     return;
                 }
                 if (elapsed >= totalTicks || p.getHealth() <= 3.0) {
                     cancel();
                     burnTasks.remove(id);
-                    clearColumn();
                     eliminateByFire(id);
                     afterShot(id, true);
                     return;
                 }
                 p.setFireTicks(60);
-                p.setHealth(Math.max(2.0, p.getHealth() - 2.0));
+                // 走一次真实伤害事件，其他玩家能看到受击变红；伤害量压住，保证不会真的死。
+                double damage = Math.min(settings.burnDamage,
+                        Math.max(1.0, p.getHealth() - 1.5));
+                p.setNoDamageTicks(0);
+                manager.allowNextDamage(id);
+                try {
+                    p.damage(damage);
+                } finally {
+                    manager.clearDamageAllowed(id);
+                }
                 p.getWorld().spawnParticle(Particle.FLAME, p.getLocation().add(0, 1, 0),
                         12, 0.35, 0.5, 0.35, 0.02);
                 elapsed += 10;
@@ -1125,9 +1133,11 @@ public final class LiarBarTable {
         }
         Seat seat = seatOf(id);
         Player p = playerOf(id);
+        manager.clearDamageAllowed(id);
         if (p != null) {
             Chat.title(p, "&c&l你被岩浆吞没了", "&7留在座位上观战", 3);
             p.setFireTicks(0);
+            p.setHealth(p.getMaxHealth());
             if (seat != null) {
                 if (seat.stand != null) {
                     manager.markForceDismount(id);

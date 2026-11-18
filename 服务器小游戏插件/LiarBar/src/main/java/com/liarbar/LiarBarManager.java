@@ -42,6 +42,10 @@ public final class LiarBarManager {
     private final Set<UUID> forceDismounts = new HashSet<>();
     /** 打开「建场模式」的玩家：在房间区域内可以破坏/放置方块。 */
     private final Set<UUID> builders = new HashSet<>();
+    /** 在建场模式前保存的游戏模式，关闭时还原。 */
+    private final Map<UUID, GameMode> buildPreviousMode = new HashMap<>();
+    /** 下一次伤害事件要放行的玩家（岩浆灼烧的受击动画）。 */
+    private final Set<UUID> damageAllowed = new HashSet<>();
 
     private YamlConfiguration stats;
     private int loadRetries;
@@ -235,6 +239,8 @@ public final class LiarBarManager {
         }
         UUID id = player.getUniqueId();
         builders.remove(id);
+        buildPreviousMode.remove(id);
+        damageAllowed.remove(id);
         LiarBarTable table = seating.get(id);
         if (table != null) {
             table.removePlayer(player);
@@ -281,14 +287,17 @@ public final class LiarBarManager {
     /** 切换建场模式：开启后在房间区域内允许破坏/放置方块。 */
     public boolean toggleBuild(Player player) {
         UUID id = player.getUniqueId();
-        boolean now;
         if (builders.remove(id)) {
-            now = false;
-        } else {
-            builders.add(id);
-            now = true;
+            GameMode previous = buildPreviousMode.remove(id);
+            if (previous != null) {
+                player.setGameMode(previous);
+            }
+            return false;
         }
-        return now;
+        builders.add(id);
+        buildPreviousMode.put(id, player.getGameMode());
+        player.setGameMode(GameMode.CREATIVE);
+        return true;
     }
 
     public boolean isBuilder(Player player) {
@@ -298,7 +307,21 @@ public final class LiarBarManager {
     public void clearBuild(Player player) {
         if (player != null) {
             builders.remove(player.getUniqueId());
+            buildPreviousMode.remove(player.getUniqueId());
         }
+    }
+
+    /** 放行一次伤害事件（岩浆灼烧时让其他玩家看到受击变红）。 */
+    public void allowNextDamage(UUID id) {
+        damageAllowed.add(id);
+    }
+
+    public boolean consumeDamageAllowed(UUID id) {
+        return damageAllowed.remove(id);
+    }
+
+    public void clearDamageAllowed(UUID id) {
+        damageAllowed.remove(id);
     }
 
     // ---------- 背包快照（只在开局时保存，结束后还原） ----------

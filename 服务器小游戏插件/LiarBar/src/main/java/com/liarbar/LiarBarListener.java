@@ -86,6 +86,9 @@ public class LiarBarListener implements Listener {
         if (!manager.inRoom(player)) {
             return;
         }
+        if (manager.isBuilder(player)) {
+            return; // 建场模式：不拦右键，交给原版处理
+        }
         if (event.getHand() == EquipmentSlot.OFF_HAND) {
             return;
         }
@@ -192,9 +195,13 @@ public class LiarBarListener implements Listener {
 
     @EventHandler
     public void onDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player player && manager.inRoom(player)) {
-            event.setCancelled(true);
+        if (!(event.getEntity() instanceof Player player) || !manager.inRoom(player)) {
+            return;
         }
+        if (manager.consumeDamageAllowed(player.getUniqueId())) {
+            return; // 岩浆灼烧：放行，让其他人看到受击变红
+        }
+        event.setCancelled(true);
     }
 
     @EventHandler
@@ -220,14 +227,14 @@ public class LiarBarListener implements Listener {
 
     @EventHandler
     public void onDrop(PlayerDropItemEvent event) {
-        if (manager.inRoom(event.getPlayer())) {
+        if (manager.inRoom(event.getPlayer()) && !manager.isBuilder(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onSwap(PlayerSwapHandItemsEvent event) {
-        if (manager.inRoom(event.getPlayer())) {
+        if (manager.inRoom(event.getPlayer()) && !manager.isBuilder(event.getPlayer())) {
             event.setCancelled(true);
         }
     }

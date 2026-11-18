@@ -41,6 +41,8 @@ settings:
   fire-wait-seconds: 15
   # 被岩浆浇头后焚烧多少秒（血条清零前就转观战）
   burn-seconds: 6
+  # 每 0.5 秒灼烧造成的伤害（半颗心 = 1）
+  burn-damage: 2.0
   # 空枪放水持续多少秒
   water-seconds: 3
   # 水/岩浆每次往下流一格间隔多少 tick（20 tick = 1 秒；越大流得越慢）

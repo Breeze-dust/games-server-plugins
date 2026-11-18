@@ -21,6 +21,8 @@ public final class LiarBarSettings {
     public int fireWaitSeconds = 15;
     /** 岩浆焚烧持续时间（秒）。 */
     public int burnSeconds = 6;
+    /** 每次灼烧伤害（半颗心 = 1）。 */
+    public double burnDamage = 2.0;
     /** 空枪出水持续时间（秒）。 */
     public int waterSeconds = 3;
     /** 水/岩浆每往下流一格间隔多少 tick。 */
@@ -39,6 +41,7 @@ public final class LiarBarSettings {
         revealDelayTicks = clamp(c.getInt("settings.reveal-delay-ticks", 14), 4, 100);
         fireWaitSeconds = clamp(c.getInt("settings.fire-wait-seconds", 15), 5, 120);
         burnSeconds = clamp(c.getInt("settings.burn-seconds", 6), 2, 30);
+        burnDamage = Math.max(0.5, Math.min(20.0, c.getDouble("settings.burn-damage", 2.0)));
         waterSeconds = clamp(c.getInt("settings.water-seconds", 3), 1, 20);
         flowTicksPerBlock = clamp(c.getInt("settings.flow-ticks-per-block", 6), 1, 40);
     }
