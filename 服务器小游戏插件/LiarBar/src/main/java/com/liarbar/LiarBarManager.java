@@ -176,13 +176,18 @@ public final class LiarBarManager {
             return;
         }
         UUID id = player.getUniqueId();
+        String currentGame = HubAPI.gameOf(id);
+        // 已经通过别的方式加入了其它游戏（例如在区域里用指南针进别的游戏）：
+        // 不再算在酒馆里，也绝不要 clearGame，否则会把那个游戏的 tab 状态清掉。
+        if (currentGame != null && !currentGame.equals(GAME)) {
+            if (inRoom.remove(id)) {
+                clearLiquorItems(player);
+            }
+            return;
+        }
         boolean seated = seating.containsKey(id);
         boolean inside = seated || room.inRoom(player.getLocation());
         if (inside && !inRoom.contains(id)) {
-            String currentGame = HubAPI.gameOf(id);
-            if (currentGame != null && !currentGame.equals(GAME)) {
-                return;
-            }
             enterRegion(player);
         } else if (!inside && inRoom.contains(id) && !seated) {
             exitRegion(player);
@@ -202,7 +207,10 @@ public final class LiarBarManager {
         UUID id = player.getUniqueId();
         clearLiquorItems(player);
         inRoom.remove(id);
-        HubAPI.clearGame(id);
+        // 只清理自己上报的 tab 状态，别把刚加入的其它游戏状态清掉
+        if (GAME.equals(HubAPI.gameOf(id))) {
+            HubAPI.clearGame(id);
+        }
         Chat.send(player, "&7你离开了骗子酒馆。");
     }
 
@@ -265,7 +273,9 @@ public final class LiarBarManager {
         if (fromHub || !room.inRoom(player.getLocation())) {
             clearLiquorItems(player);
             inRoom.remove(id);
-            HubAPI.clearGame(id);
+            if (GAME.equals(HubAPI.gameOf(id))) {
+                HubAPI.clearGame(id);
+            }
             if (!fromHub) {
                 Chat.send(player, "&e你已退出骗子酒馆。");
             }
