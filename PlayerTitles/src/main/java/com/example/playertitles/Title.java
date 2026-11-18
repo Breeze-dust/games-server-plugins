@@ -73,14 +73,11 @@ public record Title(String id, String name, String color, String description, bo
     }
 
     /**
-     * 镀层后括号跟随镀层渐变的颜色：左括号取第一个颜色、右括号取最后一个颜色；
-     * 镀层名称不是渐变（或没有镀层名称）时沿用普通颜色。
+     * 名称是渐变时括号跟随渐变颜色：左括号取第一个颜色、右括号取最后一个颜色。
+     * 对普通头衔、自定义头衔和镀层头衔都生效；名称不是渐变时沿用普通颜色。
      */
     private String bracketColor(boolean plated, boolean opening) {
-        if (!plated || platedName == null || platedName.isBlank()) {
-            return color;
-        }
-        Text.Gradient gradient = Text.parseGradient(platedName);
+        Text.Gradient gradient = Text.parseGradient(displayName(plated));
         if (gradient == null || gradient.colors().isEmpty()) {
             return color;
         }
