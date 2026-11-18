@@ -59,8 +59,8 @@ public final class TitleManager {
                 String color = Text.normalizeColor(titleSection.getString(id + ".color", "&f"));
                 String description = titleSection.getString(id + ".description", "&7暂无描述");
                 boolean visible = titleSection.getBoolean(id + ".visible", true);
-                String platedName = blankToNull(titleSection.getString(id + ".plated-name"));
-                String platedDescription = blankToNull(titleSection.getString(id + ".plated-description"));
+                String platedName = titleSection.getString(id + ".plated-name");
+                String platedDescription = titleSection.getString(id + ".plated-description");
                 titles.put(id, new Title(id, name, color == null ? "&f" : color, description, visible,
                         platedName, platedDescription));
             }
@@ -356,20 +356,16 @@ public final class TitleManager {
         return grantPlated(uuid, titleId);
     }
 
-    /** 补全头衔的镀层变体；已经配置过的内容保留（管理员改动优先）。 */
+    /** 补全头衔的镀层变体；已经配置过的内容保留（null = 从未配置，空串 = 管理员主动清除）。 */
     private void ensurePlatedVariant(String titleId, String platedName, String platedDescription) {
         Title title = titles.get(titleId);
         if (title == null) {
             return;
         }
-        String newName = title.platedName();
-        if (newName == null || newName.isBlank()) {
-            newName = platedName;
-        }
-        String newDescription = title.platedDescription();
-        if (newDescription == null || newDescription.isBlank()) {
-            newDescription = platedDescription;
-        }
+        String newName = title.platedName() == null ? platedName : title.platedName();
+        String newDescription = title.platedDescription() == null
+                ? platedDescription
+                : title.platedDescription();
         if (java.util.Objects.equals(newName, title.platedName())
                 && java.util.Objects.equals(newDescription, title.platedDescription())) {
             return;
@@ -379,10 +375,8 @@ public final class TitleManager {
         save();
     }
 
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value;
-    }
-
+    /**
+     * 授予头衔；头衔定义不存在时按给定内容创建（对所有玩家可见），再发放。
     /**
      * 授予头衔；头衔定义不存在时按给定内容创建（对所有玩家可见），再发放。
      *

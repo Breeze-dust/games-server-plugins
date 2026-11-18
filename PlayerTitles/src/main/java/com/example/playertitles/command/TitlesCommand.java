@@ -25,7 +25,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
             "menu", "help", "custom", "donor", "give", "giveall", "take", "revoke", "create", "delete",
-            "setname", "setcolor", "setdesc", "setvisible", "list", "admin", "reload");
+            "setname", "setcolor", "setdesc", "setvisible", "setplatedname", "setplateddesc",
+            "list", "admin", "reload");
 
     private final PlayerTitlesPlugin plugin;
 
@@ -56,6 +57,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             case "setcolor" -> setColor(sender, args);
             case "setdesc" -> setDescription(sender, args);
             case "setvisible" -> setVisible(sender, args);
+            case "setplatedname" -> setPlatedName(sender, args);
+            case "setplateddesc" -> setPlatedDescription(sender, args);
             case "list" -> list(sender);
             case "admin" -> admin(sender);
             case "reload" -> reload(sender);
@@ -469,8 +472,61 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
                 : "&c未拥有该头衔的玩家现在看不到它");
     }
 
-    private void list(CommandSender sender) {
+    private void setPlatedName(CommandSender sender, String[] args) {
         if (!requireAdmin(sender)) {
+            return;
+        }
+        if (args.length < 3) {
+            msg(sender, "&c用法: /titles setplatedname <ID> <镀层名称>");
+            msg(sender, "&7支持渐变: &e{FFD700>FF6F00}称号&7；输入 &f- &7清除镀层名称");
+            return;
+        }
+        Title title = plugin.getTitleManager().getTitle(args[1]);
+        if (title == null) {
+            msg(sender, "&c找不到头衔: " + args[1]);
+            return;
+        }
+        String value = join(args, 2).trim();
+        // 空串 = 管理员主动清除：下次镀层时不再自动补回内置渐变。
+        String platedName = value.equals("-") ? "" : value;
+        if (platedName != null && Text.looksLikeGradient(platedName)
+                && Text.parseGradient(platedName) == null) {
+            msg(sender, "&c渐变语法无效，示例: &e{FF0000>00FF00}称号");
+            return;
+        }
+        plugin.getTitleManager().update(
+                new Title(title.id(), title.name(), title.color(), title.description(), title.visible(),
+                        platedName, title.platedDescription()));
+        msg(sender, platedName.isBlank()
+                ? "&a已清除镀层名称（镀层时沿用普通名称）"
+                : "&a镀层名称已更新");
+    }
+
+    private void setPlatedDescription(CommandSender sender, String[] args) {
+        if (!requireAdmin(sender)) {
+            return;
+        }
+        if (args.length < 3) {
+            msg(sender, "&c用法: /titles setplateddesc <ID> <镀层描述>");
+            msg(sender, "&7用 \\n 换行，支持 & 颜色代码；输入 &f- &7清除镀层描述");
+            return;
+        }
+        Title title = plugin.getTitleManager().getTitle(args[1]);
+        if (title == null) {
+            msg(sender, "&c找不到头衔: " + args[1]);
+            return;
+        }
+        String value = join(args, 2).trim();
+        String platedDescription = value.equals("-") ? "" : value;
+        plugin.getTitleManager().update(
+                new Title(title.id(), title.name(), title.color(), title.description(), title.visible(),
+                        title.platedName(), platedDescription));
+        msg(sender, platedDescription.isBlank()
+                ? "&a已清除镀层描述（镀层时沿用普通描述）"
+                : "&a镀层描述已更新");
+    }
+
+    private void list(CommandSender sender) {        if (!requireAdmin(sender)) {
             return;
         }
         List<Title> titles = plugin.getTitleManager().getTitles();
@@ -517,6 +573,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             msg(sender, "&f/titles setname <ID> <名称> &7- 修改名称");
             msg(sender, "&f/titles setcolor <ID> <颜色> &7- 修改颜色");
             msg(sender, "&f/titles setdesc <ID> <描述> &7- 修改描述");
+            msg(sender, "&f/titles setplatedname <ID> <名称> &7- 修改镀层名称（支持渐变）");
+            msg(sender, "&f/titles setplateddesc <ID> <描述> &7- 修改镀层描述（\\n 换行）");
             msg(sender, "&f/titles setvisible <ID> <true|false> &7- 未拥有者是否可见");
             msg(sender, "&f/titles list &7- 列出所有头衔");
             msg(sender, "&f/titles reload &7- 重新载入 titles.yml 与 config.yml");
@@ -566,7 +624,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             return switch (sub) {
                 case "give", "take", "revoke" -> filter(onlinePlayerNames(), args[1]);
                 case "donor" -> filter(List.of("add", "remove", "list", "reset"), args[1]);
-                case "giveall", "delete", "setname", "setcolor", "setdesc", "setvisible" -> filter(titleIds(), args[1]);
+                case "giveall", "delete", "setname", "setcolor", "setdesc", "setvisible",
+                        "setplatedname", "setplateddesc" -> filter(titleIds(), args[1]);
                 default -> List.of();
             };
         }
