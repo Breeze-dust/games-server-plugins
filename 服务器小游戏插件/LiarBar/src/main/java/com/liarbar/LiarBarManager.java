@@ -413,6 +413,37 @@ public final class LiarBarManager {
         }
     }
 
+    /**
+     * 每 tick 兜底一次：切换手持物品时原版会先把真实牌面发给附近玩家，
+     * 这里在下一 tick 立刻重发伪装，避免闪出真实道具。
+     */
+    public void tickDisguises() {
+        if (seating.isEmpty()) {
+            return;
+        }
+        ItemStack paper = items.paperDisguise();
+        for (UUID id : seating.keySet()) {
+            Player target = Bukkit.getPlayer(id);
+            if (target == null || !target.isOnline()) {
+                continue;
+            }
+            ItemStack held = target.getInventory()
+                    .getItem(target.getInventory().getHeldItemSlot());
+            if (held == null || held.getType().isAir() || !items.isConcealable(held)) {
+                continue;
+            }
+            for (Player viewer : target.getWorld().getPlayers()) {
+                if (viewer.equals(target)) {
+                    continue;
+                }
+                if (viewer.getLocation().distanceSquared(target.getLocation()) > 64 * 64) {
+                    continue;
+                }
+                viewer.sendEquipmentChange(target, EquipmentSlot.HAND, paper);
+            }
+        }
+    }
+
     // ---------- 酒与空瓶 ----------
 
     /** 给玩家发若干瓶随机酒（指令用）。 */
