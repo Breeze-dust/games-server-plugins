@@ -1,0 +1,22 @@
+name: DontDoIt
+version: '1.0.0'
+main: com.dontdoit.DontDoItPlugin
+api-version: '1.21'
+description: 不要做挑战：每队一条禁止词条，做了就扣命，最后存活获胜
+minigame-game: true
+minigame:
+  name: 不要做挑战
+  icon: NAME_TAG
+  color: 'd'
+depend: [MiniGameLib, HubCore]
+softdepend: [GameWorlds]
+commands:
+  dontdoit:
+    description: 不要做挑战
+    usage: /ddi help
+    aliases: [ddi, byz]
+permissions:
+  ddi.use:
+    default: true
+  ddi.admin:
+    default: op

@@ -1,0 +1,85 @@
+# 不要做挑战（DontDoIt）配置
+# 键值对的冒号后面必须有空格，否则整份配置会加载失败。
+
+# ===== 比赛规则 =====
+# 开局至少要有几支有人的队伍
+min-teams: 2
+# 等待室至少几人才能自动开局
+min-players: 2
+# 最多几支队伍（1~48；前 16 支用羊毛，17~32 用陶瓦，33~48 用混凝土）
+max-teams: 16
+# 每队最多几人
+max-players-per-team: 4
+# 是否允许各队人数不平衡（false = 只能加入人数最少的队伍）
+allow-unbalanced-teams: false
+# 每队初始「规则数量」（生命值）
+lives: 15
+# 自动更换词条的间隔（秒）
+criteria-change-seconds: 120
+# 是否允许每队用「书与笔」写一条自定义词条
+custom-criteria-enabled: true
+# 是否开启「猜词条」玩法
+guess-criteria-enabled: true
+# 猜词条的冷却（秒）
+guess-cooldown-seconds: 120
+# 猜对 / 猜错时规则数量的变化
+guess-success-lives: 1
+guess-failed-lives: 1
+# 是否开启钻石回血机制
+diamond-behavior-enabled: true
+# 钻石行为：reduce_others_life = 其他队伍 -1；add_self_life = 自己队伍 +1
+diamond-behavior: reduce_others_life
+# 规则数量达到该值时钻石行为无效（防止领先队伍无限回血）
+diamond-behavior-disabled-threshold: 10
+
+# ===== 对局环境 =====
+# 对局期间的 MC 难度：PEACEFUL / EASY / NORMAL / HARD
+game-difficulty: NORMAL
+# 是否给对局玩家无限夜视
+night-vision: true
+# 是否把世界边界缩到场地范围（会临时改世界边界，重置时还原）
+use-world-border: true
+# 世界边界比场地半径多留几格
+world-border-padding: 4
+
+# ===== 动态词条 =====
+# 是否启用「位置高于高处 / 位置低于地面」这类按 Y 高度判定的词条
+enable-y-level-criteria: true
+# 相对地面（场地中心 Y）的偏移
+y-level-offset-ground: 1
+y-level-offset-on-air: 14
+
+# ===== 地形生成（照官方默认值）=====
+# 最底层往下铺几层基岩
+bedrock-depth: 11
+# 每个深度段的方块比例；深度范围必须是整数，用 .. 表示
+andesite-generation:
+  - depth: 1..10
+    ratio: 0.75
+coal-ore-generation:
+  - depth: 1..3
+    ratio: 0.10
+  - depth: 4..7
+    ratio: 0.07
+  - depth: 8..10
+    ratio: 0.02
+iron-ore-generation:
+  - depth: 4..7
+    ratio: 0.02
+  - depth: 8..10
+    ratio: 0.05
+diamond-ore-generation:
+  - depth: 8..10
+    ratio: 0.01
+
+# ===== 场地 =====
+# center 是场地中心（玩家站在石层上方执行 /ddi setcenter）。
+# area-size 是场地边长（自动取比它大的最小奇数）。
+# lobby 是等待点，spectator 是观战落点（不填就用等待点上方）。
+arenas:
+  default:
+    world: world
+    center: '0,64,0'
+    area-size: 64
+    lobby: '0,70,0,0,0'
+    spectator: '0,90,0,0,0'
