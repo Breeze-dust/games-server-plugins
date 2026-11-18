@@ -136,7 +136,7 @@ public final class MenuListener implements Listener {
             case 20 -> {
                 boolean next = !title.visible();
                 plugin.getTitleManager().update(new Title(title.id(), title.name(), title.color(),
-                        title.description(), next));
+                        title.description(), next, title.platedName(), title.platedDescription()));
                 player.sendMessage(Text.parse(next
                         ? "&a未拥有该头衔的玩家现在可以在菜单中看到它"
                         : "&c未拥有该头衔的玩家现在看不到它"));

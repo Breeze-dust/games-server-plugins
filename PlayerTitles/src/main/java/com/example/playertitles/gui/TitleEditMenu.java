@@ -84,7 +84,8 @@ public final class TitleEditMenu {
                     ? input.substring(0, Title.MAX_NAME_LENGTH)
                     : input;
             plugin.getTitleManager().update(new Title(title.id(), name, title.color(),
-                    title.description(), title.visible()));
+                    title.description(), title.visible(),
+                    title.platedName(), title.platedDescription()));
             player.sendMessage(Text.parse("&a头衔名称已更新"));
             open(plugin, player, titleId);
         });
@@ -109,7 +110,8 @@ public final class TitleEditMenu {
                     }
                     String description = input.length() > 200 ? input.substring(0, 200) : input;
                     plugin.getTitleManager().update(
-                            new Title(title.id(), title.name(), title.color(), description, title.visible()));
+                            new Title(title.id(), title.name(), title.color(), description, title.visible(),
+                                    title.platedName(), title.platedDescription()));
                     player.sendMessage(Text.parse("&a头衔描述已更新"));
                     open(plugin, player, titleId);
                 });

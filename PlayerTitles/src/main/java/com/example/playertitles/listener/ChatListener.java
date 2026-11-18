@@ -28,7 +28,8 @@ public final class ChatListener implements Listener {
             Title title = plugin.getTitleManager().getTitle(source.getUniqueId());
             Component displayName = Component.empty();
             if (title != null) {
-                displayName = displayName.append(title.bracketPrefix());
+                boolean plated = plugin.getTitleManager().ownsPlated(source.getUniqueId(), title.id());
+                displayName = displayName.append(title.bracketPrefix(plated));
             }
             displayName = displayName.append(sourceDisplayName);
 

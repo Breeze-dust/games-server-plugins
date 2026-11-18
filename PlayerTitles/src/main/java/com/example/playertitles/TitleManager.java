@@ -30,6 +30,8 @@ public final class TitleManager {
     private final Map<UUID, String> assigned = new ConcurrentHashMap<>();
     /** 玩家拥有的头衔（可多个）；与"当前装备"分开存。 */
     private final Map<UUID, Set<String>> owned = new ConcurrentHashMap<>();
+    /** 玩家已镀层的头衔；镀层是拥有权之上的状态，只影响外观与描述。 */
+    private final Map<UUID, Set<String>> plated = new ConcurrentHashMap<>();
     /** 募捐感谢名单：每人绑定一个仅自己可见的专属头衔。 */
     private final Map<UUID, Donor> donors = new LinkedHashMap<>();
 
@@ -45,6 +47,7 @@ public final class TitleManager {
         titles.clear();
         assigned.clear();
         owned.clear();
+        plated.clear();
         donors.clear();
 
         boolean firstLoad = !file.exists();
@@ -56,7 +59,10 @@ public final class TitleManager {
                 String color = Text.normalizeColor(titleSection.getString(id + ".color", "&f"));
                 String description = titleSection.getString(id + ".description", "&7暂无描述");
                 boolean visible = titleSection.getBoolean(id + ".visible", true);
-                titles.put(id, new Title(id, name, color == null ? "&f" : color, description, visible));
+                String platedName = blankToNull(titleSection.getString(id + ".plated-name"));
+                String platedDescription = blankToNull(titleSection.getString(id + ".plated-description"));
+                titles.put(id, new Title(id, name, color == null ? "&f" : color, description, visible,
+                        platedName, platedDescription));
             }
         }
 
@@ -130,6 +136,30 @@ public final class TitleManager {
             }
         }
 
+        ConfigurationSection platedSection = data.getConfigurationSection("plated");
+        if (platedSection != null) {
+            for (String key : platedSection.getKeys(false)) {
+                UUID uuid;
+                try {
+                    uuid = UUID.fromString(key);
+                } catch (IllegalArgumentException ignored) {
+                    continue;
+                }
+                Set<String> ids = new HashSet<>();
+                for (String id : platedSection.getStringList(key)) {
+                    if (!titles.containsKey(id)) {
+                        continue;
+                    }
+                    ids.add(id);
+                    // 镀层一定伴随拥有；老数据/手工编辑缺拥有记录时补上。
+                    owned.computeIfAbsent(uuid, mapKey -> new HashSet<>()).add(id);
+                }
+                if (!ids.isEmpty()) {
+                    plated.put(uuid, ids);
+                }
+            }
+        }
+
         if (firstLoad && titles.isEmpty()) {
             titles.put("xinshou", new Title("xinshou", "新手", "&a", "&7刚刚加入服务器的新玩家"));
             save();
@@ -154,6 +184,8 @@ public final class TitleManager {
             data.set(path + ".color", title.color());
             data.set(path + ".description", title.description());
             data.set(path + ".visible", title.visible());
+            data.set(path + ".plated-name", title.platedName());
+            data.set(path + ".plated-description", title.platedDescription());
         }
         for (Map.Entry<UUID, String> entry : assigned.entrySet()) {
             data.set("players." + entry.getKey(), entry.getValue());
@@ -161,6 +193,11 @@ public final class TitleManager {
         for (Map.Entry<UUID, Set<String>> entry : owned.entrySet()) {
             if (!entry.getValue().isEmpty()) {
                 data.set("owned." + entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+        }
+        for (Map.Entry<UUID, Set<String>> entry : plated.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                data.set("plated." + entry.getKey(), new ArrayList<>(entry.getValue()));
             }
         }
         for (Donor donor : donors.values()) {
@@ -243,6 +280,109 @@ public final class TitleManager {
         return true;
     }
 
+    /** 玩家是否已获得某个头衔的镀层版本。 */
+    public synchronized boolean ownsPlated(UUID uuid, String titleId) {
+        if (uuid == null || titleId == null) {
+            return false;
+        }
+        Set<String> ids = plated.get(uuid);
+        return ids != null && ids.contains(titleId);
+    }
+
+    /**
+     * 给已经拥有的头衔镀层。
+     *
+     * @return true = 本次新镀层；false = 没拥有 / 已镀层
+     */
+    public synchronized boolean plate(UUID uuid, String titleId) {
+        if (uuid == null || !titles.containsKey(titleId)) {
+            return false;
+        }
+        if (!owned.computeIfAbsent(uuid, key -> new HashSet<>()).contains(titleId)) {
+            return false;
+        }
+        if (!plated.computeIfAbsent(uuid, key -> new HashSet<>()).add(titleId)) {
+            return false;
+        }
+        save();
+        Player player = Bukkit.getPlayer(uuid);
+        if (player != null) {
+            applyNametag(player);
+        }
+        return true;
+    }
+
+    /** 授予头衔并直接镀层；已经在装备该头衔的玩家会立即换成镀层外观。 */
+    public synchronized boolean grantPlated(UUID uuid, String titleId) {
+        if (uuid == null || !titles.containsKey(titleId)) {
+            return false;
+        }
+        boolean changed = owned.computeIfAbsent(uuid, key -> new HashSet<>()).add(titleId);
+        changed |= plated.computeIfAbsent(uuid, key -> new HashSet<>()).add(titleId);
+        if (!changed) {
+            return false;
+        }
+        save();
+        Player player = Bukkit.getPlayer(uuid);
+        if (player != null) {
+            applyNametag(player);
+        }
+        return true;
+    }
+
+    /**
+     * 授予镀层头衔；头衔定义不存在时按给定内容创建，缺少镀层变体时补上。
+     *
+     * @param platedName 镀层后的名称，可写 {@code {RRGGBB>RRGGBB}文字} 渐变
+     * @return true = 本次新获得或新镀层
+     */
+    public synchronized boolean grantOrCreatePlated(UUID uuid, String titleId,
+                                                    String name, String color, String description,
+                                                    String platedName, String platedDescription) {
+        return grantOrCreatePlated(uuid, titleId, name, color, description,
+                platedName, platedDescription, true);
+    }
+
+    /** 同 {@link #grantOrCreatePlated(UUID, String, String, String, String, String, String)}，可指定可见性。 */
+    public synchronized boolean grantOrCreatePlated(UUID uuid, String titleId,
+                                                    String name, String color, String description,
+                                                    String platedName, String platedDescription,
+                                                    boolean visible) {
+        if (uuid == null || titleId == null || titleId.isBlank()) {
+            return false;
+        }
+        ensureTitle(titleId, name, color, description, visible);
+        ensurePlatedVariant(titleId, platedName, platedDescription);
+        return grantPlated(uuid, titleId);
+    }
+
+    /** 补全头衔的镀层变体；已经配置过的内容保留（管理员改动优先）。 */
+    private void ensurePlatedVariant(String titleId, String platedName, String platedDescription) {
+        Title title = titles.get(titleId);
+        if (title == null) {
+            return;
+        }
+        String newName = title.platedName();
+        if (newName == null || newName.isBlank()) {
+            newName = platedName;
+        }
+        String newDescription = title.platedDescription();
+        if (newDescription == null || newDescription.isBlank()) {
+            newDescription = platedDescription;
+        }
+        if (java.util.Objects.equals(newName, title.platedName())
+                && java.util.Objects.equals(newDescription, title.platedDescription())) {
+            return;
+        }
+        titles.put(titleId, new Title(title.id(), title.name(), title.color(), title.description(),
+                title.visible(), newName, newDescription));
+        save();
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
     /**
      * 授予头衔；头衔定义不存在时按给定内容创建（对所有玩家可见），再发放。
      *
@@ -317,6 +457,13 @@ public final class TitleManager {
         if (ids.isEmpty()) {
             owned.remove(uuid);
         }
+        Set<String> platedIds = plated.get(uuid);
+        if (platedIds != null) {
+            platedIds.remove(titleId);
+            if (platedIds.isEmpty()) {
+                plated.remove(uuid);
+            }
+        }
         if (titleId != null && titleId.equals(assigned.get(uuid))) {
             assigned.remove(uuid);
             Player player = Bukkit.getPlayer(uuid);
@@ -330,6 +477,7 @@ public final class TitleManager {
     /** 收回该玩家全部头衔（并卸下当前头衔）。 */
     public synchronized void revokeAll(UUID uuid) {
         owned.remove(uuid);
+        plated.remove(uuid);
         if (assigned.remove(uuid) != null) {
             Player player = Bukkit.getPlayer(uuid);
             if (player != null) {
@@ -503,7 +651,8 @@ public final class TitleManager {
         if (title == null) {
             return false;
         }
-        titles.put(title.id(), new Title(title.id(), name, title.color(), title.description(), title.visible()));
+        titles.put(title.id(), new Title(title.id(), name, title.color(), title.description(),
+                title.visible(), title.platedName(), title.platedDescription()));
         donors.put(uuid, new Donor(uuid, donor.playerName(), donor.titleId(), System.currentTimeMillis()));
         save();
         Player player = Bukkit.getPlayer(uuid);
@@ -566,6 +715,10 @@ public final class TitleManager {
             ids.remove(id);
         }
         owned.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        for (Set<String> ids : plated.values()) {
+            ids.remove(id);
+        }
+        plated.entrySet().removeIf(entry -> entry.getValue().isEmpty());
         save();
         unregisterTeam(id);
         for (UUID uuid : affected) {
@@ -596,7 +749,7 @@ public final class TitleManager {
                 return;
             }
         }
-        team.prefix(title.bracketPrefix());
+        team.prefix(title.bracketPrefix(ownsPlated(player.getUniqueId(), title.id())));
         team.addEntry(entry);
     }
 

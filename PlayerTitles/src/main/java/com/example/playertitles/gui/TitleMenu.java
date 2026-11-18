@@ -46,9 +46,10 @@ public final class TitleMenu {
             holder.getEntryIds().add(entry.id());
 
             boolean owned = plugin.getTitleManager().owns(uuid, entry.id());
+            boolean plated = plugin.getTitleManager().ownsPlated(uuid, entry.id());
             boolean selected = active != null && active.id().equals(entry.id());
 
-            List<Component> lore = new ArrayList<>(entry.descriptionLore());
+            List<Component> lore = new ArrayList<>(entry.descriptionLore(plated));
             lore.add(Component.empty());
             lore.add(owned
                     ? Component.text("✔ 已拥有", NamedTextColor.GREEN)
@@ -62,7 +63,7 @@ public final class TitleMenu {
             } else {
                 lore.add(Component.text("向管理员获取后可使用", NamedTextColor.GRAY));
             }
-            inventory.setItem(i, GuiItems.icon(Material.NAME_TAG, entry.bracketedComponent(), lore));
+            inventory.setItem(i, GuiItems.icon(Material.NAME_TAG, entry.bracketedComponent(plated), lore));
         }
 
         if (titles.isEmpty()) {

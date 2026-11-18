@@ -70,6 +70,36 @@ public final class GameTitles {
         return call("owns", new Class<?>[]{UUID.class, String.class}, player, titleId);
     }
 
+    /** 玩家是否已获得某个头衔的镀层版本。 */
+    public static boolean ownsPlated(UUID player, String titleId) {
+        return call("ownsPlated", new Class<?>[]{UUID.class, String.class}, player, titleId);
+    }
+
+    /**
+     * 把玩家已拥有的头衔升级为镀层版（渐变外观 + 镀层描述）。
+     *
+     * @return true = 本次新镀层；false = 没拥有 / 已镀层 / 没装头衔插件
+     */
+    public static boolean plate(UUID player, String titleId) {
+        return call("plate", new Class<?>[]{UUID.class, String.class}, player, titleId);
+    }
+
+    /**
+     * 发放镀层头衔；头衔定义不存在时先创建，缺少镀层变体时补上。
+     * 玩家已经拥有普通版时直接升级为镀层版，满足"达成条件即直接获得镀层"。
+     *
+     * @param platedName 镀层后的名称，可写 {@code {RRGGBB>RRGGBB}文字} 渐变
+     * @return true = 本次新获得或新镀层；false = 已镀层 / 没装头衔插件
+     */
+    public static boolean grantOrCreatePlated(UUID player, String titleId,
+                                              String name, String color, String description,
+                                              String platedName, String platedDescription) {
+        return call("grantOrCreatePlated",
+                new Class<?>[]{UUID.class, String.class, String.class, String.class, String.class,
+                        String.class, String.class},
+                player, titleId, name, color, description, platedName, platedDescription);
+    }
+
     /**
      * 收回一个头衔（离线玩家也生效）；如果正装备着会同时卸下。
      *

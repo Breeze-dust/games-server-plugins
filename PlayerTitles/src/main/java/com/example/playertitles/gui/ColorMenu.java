@@ -64,7 +64,8 @@ public final class ColorMenu {
             return false;
         }
         plugin.getTitleManager().update(
-                new Title(title.id(), title.name(), code, title.description(), title.visible()));
+                new Title(title.id(), title.name(), code, title.description(), title.visible(),
+                        title.platedName(), title.platedDescription()));
         return true;
     }
 }

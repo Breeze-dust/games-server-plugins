@@ -70,7 +70,8 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
     @Override
     public @Nullable Component getTitleComponent(UUID playerId) {
         Title title = titleManager.getTitle(playerId);
-        return title == null ? null : title.bracketedComponent();
+        return title == null ? null
+                : title.bracketedComponent(titleManager.ownsPlated(playerId, title.id()));
     }
 
     @Override
@@ -101,6 +102,24 @@ public final class PlayerTitlesPlugin extends JavaPlugin implements TitleProvide
     @Override
     public boolean owns(UUID playerId, String titleId) {
         return titleManager.owns(playerId, titleId);
+    }
+
+    @Override
+    public boolean ownsPlated(UUID playerId, String titleId) {
+        return titleManager.ownsPlated(playerId, titleId);
+    }
+
+    @Override
+    public boolean plate(UUID playerId, String titleId) {
+        return titleManager.plate(playerId, titleId);
+    }
+
+    @Override
+    public boolean grantOrCreatePlated(UUID playerId, String titleId,
+                                       String name, String color, String description,
+                                       String platedName, String platedDescription) {
+        return titleManager.grantOrCreatePlated(playerId, titleId, name, color, description,
+                platedName, platedDescription);
     }
 
     @Override

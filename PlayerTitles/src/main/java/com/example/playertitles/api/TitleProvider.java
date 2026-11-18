@@ -62,6 +62,33 @@ public interface TitleProvider {
         return false;
     }
 
+    /** 玩家是否已获得某个头衔的镀层版本。 */
+    default boolean ownsPlated(UUID playerId, String titleId) {
+        return false;
+    }
+
+    /**
+     * 把玩家已拥有的头衔升级为镀层版（渐变外观 + 镀层描述）。
+     *
+     * @return true = 本次新镀层；false = 没拥有该头衔 / 已镀层 / 旧版插件没有此方法
+     */
+    default boolean plate(UUID playerId, String titleId) {
+        return false;
+    }
+
+    /**
+     * 发镀层头衔；头衔定义不存在时先按给定内容创建，缺少镀层变体时补上。
+     * 若玩家已经拥有普通版，这个方法会直接把它升级为镀层版。
+     *
+     * @param platedName 镀层后的名称，可写 {@code {RRGGBB>RRGGBB}文字} 渐变
+     * @return true = 本次新获得或新镀层；false = 已镀层 / 参数无效 / 旧版插件没有此方法
+     */
+    default boolean grantOrCreatePlated(UUID playerId, String titleId,
+                                        String name, String color, String description,
+                                        String platedName, String platedDescription) {
+        return false;
+    }
+
     /**
      * 收回一个头衔；离线玩家也生效，如果正装备着会同时卸下。
      *

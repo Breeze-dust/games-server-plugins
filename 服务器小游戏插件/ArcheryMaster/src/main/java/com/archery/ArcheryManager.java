@@ -1,5 +1,6 @@
 package com.archery;
 
+import com.hub.api.GameTitles;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
@@ -62,6 +63,24 @@ public class ArcheryManager {
     private static final double LINE_HEIGHT = 0.25 * 1.3;
     private static final double FOOTER_GAP = 0.35;
     private static final String FOOTER_TEXT = "&e&l[ 下一页 >>> ]";
+
+    private static final String SCORE_TITLE_ID = "archery_master";
+    private static final String SCORE_TITLE_NAME = "箭术大师";
+    private static final String SCORE_TITLE_COLOR = "&6";
+    private static final String SCORE_TITLE_DESC =
+            "&7在任意难度单局获得 &f100 &7分及以上\\n&8镀层条件：单局获得 &f175 &7分及以上";
+    private static final String SCORE_TITLE_PLATED_NAME = "{FFD700>FFA000>FF6F00}箭术大师";
+    private static final String SCORE_TITLE_PLATED_DESC =
+            "&7在任意难度单局获得 &f100 &7分及以上\\n&6✦ 已镀层";
+
+    private static final String DOUBLE_TITLE_ID = "archery_double";
+    private static final String DOUBLE_TITLE_NAME = "一箭双雕";
+    private static final String DOUBLE_TITLE_COLOR = "&a";
+    private static final String DOUBLE_TITLE_DESC =
+            "&7一支箭连续击中 &f2 &7个靶子\\n&8镀层条件：一支箭连续击中 &f4 &7个靶子";
+    private static final String DOUBLE_TITLE_PLATED_NAME = "{00E5FF>00B0FF>7C4DFF}一箭双雕";
+    private static final String DOUBLE_TITLE_PLATED_DESC =
+            "&7一支箭连续击中 &f2 &7个靶子\\n&6✦ 已镀层";
 
     private final ArcheryPlugin plugin;
     private final Map<UUID, ArcherySession> sessions = new LinkedHashMap<>();
@@ -131,6 +150,14 @@ public class ArcheryManager {
         plugin.getLogger().info("箭术大师已加载：" + summary
                 + "，站位" + (start == null ? "未配置" : "已配置")
                 + "，时长 " + settings.gameSeconds + " 秒，记录 " + recordCount() + " 人。");
+
+        ensureTitles();
+    }
+
+    /** 让两个称号提前出现在头衔菜单里，不必等第一个玩家达成。 */
+    private void ensureTitles() {
+        GameTitles.ensure(SCORE_TITLE_ID, SCORE_TITLE_NAME, SCORE_TITLE_COLOR, SCORE_TITLE_DESC);
+        GameTitles.ensure(DOUBLE_TITLE_ID, DOUBLE_TITLE_NAME, DOUBLE_TITLE_COLOR, DOUBLE_TITLE_DESC);
     }
 
     public void onDisable() {
@@ -353,6 +380,7 @@ public class ArcheryManager {
         boolean newBest = record && s.score > bestBefore;
         if (record) {
             recordScore(s.playerId, s.playerName, s.score, s.difficulty);
+            awardScoreTitle(s, p);
         }
 
         if (p == null || !p.isOnline()) {
@@ -374,6 +402,25 @@ public class ArcheryManager {
         Chat.send(p, msg.toString());
         Chat.title(p, "&6&l本局结束", "&f" + s.difficulty.name + " &7得分 &6" + s.score, 2);
         p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.2f);
+    }
+
+    /** 单局分数达标发称号；175 分及以上直接发镀层版。 */
+    private void awardScoreTitle(ArcherySession s, Player p) {
+        if (s.score < 100) {
+            return;
+        }
+        boolean plated = s.score >= 175;
+        boolean unlocked = plated
+                ? GameTitles.grantOrCreatePlated(s.playerId, SCORE_TITLE_ID, SCORE_TITLE_NAME,
+                        SCORE_TITLE_COLOR, SCORE_TITLE_DESC,
+                        SCORE_TITLE_PLATED_NAME, SCORE_TITLE_PLATED_DESC)
+                : GameTitles.grantOrCreate(s.playerId, SCORE_TITLE_ID, SCORE_TITLE_NAME,
+                        SCORE_TITLE_COLOR, SCORE_TITLE_DESC);
+        if (unlocked && p != null && p.isOnline()) {
+            Chat.send(p, plated
+                    ? "&6你获得了镀层称号 &e[箭术大师]&6！"
+                    : "&6你获得了称号 &e[箭术大师]&6！");
+        }
     }
 
     private void clearTargets(ArcherySession s) {
@@ -829,9 +876,10 @@ public class ArcheryManager {
                 iterator.remove();
                 continue;
             }
+            ArcherySession.ArrowTrack track = entry.getValue();
             Location now = arrow.getLocation();
-            Location previous = entry.getValue().previous;
-            entry.getValue().previous = now.clone();
+            Location previous = track.previous;
+            track.previous = now.clone();
             if (now.getWorld() == null || !now.getWorld().equals(s.world)) {
                 arrow.remove();
                 iterator.remove();
@@ -866,15 +914,20 @@ public class ArcheryManager {
             }
             // 命中靶子后不删箭：箭会继续飞，能连续穿过多个靶子（靶子命中后立即移除，不会重复计分）。
             for (int i = 0; i < hits.size(); i++) {
-                awardHit(p, s, hits.get(i), points.get(i));
+                if (awardHit(p, s, hits.get(i), points.get(i))) {
+                    track.targetsHit++;
+                }
+            }
+            if (track.targetsHit >= 2) {
+                awardArrowTitle(p, track.targetsHit);
             }
         }
     }
 
-    private void awardHit(Player p, ArcherySession s, TargetInstance target, Vector point) {
+    private boolean awardHit(Player p, ArcherySession s, TargetInstance target, Vector point) {
         // 扫掠检测每 tick 只结算一次；移除成功才计分。
         if (!s.targets.remove(target)) {
-            return;
+            return false;
         }
         int gained = target.score(settings);
         s.score += gained;
@@ -893,6 +946,26 @@ public class ArcheryManager {
             s.world.spawnParticle(Particle.HAPPY_VILLAGER, at, 8, 0.2, 0.2, 0.2, 0.01);
         }
         Chat.actionBar(p, "&a+" + gained + " &8(" + target.scoreBreakdown(settings) + ") &8· " + bar(s));
+        return true;
+    }
+
+    /** 一支箭连续击中 2 个靶子发称号；4 个及以上直接发镀层版。 */
+    private void awardArrowTitle(Player p, int hits) {
+        if (hits < 2) {
+            return;
+        }
+        boolean plated = hits >= 4;
+        boolean unlocked = plated
+                ? GameTitles.grantOrCreatePlated(p.getUniqueId(), DOUBLE_TITLE_ID, DOUBLE_TITLE_NAME,
+                        DOUBLE_TITLE_COLOR, DOUBLE_TITLE_DESC,
+                        DOUBLE_TITLE_PLATED_NAME, DOUBLE_TITLE_PLATED_DESC)
+                : GameTitles.grantOrCreate(p.getUniqueId(), DOUBLE_TITLE_ID, DOUBLE_TITLE_NAME,
+                        DOUBLE_TITLE_COLOR, DOUBLE_TITLE_DESC);
+        if (unlocked) {
+            Chat.send(p, plated
+                    ? "&6你获得了镀层称号 &a[一箭双雕]&6！"
+                    : "&6你获得了称号 &a[一箭双雕]&6！");
+        }
     }
 
     // ---------- 弓与箭 ----------

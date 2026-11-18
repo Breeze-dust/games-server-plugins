@@ -40,6 +40,8 @@ public final class ArcherySession {
 
     public static final class ArrowTrack {
         public Location previous;
+        /** 这支箭到目前为止击中的靶子数（靶子命中即移除，不会重复计数）。 */
+        public int targetsHit;
 
         public ArrowTrack(Location previous) {
             this.previous = previous;

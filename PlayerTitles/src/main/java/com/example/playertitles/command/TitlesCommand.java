@@ -387,7 +387,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getTitleManager().update(
-                new Title(title.id(), join(args, 2), title.color(), title.description(), title.visible()));
+                new Title(title.id(), join(args, 2), title.color(), title.description(), title.visible(),
+                        title.platedName(), title.platedDescription()));
         msg(sender, "&a头衔名称已更新");
     }
 
@@ -411,7 +412,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getTitleManager().update(
-                new Title(title.id(), title.name(), color, title.description(), title.visible()));
+                new Title(title.id(), title.name(), color, title.description(), title.visible(),
+                        title.platedName(), title.platedDescription()));
         msg(sender, "&a头衔颜色已更新");
     }
 
@@ -429,7 +431,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getTitleManager().update(
-                new Title(title.id(), title.name(), title.color(), join(args, 2), title.visible()));
+                new Title(title.id(), title.name(), title.color(), join(args, 2), title.visible(),
+                        title.platedName(), title.platedDescription()));
         msg(sender, "&a头衔描述已更新");
     }
 
@@ -459,7 +462,8 @@ public final class TitlesCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getTitleManager().update(
-                new Title(title.id(), title.name(), title.color(), title.description(), visible));
+                new Title(title.id(), title.name(), title.color(), title.description(), visible,
+                        title.platedName(), title.platedDescription()));
         msg(sender, visible
                 ? "&a未拥有该头衔的玩家现在可以在菜单中看到它"
                 : "&c未拥有该头衔的玩家现在看不到它");
