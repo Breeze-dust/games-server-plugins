@@ -18,11 +18,13 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Directional;
 import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Pose;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -116,6 +118,11 @@ public final class LiarBarTable {
     /** 流体从按钮位置流出时，暂存按钮方块，结算结束后恢复。 */
     private Block fluidButtonBlock;
     private org.bukkit.block.data.BlockData fluidButtonData;
+    /** 桌子中间显示本轮目标牌的旋转实体。 */
+    private ArmorStand targetStand;
+    private TextDisplay targetText;
+    private BukkitTask targetSpinTask;
+    private float targetSpinAngle;
 
     public LiarBarTable(Plugin plugin, LiarBarManager manager, LiarBarSettings settings,
                         String name, List<Location> chairs) {
@@ -622,6 +629,7 @@ public final class LiarBarTable {
         lastPlayCards = null;
         pileCount = 0;
         dealRound();
+        spawnTargetDisplay();
         if (starter != null && order.contains(starter)) {
             turnIndex = order.indexOf(starter);
         } else {
@@ -948,6 +956,74 @@ public final class LiarBarTable {
             }
         }
         frames.clear();
+    }
+
+    /** 桌子中间放一个旋转的目标牌实体 + 文字说明。 */
+    private void spawnTargetDisplay() {
+        removeTargetDisplay();
+        if (center == null) {
+            return;
+        }
+        World world = center.getWorld();
+        if (world == null) {
+            return;
+        }
+        Location itemLoc = center.clone().add(0, 0.75, 0);
+        Location textLoc = center.clone().add(0, 1.55, 0);
+        ArmorStand stand = (ArmorStand) world.spawnEntity(itemLoc, EntityType.ARMOR_STAND);
+        stand.setInvisible(true);
+        stand.setGravity(false);
+        stand.setInvulnerable(true);
+        stand.setSilent(true);
+        stand.setCollidable(false);
+        stand.setPersistent(false);
+        stand.setSmall(false);
+        stand.setBasePlate(false);
+        stand.setArms(false);
+        stand.setCustomNameVisible(false);
+        stand.getEquipment().setHelmet(
+                manager.items().face(new LiarBarCards.Card(tableRank)));
+        targetStand = stand;
+
+        targetText = world.spawn(textLoc, TextDisplay.class, display -> {
+            display.text(Chat.color("&e本轮目标：&f" + LiarBarCards.NAMES[tableRank]));
+            display.setBillboard(Display.Billboard.CENTER);
+            display.setSeeThrough(false);
+            display.setShadowed(true);
+            display.setPersistent(false);
+        });
+
+        targetSpinAngle = 0f;
+        targetSpinTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (targetStand == null || !targetStand.isValid()) {
+                if (targetSpinTask != null) {
+                    targetSpinTask.cancel();
+                    targetSpinTask = null;
+                }
+                return;
+            }
+            targetSpinAngle = (targetSpinAngle + 5f) % 360f;
+            targetStand.setRotation(targetSpinAngle, 0f);
+        }, 2L, 2L);
+    }
+
+    private void removeTargetDisplay() {
+        if (targetSpinTask != null) {
+            targetSpinTask.cancel();
+            targetSpinTask = null;
+        }
+        if (targetStand != null) {
+            if (targetStand.isValid()) {
+                targetStand.remove();
+            }
+            targetStand = null;
+        }
+        if (targetText != null) {
+            if (targetText.isValid()) {
+                targetText.remove();
+            }
+            targetText = null;
+        }
     }
 
     private void promptFire(UUID id) {
@@ -1402,6 +1478,7 @@ public final class LiarBarTable {
 
     private void cancelPendingTasks() {
         removeFrames();
+        removeTargetDisplay();
         if (fireTimeout != null) {
             fireTimeout.cancel();
             fireTimeout = null;
