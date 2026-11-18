@@ -247,6 +247,20 @@ public class LiarBarListener implements Listener {
         }
     }
 
+    /** 房间里的画/物品展示框不会被酒瓶或玩家打掉（建场模式除外）。 */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onHangingBreak(org.bukkit.event.hanging.HangingBreakEvent event) {
+        if (!manager.room().inRoom(event.getEntity().getLocation())) {
+            return;
+        }
+        if (event instanceof org.bukkit.event.hanging.HangingBreakByEntityEvent byEntity
+                && byEntity.getRemover() instanceof Player player
+                && manager.isBuilder(player)) {
+            return;
+        }
+        event.setCancelled(true);
+    }
+
     @EventHandler
     public void onDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player) || !manager.inRoom(player)) {
