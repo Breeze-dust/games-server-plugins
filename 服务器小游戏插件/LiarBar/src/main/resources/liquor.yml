@@ -34,6 +34,9 @@ names:
 drink:
   seconds: 2.5
 
+# 玩家自助领酒指令 /liarbar liquor 的冷却（秒）；0 = 不限制
+give-cooldown-seconds: 30
+
 # 喝完后的反胃（Nausea）时长：在这个区间内随机（秒）
 nausea:
   min-seconds: 4

@@ -52,6 +52,22 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
                 manager.leave(player, false);
             }
             case "list", "tables" -> list(sender);
+            case "liquor", "wine" -> {
+                if (!(sender instanceof Player player)) {
+                    Chat.send(sender, "&c该命令需要玩家执行。");
+                    return true;
+                }
+                if (!player.hasPermission("liarbar.play")) {
+                    Chat.send(sender, "&c你没有权限领取酒。");
+                    return true;
+                }
+                long wait = manager.giveLiquorToSelf(player);
+                if (wait > 0) {
+                    Chat.send(sender, "&7领酒冷却中，还要等 &e" + wait + " &7秒。");
+                } else {
+                    Chat.send(sender, "&6你领到了一瓶酒：在骗子酒馆区域里右键就能喝。");
+                }
+            }
             case "help" -> help(sender);
             case "pos1", "pos2" -> {
                 if (!admin(sender)) {
@@ -231,6 +247,7 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&6骗子酒馆 &7—— 大厅多桌牌局");
         Chat.send(sender, "&e/liarbar join [桌名] &7进入酒馆（走进房间区域也算自动进入）");
         Chat.send(sender, "&e/liarbar leave &7离开酒馆");
+        Chat.send(sender, "&e/liarbar liquor &7领一瓶随机酒（有冷却，离开区域会自动清掉）");
         Chat.send(sender, "&e/liarbar list &7查看所有桌子状态");
         if (isAdmin(sender)) {
             Chat.send(sender, "&8管理：");
@@ -250,7 +267,7 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "help"));
+            List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "liquor", "help"));
             if (isAdmin(sender)) {
                 subs.addAll(List.of("pos1", "pos2", "setspawn", "addchair", "deltable",
                         "start", "stop", "build", "give", "reload"));

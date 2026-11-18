@@ -59,6 +59,8 @@ public final class LiarBarManager {
     private final Map<UUID, UUID> thrownBottles = new HashMap<>();
     /** 正在喝酒的玩家。 */
     private final Map<UUID, Drinking> drinking = new HashMap<>();
+    /** 自助领酒指令的冷却到期时间（毫秒）。 */
+    private final Map<UUID, Long> liquorCooldowns = new HashMap<>();
 
     private YamlConfiguration stats;
     private int loadRetries;
@@ -200,6 +202,7 @@ public final class LiarBarManager {
     private void exitRegion(Player player) {
         UUID id = player.getUniqueId();
         cancelDrinking(id, true);
+        clearLiquorItems(player);
         inRoom.remove(id);
         HubAPI.clearGame(id);
         Chat.send(player, "&7你离开了骗子酒馆。");
@@ -253,6 +256,7 @@ public final class LiarBarManager {
             table.removePlayer(player);
         }
         restoreSnapshot(player);
+        clearLiquorItems(player);
         inRoom.remove(id);
         HubAPI.clearGame(id);
         if (!silent) {
@@ -269,6 +273,7 @@ public final class LiarBarManager {
         builders.remove(id);
         buildPreviousMode.remove(id);
         damageAllowed.remove(id);
+        liquorCooldowns.remove(id);
         cancelDrinking(id, true);
         LiarBarTable table = seating.get(id);
         if (table != null) {
@@ -410,6 +415,46 @@ public final class LiarBarManager {
             for (ItemStack drop : leftover.values()) {
                 target.getWorld().dropItemNaturally(target.getLocation(), drop);
             }
+        }
+    }
+
+    /** 玩家自助领酒：带冷却，成功返回 0，失败返回剩余秒数。 */
+    public long giveLiquorToSelf(Player player) {
+        if (player == null) {
+            return 0;
+        }
+        UUID id = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        Long until = liquorCooldowns.get(id);
+        if (until != null && until > now) {
+            return (until - now + 999) / 1000;
+        }
+        giveLiquor(player, 1);
+        liquorCooldowns.put(id, now + liquor.giveCooldownSeconds() * 1000L);
+        return 0;
+    }
+
+    /** 离开酒馆区域时清掉身上的所有酒和空酒瓶。 */
+    public void clearLiquorItems(Player player) {
+        if (player == null) {
+            return;
+        }
+        PlayerInventory inv = player.getInventory();
+        boolean changed = false;
+        for (int slot = 0; slot < inv.getSize(); slot++) {
+            ItemStack item = inv.getItem(slot);
+            if (items.isLiquor(item) || items.isBottle(item)) {
+                inv.setItem(slot, null);
+                changed = true;
+            }
+        }
+        ItemStack offhand = inv.getItemInOffHand();
+        if (items.isLiquor(offhand) || items.isBottle(offhand)) {
+            inv.setItemInOffHand(null);
+            changed = true;
+        }
+        if (changed) {
+            player.updateInventory();
         }
     }
 
