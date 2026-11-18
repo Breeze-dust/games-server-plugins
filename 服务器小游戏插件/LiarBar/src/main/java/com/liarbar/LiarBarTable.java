@@ -12,6 +12,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -60,6 +61,7 @@ public final class LiarBarTable {
         ArmorStand stand;
         Mannequin corpse;
         Location dispenser;
+        Location button;
 
         Seat(Location chair, Location sit) {
             this.chair = chair;
@@ -206,6 +208,16 @@ public final class LiarBarTable {
         return name;
     }
 
+    /** 桌子中心（椅子坐标平均值）；还没登记椅子时为 null。 */
+    public Location getCenter() {
+        return center == null ? null : center.clone();
+    }
+
+    /** 主城观战者进这张桌子时落在哪：桌面中心上方 2 格。 */
+    public Location spectatorPoint() {
+        return center == null ? null : center.clone().add(0, 2.0, 0);
+    }
+
     public State getState() {
         return state;
     }
@@ -319,6 +331,7 @@ public final class LiarBarTable {
         free.occupant = player.getUniqueId();
         names.put(player.getUniqueId(), player.getName());
         free.dispenser = findDispenser(free);
+        free.button = findButton(free.dispenser);
         manager.bind(player, this);
         player.teleport(free.sit);
         ArmorStand stand = spawnSeatStand(free);
@@ -349,6 +362,24 @@ public final class LiarBarTable {
             if (block.getBlockData() instanceof Directional directional
                     && directional.getFacing() == BlockFace.DOWN) {
                 return block.getLocation();
+            }
+        }
+        return null;
+    }
+
+    /** 发射器六个面上有没有贴按钮（绑定座位时自动检测）。 */
+    private Location findButton(Location dispenser) {
+        if (dispenser == null || dispenser.getWorld() == null) {
+            return null;
+        }
+        Block block = dispenser.getBlock();
+        for (BlockFace face : BlockFace.values()) {
+            if (!face.isCartesian() || face == BlockFace.SELF) {
+                continue;
+            }
+            Block around = block.getRelative(face);
+            if (Tag.BUTTONS.isTagged(around.getType())) {
+                return around.getLocation();
             }
         }
         return null;
@@ -402,6 +433,7 @@ public final class LiarBarTable {
         UUID id = seat.occupant;
         seat.occupant = null;
         seat.dispenser = null;
+        seat.button = null;
         if (seat.corpse != null) {
             seat.corpse.remove();
             seat.corpse = null;
@@ -866,8 +898,8 @@ public final class LiarBarTable {
                 return;
             }
             broadcastSeated(lie ? "&c&l他说谎了！" : "&a&l全是真牌！");
-            broadcastSeated("&e" + nameOf(shooter) + " &f必须扣动左轮扳机…");
-            giveRevolver(shooter);
+            broadcastSeated("&e" + nameOf(shooter) + " &f必须按下发射器上的按钮开枪…");
+            promptFire(shooter);
             scheduleFireTimeout();
         }, Math.max(20L, finish));
     }
@@ -915,16 +947,51 @@ public final class LiarBarTable {
         frames.clear();
     }
 
-    private void giveRevolver(UUID id) {
+    private void promptFire(UUID id) {
         Player p = playerOf(id);
         if (p == null) {
             return;
         }
-        p.getInventory().setItem(7, manager.items().revolver());
-        p.updateInventory();
-        manager.refreshDisguise(p);
-        p.playSound(p.getLocation(), Sound.ITEM_ARMOR_EQUIP_IRON, 0.8f, 0.8f);
-        Chat.title(p, "&4&l轮到你开枪", "&7右键手里的铁锄头", 3);
+        Seat seat = seatOf(id);
+        boolean hasButton = seat != null && seat.button != null;
+        if (hasButton) {
+            Chat.title(p, "&4&l轮到你开枪", "&7按下头顶发射器上的按钮", 3);
+            Chat.actionBar(p, "&c按头顶发射器上的按钮开枪");
+            p.playSound(p.getLocation(), Sound.BLOCK_STONE_BUTTON_CLICK_ON, 0.8f, 1.0f);
+        } else {
+            Chat.title(p, "&4&l轮到你开枪", "&7没找到按钮，" + settings.fireWaitSeconds
+                    + " 秒后自动开枪", 3);
+            Chat.actionBar(p, "&c没找到发射器按钮，" + settings.fireWaitSeconds + " 秒后自动开枪");
+        }
+    }
+
+    /** 这张桌子是否有这个按钮（发射器上的开火按钮）。 */
+    public boolean hasButton(Block block) {
+        for (Seat seat : seats) {
+            if (seat.button != null && sameBlock(seat.button, block)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 按下座椅对应的按钮：轮到自己时才真正开枪。 */
+    public void pressButton(Player player, Block block) {
+        for (Seat seat : seats) {
+            if (seat.button == null || !sameBlock(seat.button, block)) {
+                continue;
+            }
+            if (state != State.PLAYING || pendingShooter == null) {
+                Chat.actionBar(player, "&7现在不是开枪的时候。");
+                return;
+            }
+            if (!pendingShooter.equals(player.getUniqueId())) {
+                Chat.actionBar(player, "&7这一枪该 &e" + nameOf(pendingShooter) + " &7开。");
+                return;
+            }
+            fireRevolver(pendingShooter);
+            return;
+        }
     }
 
     private void scheduleFireTimeout() {
@@ -955,10 +1022,6 @@ public final class LiarBarTable {
         UUID shooter = pendingShooter;
         pendingShooter = null;
         Player p = playerOf(shooter);
-        if (p != null) {
-            p.getInventory().setItem(7, null);
-            p.updateInventory();
-        }
 
         int chamber = Math.floorMod(cylinderStart + pulls, settings.chambers);
         pulls++;
@@ -1252,13 +1315,16 @@ public final class LiarBarTable {
                 + " &7| &e已出：&f" + pileCount
                 + " &7| &e轮到：&f" + currentName
                 + " &7| &f剩余 &e" + Math.max(0, secondsLeft) + "s";
+        List<UUID> seated = new ArrayList<>();
         for (Seat seat : seats) {
             Player p = playerOf(seat.occupant);
             if (p == null) {
                 continue;
             }
+            seated.add(p.getUniqueId());
             if (!order.contains(p.getUniqueId())) {
-                Chat.actionBar(p, "&7你已出局，观战中（剩 " + order.size() + " 人）");
+                String info = transition ? "&e结算中…" : bar;
+                Chat.actionBar(p, info + " &7| 你已出局（剩 " + order.size() + " 人）");
             } else if (transition) {
                 Chat.actionBar(p, "&e结算中…");
             } else if (p.getUniqueId().equals(current)) {
@@ -1266,6 +1332,15 @@ public final class LiarBarTable {
             } else {
                 Chat.actionBar(p, bar);
             }
+        }
+        // 主城观战者：只看离自己最近的那张桌子的对局栏，避免几张桌子互相覆盖
+        for (UUID id : HubAPI.spectatorsNear(seated, 32.0)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || manager.nearestTable(p.getLocation()) != this) {
+                continue;
+            }
+            String info = transition ? "&e结算中…" : bar;
+            Chat.actionBar(p, "&7观战 &8| " + info);
         }
     }
 

@@ -144,6 +144,19 @@ public class LiarBarListener implements Listener {
             return; // 建场模式：不拦右键，交给原版处理
         }
 
+        // 发射器上的开火按钮：对局中也要先处理，不能落到后面的出牌逻辑里
+        if (right && action == Action.RIGHT_CLICK_BLOCK) {
+            Block clicked = event.getClickedBlock();
+            LiarBarTable buttonTable = manager.tableAtButton(clicked);
+            if (buttonTable != null) {
+                // 不取消事件：让原版播放按钮按下的动画；只在轮到开枪时生效
+                if (debounce(player)) {
+                    buttonTable.pressButton(player, clicked);
+                }
+                return;
+            }
+        }
+
         LiarBarTable table = manager.tableOf(player);
         if (table != null && table.getState() == LiarBarTable.State.PLAYING) {
             event.setCancelled(true);
@@ -157,9 +170,7 @@ public class LiarBarListener implements Listener {
                 }
                 return;
             }
-            if (manager.items().isRevolver(event.getItem())) {
-                table.fireRevolver(player.getUniqueId());
-            } else if (manager.items().isBell(event.getItem())) {
+            if (manager.items().isBell(event.getItem())) {
                 table.challenge(player);
             } else {
                 table.playSelected(player);

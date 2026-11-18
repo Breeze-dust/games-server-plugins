@@ -100,24 +100,6 @@ public final class LiarBarItems {
         return "bell".equals(uiOf(item));
     }
 
-    /** 左轮：铁锄头，右键开枪。 */
-    public ItemStack revolver() {
-        ItemStack item = new ItemStack(Material.IRON_HOE);
-        ItemMeta meta = item.getItemMeta();
-        if (meta == null) {
-            return item;
-        }
-        meta.displayName(Chat.noItalic(Chat.color("&4&l左轮")));
-        meta.lore(lore("&7右键：扣动扳机", "&8六格子弹，谁也说不准"));
-        meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "revolver");
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    public boolean isRevolver(ItemStack item) {
-        return "revolver".equals(uiOf(item));
-    }
-
     /** 一瓶随机酒：普通药水外观（不会触发原版药水效果）。 */
     public ItemStack liquor(String displayName, int rgb) {
         ItemStack item = new ItemStack(Material.POTION);
@@ -163,7 +145,7 @@ public final class LiarBarItems {
             return true;
         }
         String ui = uiOf(item);
-        return "table".equals(ui) || "bell".equals(ui) || "revolver".equals(ui);
+        return "table".equals(ui) || "bell".equals(ui);
     }
 
     /** 给别人看的伪装手牌：一张普通的纸。 */

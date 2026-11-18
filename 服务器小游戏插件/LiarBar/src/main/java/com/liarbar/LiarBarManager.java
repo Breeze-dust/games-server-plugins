@@ -119,6 +119,28 @@ public final class LiarBarManager {
     public void reportArena(LiarBarTable table) {
         HubAPI.setArena(GAME, table.getName(), table.hubState(),
                 table.occupiedCount(), table.hubExtra());
+        HubAPI.setArenaSpectator(GAME, table.getName(), table.spectatorPoint());
+    }
+
+    /** 离某个位置最近的桌子（主城观战者只看离自己最近那张桌子的对局栏）；没有桌子返回 null。 */
+    public LiarBarTable nearestTable(Location loc) {
+        if (loc == null) {
+            return null;
+        }
+        LiarBarTable best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (LiarBarTable table : tables.values()) {
+            Location center = table.getCenter();
+            if (center == null || center.getWorld() != loc.getWorld()) {
+                continue;
+            }
+            double dist = center.distanceSquared(loc);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = table;
+            }
+        }
+        return best;
     }
 
     /** 每 0.5 秒检查一次所有桌子的开局条件（准备状态变化不会直接回调到插件）。 */
@@ -164,6 +186,19 @@ public final class LiarBarManager {
         }
         for (LiarBarTable table : tables.values()) {
             if (table.hasChair(block)) {
+                return table;
+            }
+        }
+        return null;
+    }
+
+    /** 这块按钮是不是某张桌子座椅对应的开火按钮。 */
+    public LiarBarTable tableAtButton(Block block) {
+        if (block == null) {
+            return null;
+        }
+        for (LiarBarTable table : tables.values()) {
+            if (table.hasButton(block)) {
                 return table;
             }
         }
@@ -689,6 +724,7 @@ public final class LiarBarManager {
         if (table != null) {
             table.forceStop();
             HubAPI.removeArena(GAME, tableName);
+            HubAPI.setArenaSpectator(GAME, tableName, null);
         }
         room.removeTable(tableName);
         room.save();
