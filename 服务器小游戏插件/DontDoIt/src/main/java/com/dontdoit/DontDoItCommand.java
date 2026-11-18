@@ -53,6 +53,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
             case "setlobby" -> admin(sender, () -> setLobby(sender, args));
             case "setspectator" -> admin(sender, () -> setSpectator(sender, args));
             case "gen" -> admin(sender, () -> gen(sender, args));
+            case "selftest" -> admin(sender, () -> selfTest(sender, args));
             case "save" -> admin(sender, () -> {
                 manager.saveArenas();
                 Chat.send(sender, "&a场地配置已保存。");
@@ -98,7 +99,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&e/ddi guess <队伍> <true|false> &7猜词条");
         Chat.send(sender, "&e/ddi trigger <队伍> &7触发别人的自定义词条");
         if (sender.isOp() || sender.hasPermission("ddi.admin")) {
-            Chat.send(sender, "&6管理：&ecreate|remove|setcenter|setarea|setlobby|setspectator|gen|save|reload");
+            Chat.send(sender, "&6管理：&ecreate|remove|setcenter|setarea|setlobby|setspectator|gen|selftest|save|reload");
             Chat.send(sender, "&6对局：&estart|stop|change|grant|setlife|settings|words");
         }
     }
@@ -330,6 +331,22 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         arena.setStoneY(stoneY);
         Chat.send(sender, "&a生成完成：石层 Y=" + stoneY + "，基岩 Y="
                 + (stoneY - manager.bedrockDepth() + 1) + "，耗时 " + cost + " ms。");
+    }
+
+    /** 运维自检：不需要真人，跑一遍开局→触发→淘汰→结算→重置。 */
+    private void selfTest(CommandSender sender, String[] args) {
+        DontDoItArena arena = arenaArg(sender, args);
+        if (arena == null) {
+            return;
+        }
+        Game game = manager.game(arena.getName());
+        if (game == null) {
+            Chat.send(sender, "&c场地未加载。");
+            return;
+        }
+        Chat.send(sender, "&7开始自检 &f" + arena.getName() + "&7…");
+        String result = game.selfTest();
+        Chat.send(sender, "&e" + result);
     }
 
     private DontDoItArena arenaArg(CommandSender sender, String[] args) {        if (args.length < 2) {

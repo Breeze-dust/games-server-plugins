@@ -19,7 +19,7 @@
     （都针对当前场地，站在目标位置执行）、`gen <场地>`（只跑一遍地形生成，检查石层）、`save`、`reload`、
     `start/stop <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
     `settings`（打开设置菜单）、`settings <custom|guess|diamond-behavior|nightvision|border|ylevel>`、
-    `settings diamond <add|reduce>`、`words [关键字]`
+    `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）
 - **选队菜单**（用户要求的等待厅适配）：等待室槽 1 的白羊毛右键打开一屏队伍图标（16~48 队），
   显示每队人数与成员，点一下换队；`allow-unbalanced-teams: false` 时只能加入人数最少的队伍。
 - **词条库**：`server/plugins/DontDoIt/criteria.yml`（模板 = 官方中文版原文件，145 条，29 种类型）。
@@ -56,6 +56,7 @@
   5. 等 120 秒（或 `/ddi change 矿井 <队伍>`）→ 公告「更换了词条，上一个词条是…」。
   6. `/ddi setlife 矿井 <队伍> 1` 后再触发一次 → 该队淘汰转旁观；剩一队时结算并记胜场（`/ddi stats`）。
   7. `/ddi settings` 打开设置菜单，点击开关应立即生效并写入 config.yml。
+  8. 没人时可用 `/ddi selftest <场地>` 自检：期望依次出现「触发了规则」「已淘汰」「无人获胜/获得胜利」，最后 `[WAITING]`。
 - **未确认**：
   - 未做真人联机实测：选队菜单/开局/触发/结算路径已通过编译与启动冒烟，但点击链路需要在游戏内手工验证。
   - 世界边界默认会改 **arena 所在世界** 的边界（开 `use-world-border` 时）；多个场地共用同一世界会互相影响。

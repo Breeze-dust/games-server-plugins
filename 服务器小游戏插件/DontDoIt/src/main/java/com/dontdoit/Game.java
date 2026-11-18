@@ -939,9 +939,77 @@ public final class Game {
         return false;
     }
 
+    /**
+     * 运维自检：用两个“假队伍成员”跑一遍开局 → 触发 → 淘汰 → 结算 → 重置，
+     * 不传送真实玩家、不需要有人在线。用来在服务器里确认场地与流程是否正常。
+     */
+    public String selfTest() {
+        if (state != State.WAITING) {
+            return "场地正在对局中，先 /ddi stop。";
+        }
+        Team a = null;
+        Team b = null;
+        for (Team t : teams) {
+            if (a == null) {
+                a = t;
+            } else if (b == null) {
+                b = t;
+            }
+        }
+        if (a == null || b == null) {
+            return "队伍数量不足。";
+        }
+        a.playerIds().add(UUID.randomUUID());
+        b.playerIds().add(UUID.randomUUID());
+        StringBuilder out = new StringBuilder();
+        boolean ok;
+        try {
+            ok = start(null);
+        } catch (RuntimeException e) {
+            a.clearMembers();
+            b.clearMembers();
+            mgr.getLogger().log(java.util.logging.Level.SEVERE, "自检开局异常", e);
+            return "开局抛出异常：" + e;
+        }
+        if (!ok) {
+            a.clearMembers();
+            b.clearMembers();
+            return "开局失败（石层/人数/词条库问题，见控制台日志）。";
+        }
+        out.append("开局成功，状态=").append(state)
+                .append("；场地石层 Y=").append(arena.getStoneY())
+                .append("；队伍数=").append(aliveTeams().size());
+
+        Criterion ca = a.getCriterion();
+        out.append("；队伍1词条=").append(ca == null ? "null" : ca.name);
+        if (ca != null) {
+            int before = a.getLives();
+            trigger(a, null, ca);
+            out.append("；触发后规则数 ").append(before).append("->").append(a.getLives());
+        }
+        if (!a.isEliminated()) {
+            a.setLives(1);
+            if (a.getCriterion() != null) {
+                trigger(a, null, a.getCriterion());
+            } else {
+                eliminate(a);
+            }
+            out.append("；队伍1").append(a.isEliminated() ? "已淘汰" : "未淘汰");
+        }
+        if (!b.isEliminated()) {
+            b.setLives(0);
+            eliminate(b);
+            out.append("；队伍2已淘汰");
+        }
+        out.append("；结算后状态=").append(state);
+        mgr.getLogger().info("DontDoIt 自检完成：" + out);
+        reset();
+        out.append("；已重置");
+        return out.toString();
+    }
+
     /** 供管理器上报场地状态。 */
-    public int playingCount() {
-        int n = 0;
+    public int playingCount() {        int n = 0;
         for (Team t : teams) {
             n += t.size();
         }
