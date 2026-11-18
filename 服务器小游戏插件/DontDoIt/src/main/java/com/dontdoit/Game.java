@@ -774,18 +774,22 @@ public final class Game {
         }
         List<LiveSidebar.Line> lines = new ArrayList<>();
         int score = 100;
+        int eliminated = 0;
         for (Team t : teams) {
             if (t.isEmpty()) {
                 continue;
             }
             if (t.isEliminated()) {
-                lines.add(new LiveSidebar.Line("§7§m" + t.getColor().name + " §8已淘汰", score--));
+                eliminated++;
                 continue;
             }
             String criterion = t.getCriterion() == null ? "—" : t.getCriterion().name;
             lines.add(new LiveSidebar.Line(
                     t.getColor().sectionColor() + t.getColor().name + " §7❤" + t.getLives() + " §f" + criterion,
                     score--));
+        }
+        if (eliminated > 0) {
+            lines.add(new LiveSidebar.Line("§8已淘汰 §7" + eliminated + " 队", 0));
         }
         mgr.sidebar().update(sidebarKey(), "§d§l※ 禁止事项 ※", viewers, lines);
     }
