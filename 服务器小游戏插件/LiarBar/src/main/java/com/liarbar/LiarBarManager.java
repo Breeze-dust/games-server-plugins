@@ -58,6 +58,8 @@ public final class LiarBarManager {
     private final Map<UUID, UUID> thrownBottles = new HashMap<>();
     /** 自助领酒指令的冷却到期时间（毫秒）。 */
     private final Map<UUID, Long> liquorCooldowns = new HashMap<>();
+    /** 刚喝完酒的玩家暂时不能扔空瓶（防止喝着喝着顺手把瓶子扔出去）。 */
+    private final Map<UUID, Long> throwLocks = new HashMap<>();
 
     private YamlConfiguration stats;
     private int loadRetries;
@@ -234,7 +236,11 @@ public final class LiarBarManager {
         sitOrStand(player, table);
     }
 
-    public void leave(Player player, boolean silent) {
+    /**
+     * 退出对局。{@code fromHub} = true 表示玩家点了回主城（由 HubCore 负责传送），
+     * 否则只退出牌局、留在酒馆里，不传送回大厅。
+     */
+    public void leave(Player player, boolean fromHub) {
         if (player == null) {
             return;
         }
@@ -242,21 +248,31 @@ public final class LiarBarManager {
         LiarBarTable table = seating.get(id);
         boolean inside = inRoom.contains(id) || table != null;
         if (!inside) {
-            if (!silent) {
+            if (!fromHub) {
                 Chat.send(player, "&7你不在骗子酒馆里。");
             }
             return;
         }
+
         if (table != null) {
             table.removePlayer(player);
+            restoreSnapshot(player);
+        } else if (!fromHub) {
+            Chat.send(player, "&7你没有在对局中；走出区域即可离开酒馆。");
+            return;
         }
-        restoreSnapshot(player);
-        clearLiquorItems(player);
-        inRoom.remove(id);
-        HubAPI.clearGame(id);
-        if (!silent) {
-            HubAPI.teleportToLobby(player);
-            Chat.send(player, "&e已离开骗子酒馆。");
+
+        if (fromHub || !room.inRoom(player.getLocation())) {
+            clearLiquorItems(player);
+            inRoom.remove(id);
+            HubAPI.clearGame(id);
+            if (!fromHub) {
+                Chat.send(player, "&e你已退出骗子酒馆。");
+            }
+        } else {
+            // 人还在酒馆区域里：只退出牌局，继续算在酒馆等待
+            HubAPI.setGame(id, GAME);
+            Chat.send(player, "&e你已退出当前牌局，仍留在酒馆里；走出区域即可离开。");
         }
     }
 
@@ -269,6 +285,7 @@ public final class LiarBarManager {
         buildPreviousMode.remove(id);
         damageAllowed.remove(id);
         liquorCooldowns.remove(id);
+        throwLocks.remove(id);
         LiarBarTable table = seating.get(id);
         if (table != null) {
             table.removePlayer(player);
@@ -481,12 +498,22 @@ public final class LiarBarManager {
         player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, true, true));
         player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_DRINK, 1.0f, 0.8f);
         Chat.actionBar(player, "&6咕嘟咕嘟… &7反胃 " + (ticks / 20) + " 秒");
+        // 刚喝完的 0.7 秒内不响应空瓶右键，避免端着瓶子顺手把它扔出去
+        throwLocks.put(player.getUniqueId(), System.currentTimeMillis() + 700L);
         player.updateInventory();
         refreshDisguise(player);
     }
 
     /** 右键扔空酒瓶。 */
     public void throwBottle(Player player) {
+        UUID id = player.getUniqueId();
+        Long lock = throwLocks.get(id);
+        if (lock != null) {
+            if (lock > System.currentTimeMillis()) {
+                return; // 刚喝完，需要重新点一次右键
+            }
+            throwLocks.remove(id);
+        }
         PlayerInventory inv = player.getInventory();
         ItemStack inHand = inv.getItemInMainHand();
         if (!items.isBottle(inHand)) {
