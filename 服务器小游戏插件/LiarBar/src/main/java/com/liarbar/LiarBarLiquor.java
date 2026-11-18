@@ -25,6 +25,7 @@ public final class LiarBarLiquor {
     private List<String> names = DEFAULT_NAMES;
     private int nauseaMinSeconds = 4;
     private int nauseaMaxSeconds = 12;
+    private double drinkSeconds = 2.5;
     private double throwSpeed = 1.4;
     private double knockbackHorizontal = 0.45;
     private double knockbackVertical = 0.2;
@@ -49,6 +50,7 @@ public final class LiarBarLiquor {
 
         nauseaMinSeconds = Math.max(1, config.getInt("nausea.min-seconds", 4));
         nauseaMaxSeconds = Math.max(nauseaMinSeconds, config.getInt("nausea.max-seconds", 12));
+        drinkSeconds = Math.max(0.5, Math.min(10.0, config.getDouble("drink.seconds", 2.5)));
         throwSpeed = Math.max(0.2, config.getDouble("throw.speed", 1.4));
         knockbackHorizontal = Math.max(0.0, config.getDouble("throw.knockback-horizontal", 0.45));
         knockbackVertical = Math.max(0.0, config.getDouble("throw.knockback-vertical", 0.2));
@@ -69,6 +71,11 @@ public final class LiarBarLiquor {
         int seconds = nauseaMinSeconds
                 + ThreadLocalRandom.current().nextInt(nauseaMaxSeconds - nauseaMinSeconds + 1);
         return seconds * 20;
+    }
+
+    /** 喝酒过程时长（tick）。 */
+    public int drinkTicks() {
+        return Math.max(10, (int) Math.round(drinkSeconds * 20));
     }
 
     public double throwSpeed() {

@@ -114,7 +114,7 @@ public class LiarBarListener implements Listener {
         if (right && manager.items().isLiquor(event.getItem())) {
             event.setCancelled(true);
             if (debounce(player)) {
-                manager.drinkLiquor(player);
+                manager.beginDrinking(player);
             }
             return;
         }

@@ -51,9 +51,10 @@
 - **酒与空瓶**（独立配置 `liquor.yml`）：
   - `/liarbar give <玩家> [数量]` 发**随机酒**：名字 = 随机前缀 + 现实酒名（如「冒泡的·伏特加」），
     颜色也是随机的；外观是普通药水，但**不会触发任何原版药水效果**。
-  - **只要在酒馆区域里**（坐着、等人、甚至对局中）右键酒就能喝；喝完在背包里留下一个**空酒瓶**。
-  - 每瓶酒喝完都会获得一段**随机时长的反胃（Nausea）**，时长范围在 `liquor.yml` 的
-    `nausea.min-seconds` / `nausea.max-seconds` 里配置（默认 4~12 秒）。
+  - **只要在酒馆区域里**（坐着、等人、甚至对局中）右键酒就能喝；喝的过程默认 2.5 秒
+    （`liquor.yml` 的 `drink.seconds`），期间经验条显示进度，**移动或换手会打断**。
+  - 喝完在背包里留下一个**空酒瓶**，并获得一段**随机时长的反胃（Nausea）**，时长范围在
+    `liquor.yml` 的 `nausea.min-seconds` / `nausea.max-seconds` 里配置（默认 4~12 秒）。
   - **右键空酒瓶**把它扔出去：砸中**没落座**的玩家会有轻微击退 + 受击变红；
     砸中坐着的人不会推动他。投掷速度/击退/伤害都在 `liquor.yml` 的 `throw` 段。
 - **配置（config.yml）**：`server/plugins/LiarBar/config.yml`
@@ -65,6 +66,7 @@
   - `room.*` 与 `tables.*` 由命令写入，不用手改
 - **配置（liquor.yml）**：`server/plugins/LiarBar/liquor.yml`
   - `prefixes` / `names`：随机前缀与酒名列表，可任意增删
+  - `drink.seconds`：喝酒过程时长（默认 2.5 秒）
   - `nausea.min-seconds` / `max-seconds`：反胃时长范围
   - `throw.speed` / `knockback-horizontal` / `knockback-vertical` / `damage`：空瓶投掷参数
 - **常改文件**：
@@ -110,5 +112,6 @@
      缓慢掉血、血条见底前转观战并留下躺倒的玩家皮肤尸体和粒子。
   9. 最后一人获胜全服播报；5 秒后所有人自动起身留在房间里。
   10. `/liarbar build` 后，在区域内可以破坏/放置方块；再输一次恢复保护。
-  11. `/liarbar give <玩家> 3` → 拿到 3 瓶随机名字/颜色的酒；在区域里右键喝 → 留空瓶 + 随机反胃。
+  11. `/liarbar give <玩家> 3` → 拿到 3 瓶随机名字/颜色的酒；在区域里右键喝 → 经验条走 2.5 秒进度、
+      中途移动会打断；喝完留空瓶 + 随机反胃。
   12. 拿着空瓶右键扔向没落座的玩家 → 轻微击退 + 受击变红；砸坐着的人不会被推动。
