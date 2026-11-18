@@ -295,6 +295,11 @@ public final class LiarBarManager {
     }
 
     public void sitOrStand(Player player, LiarBarTable table) {
+        sitOrStand(player, table, null);
+    }
+
+    /** chairBlock 为右键点击的那把椅子；右键哪把就坐哪把。 */
+    public void sitOrStand(Player player, LiarBarTable table, Block chairBlock) {
         LiarBarTable current = seating.get(player.getUniqueId());
         if (current == table) {
             table.standUp(player);
@@ -304,7 +309,7 @@ public final class LiarBarManager {
             Chat.actionBar(player, "&c你已经坐在「" + current.getName() + "」了，先右键起身。");
             return;
         }
-        if (table.sit(player)) {
+        if (table.sit(player, chairBlock)) {
             Chat.send(player, "&a你坐到了「" + table.getName() + "」的椅子上。");
         }
     }

@@ -204,7 +204,8 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (manager.reload()) {
-                    Chat.send(sender, "&a骗子酒馆配置已重载：" + manager.tables().size() + " 张桌子。");
+                    Chat.send(sender, "&a骗子酒馆配置已重载：" + manager.tables().size() + " 张桌子，"
+                            + "领酒冷却 &e" + manager.liquor().giveCooldownSeconds() + " 秒&a。");
                 } else {
                     Chat.send(sender, "&c有牌局正在进行，无法重载；先 /liarbar stop <桌名>。");
                 }

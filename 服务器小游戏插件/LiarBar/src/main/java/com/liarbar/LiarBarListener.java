@@ -173,7 +173,7 @@ public class LiarBarListener implements Listener {
             if (chairTable != null) {
                 event.setCancelled(true);
                 if (debounce(player)) {
-                    manager.sitOrStand(player, chairTable);
+                    manager.sitOrStand(player, chairTable, block);
                 }
                 return;
             }

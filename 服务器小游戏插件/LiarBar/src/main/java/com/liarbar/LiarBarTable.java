@@ -234,12 +234,19 @@ public final class LiarBarTable {
     }
 
     public boolean hasChair(Block block) {
+        return seatAt(block) != null;
+    }
+
+    private Seat seatAt(Block block) {
+        if (block == null) {
+            return null;
+        }
         for (Seat seat : seats) {
             if (sameBlock(seat.chair, block)) {
-                return true;
+                return seat;
             }
         }
-        return false;
+        return null;
     }
 
     private Seat seatOf(Player player) {
@@ -267,7 +274,13 @@ public final class LiarBarTable {
     }
 
     /** 右键椅子：入座并视为准备。 */
+    /** 不指定椅子时坐到第一把空位（/liarbar join 用）。 */
     public boolean sit(Player player) {
+        return sit(player, null);
+    }
+
+    /** 右键哪把椅子就坐哪把；chairBlock 为 null 时找第一把空位。 */
+    public boolean sit(Player player, Block chairBlock) {
         if (state == State.PLAYING || state == State.ENDING) {
             Chat.actionBar(player, "&c这张桌子正在对局中，等本局结束再入座。");
             return false;
@@ -279,11 +292,24 @@ public final class LiarBarTable {
             Chat.actionBar(player, "&c这张桌子坐满了。");
             return false;
         }
-        Seat free = null;
-        for (Seat seat : seats) {
-            if (seat.occupant == null) {
-                free = seat;
-                break;
+        Seat free;
+        if (chairBlock != null) {
+            free = seatAt(chairBlock);
+            if (free == null) {
+                Chat.actionBar(player, "&c这不是这张桌子的椅子。");
+                return false;
+            }
+            if (free.occupant != null) {
+                Chat.actionBar(player, "&c这个座位已经有人了，换一把椅子坐下。");
+                return false;
+            }
+        } else {
+            free = null;
+            for (Seat seat : seats) {
+                if (seat.occupant == null) {
+                    free = seat;
+                    break;
+                }
             }
         }
         if (free == null) {
