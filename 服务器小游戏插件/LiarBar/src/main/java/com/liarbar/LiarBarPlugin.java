@@ -30,6 +30,8 @@ public class LiarBarPlugin extends JavaPlugin {
 
         // 兜底：每隔 1 秒重新发送手牌伪装，防止客户端在收牌/换手时看到真实牌面。
         getServer().getScheduler().runTaskTimer(this, manager::refreshDisguises, 20L, 20L);
+        // 准备状态变化不会回调到插件，这里定期检查每桌是否满足开局条件（含 2~3 人全员准备）。
+        getServer().getScheduler().runTaskTimer(this, manager::tickTables, 10L, 10L);
 
         getLogger().info("LiarBar 已启用（/liarbar，别名 /lb /liars），已加载 "
                 + manager.tables().size() + " 张桌子。");

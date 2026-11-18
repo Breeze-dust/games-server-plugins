@@ -120,6 +120,13 @@ public final class LiarBarManager {
                 table.occupiedCount(), table.hubExtra());
     }
 
+    /** 每 0.5 秒检查一次所有桌子的开局条件（准备状态变化不会直接回调到插件）。 */
+    public void tickTables() {
+        for (LiarBarTable table : tables.values()) {
+            table.evaluateStart();
+        }
+    }
+
     public LiarBarSettings settings() {
         return settings;
     }

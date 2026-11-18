@@ -430,8 +430,40 @@ public final class LiarBarTable {
 
     private void afterSeatChange() {
         manager.reportArena(this);
-        if (state == State.WAITING) {
-            countdown.update();
+        evaluateStart();
+    }
+
+    /**
+     * 开局条件：坐满 {@code players-per-table} 人直接开；不足时只要至少 {@code min-players} 人
+     * 且所有入座玩家都点了准备，也开（二人局 / 三人局）。
+     * <p>
+     * 公共库 WaitCountdown 的 update() 只在人数≥min 时才检查「全员准备」，所以这里自己判定；
+     * 准备绑定仍然走 WaitCountdown（tab 才能显示已准备），倒计时也用它。
+     */
+    public void evaluateStart() {
+        if (state != State.WAITING) {
+            return;
+        }
+        int seated = occupiedCount();
+        if (seated < settings.minPlayers) {
+            if (countdown.isRunning()) {
+                countdown.cancel();
+            }
+            return;
+        }
+        boolean allReady = true;
+        for (Seat seat : seats) {
+            if (seat.occupant != null && !countdown.isReady(seat.occupant)) {
+                allReady = false;
+                break;
+            }
+        }
+        if (seated >= settings.playersPerTable || allReady) {
+            if (!countdown.isRunning()) {
+                countdown.start(WaitCountdown.FULL_SECONDS);
+            }
+        } else if (countdown.isRunning()) {
+            countdown.cancel();
         }
     }
 
