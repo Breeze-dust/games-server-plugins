@@ -236,15 +236,32 @@ public class LiarBarListener implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (event.getWhoClicked() instanceof Player player && manager.tableOf(player) != null) {
-            event.setCancelled(true);
+            // 只锁对局道具（手牌/目标牌/质疑钟/左轮/准备道具），酒、空瓶、菜单道具可以在快捷栏和背包里自由移动。
+            ItemStack hotbar = event.getHotbarButton() >= 0
+                    ? player.getInventory().getItem(event.getHotbarButton()) : null;
+            if (lockedItem(event.getCurrentItem())
+                    || lockedItem(event.getCursor())
+                    || lockedItem(hotbar)) {
+                event.setCancelled(true);
+            }
         }
     }
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent event) {
         if (event.getWhoClicked() instanceof Player player && manager.tableOf(player) != null) {
-            event.setCancelled(true);
+            for (ItemStack item : event.getNewItems().values()) {
+                if (lockedItem(item)) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
         }
+    }
+
+    private boolean lockedItem(ItemStack item) {
+        return manager.items().isGameItem(item)
+                || com.hub.util.ReadyItems.isReadyItem(item);
     }
 
     @EventHandler
@@ -256,7 +273,11 @@ public class LiarBarListener implements Listener {
 
     @EventHandler
     public void onSwap(PlayerSwapHandItemsEvent event) {
-        if (manager.inRoom(event.getPlayer()) && !manager.isBuilder(event.getPlayer())) {
+        Player player = event.getPlayer();
+        if (!manager.inRoom(player)) {
+            return;
+        }
+        if (lockedItem(event.getMainHandItem()) || lockedItem(event.getOffHandItem())) {
             event.setCancelled(true);
         }
     }

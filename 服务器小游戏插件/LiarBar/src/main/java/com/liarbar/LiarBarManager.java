@@ -564,29 +564,31 @@ public final class LiarBarManager {
         return thrownBottles.remove(projectile);
     }
 
-    /** 空酒瓶砸中玩家：没落座才吃击退，并且触发受击变红。 */
+    /** 空酒瓶砸中玩家：没落座才吃击退；坐着的只吃受击变红（不扣血）。 */
     public void bottleHit(UUID throwerId, Player target) {
         if (target == null || !target.isOnline() || !inRoom(target)) {
             return;
         }
-        if (tableOf(target) != null) {
-            Chat.actionBar(target, "&7你坐在椅子上，酒瓶没能推动你。");
-            target.getWorld().playSound(target.getLocation(), Sound.BLOCK_GLASS_BREAK, 1.0f, 1.2f);
-            return;
+        boolean seated = tableOf(target) != null;
+        if (seated) {
+            Chat.actionBar(target, "&c你坐在椅子上，被空酒瓶砸中了！");
+        } else {
+            Player thrower = Bukkit.getPlayer(throwerId);
+            Vector direction = thrower != null
+                    ? target.getLocation().toVector().subtract(thrower.getLocation().toVector())
+                    : target.getLocation().getDirection().multiply(-1);
+            if (direction.lengthSquared() < 0.0001) {
+                direction = new Vector(0, 0, 1);
+            }
+            direction = direction.normalize().multiply(liquor.knockbackHorizontal());
+            direction.setY(liquor.knockbackVertical());
+            target.setVelocity(target.getVelocity().add(direction));
+            Chat.actionBar(target, "&c被空酒瓶砸中了！");
         }
-        Player thrower = Bukkit.getPlayer(throwerId);
-        Vector direction = thrower != null
-                ? target.getLocation().toVector().subtract(thrower.getLocation().toVector())
-                : target.getLocation().getDirection().multiply(-1);
-        if (direction.lengthSquared() < 0.0001) {
-            direction = new Vector(0, 0, 1);
-        }
-        direction = direction.normalize().multiply(liquor.knockbackHorizontal());
-        direction.setY(liquor.knockbackVertical());
-        target.setVelocity(target.getVelocity().add(direction));
 
         double damage = liquor.bottleDamage();
         if (damage > 0) {
+            double health = target.getHealth();
             target.setNoDamageTicks(0);
             allowNextDamage(target.getUniqueId());
             try {
@@ -594,8 +596,11 @@ public final class LiarBarManager {
             } finally {
                 clearDamageAllowed(target.getUniqueId());
             }
+            if (seated) {
+                // 坐着只保留受击动画，不真的扣血
+                target.setHealth(Math.max(0.5, Math.min(health, target.getMaxHealth())));
+            }
         }
-        Chat.actionBar(target, "&c被空酒瓶砸中了！");
         target.getWorld().playSound(target.getLocation(), Sound.BLOCK_GLASS_BREAK, 1.0f, 1.0f);
         target.getWorld().spawnParticle(Particle.CRIT,
                 target.getLocation().add(0, 1, 0), 16, 0.3, 0.4, 0.3, 0.1);

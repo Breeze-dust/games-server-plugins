@@ -154,6 +154,18 @@ public final class LiarBarItems {
         return "bottle".equals(uiOf(item));
     }
 
+    /** 对局中的牌桌物品（手牌 / 目标牌提示 / 质疑钟 / 左轮）：这类物品禁止在背包里移动。 */
+    public boolean isGameItem(ItemStack item) {
+        if (item == null) {
+            return false;
+        }
+        if (cardOf(item) != null) {
+            return true;
+        }
+        String ui = uiOf(item);
+        return "table".equals(ui) || "bell".equals(ui) || "revolver".equals(ui);
+    }
+
     /** 给别人看的伪装手牌：一张普通的纸。 */
     public ItemStack paperDisguise() {
         ItemStack item = new ItemStack(Material.PAPER);
