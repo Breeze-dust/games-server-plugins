@@ -7,6 +7,7 @@
   质疑后有**揭幕环节**（每人面前出现物品展示框，问号从左到右翻开），随后由该负责的人拿**铁锄头左轮**
   亲手开枪：空枪出水，中弹则头顶发射器**一格一格往下流岩浆**、缓慢烧死并留下**密室杀手同款尸体**观战。
   最后存活者获胜。多张桌子可以同时开着，互不影响。**游戏开始前不清玩家背包**，菜单道具都还在。
+  另外可以在区域内**喝酒**（随机酒名 + 随机反胃），喝完的空瓶能**扔出去砸人**。
 - **命令**（别名 `/lb`、`/liars`）：
   - 玩家：`/liarbar join [桌名]`（传送到等待点）、`/liarbar leave`、`/liarbar list`
   - 管理（OP 或 `liarbar.admin`）：
@@ -16,6 +17,7 @@
     - `/liarbar addchair <桌名>`：**站在楼梯方块上**执行，把它登记为该桌的一把椅子；每桌 4 把
     - `/liarbar build`：**切换建场模式**——开启后切到创造模式、在房间区域内可以破坏/放置方块；
       再输一次关闭并还原原来的游戏模式
+    - `/liarbar give <玩家> [数量]`：发随机酒（每次随机名字 + 随机颜色）
     - `/liarbar deltable <桌名>`、`/liarbar start <桌名>`、`/liarbar stop <桌名>`、`/liarbar reload`
 - **牌库与牌面**：
   - 20 张：钻石 ×6、绿宝石 ×6、金锭 ×6、万能牌（下界之星）×2；每人每回合 5 张，刚好发完。
@@ -24,8 +26,8 @@
     自己看到的仍是真实牌面，目标牌提示也一并伪装）。
 - **玩法流程**：
   1. 走进酒馆区域（或 `/liarbar join`）→ 提示「你已进入骗子酒馆」，背包保持原样。
-  2. **右键任意一张空椅子的楼梯方块** → 坐上去；槽位 2 会拿到**准备道具**（灰色染料）。
-   再右键自己的椅子（或潜行）= 起身。
+  2. **右键任意一张空椅子的楼梯方块** → 坐上去；槽位 2 会拿到公共库统一的**准备道具**，
+     tab 里也会显示 `[已准备]`。再右键自己的椅子（或潜行）= 起身。
   3. **开局条件**：坐满 4 人 → 3 秒倒计时自动开；只有 2 或 3 人时，**所有入座玩家都右键准备**
    → 3 秒倒计时开局（二人局、三人局）。期间有人起身/取消准备会取消倒计时。
   4. 手牌在槽位 0~4，槽位 6 是目标牌提示，槽位 8 是「质疑」钟。
@@ -46,19 +48,32 @@
 - **座椅上方的发射器（可选但推荐）**：
   - 在每把椅子的**正上方**放一个**朝下的发射器**（`DISPENSER`，漏斗口朝下），坐下时插件会自动识别；
     识别不到时岩浆/水会直接从座椅上方往下流，效果仍在但少了发射器动画。
-- **配置**：`server/plugins/LiarBar/config.yml`
-  - `settings.players-per-table`（4）、`min-players`（2）、`start-countdown-seconds`（3）
+- **酒与空瓶**（独立配置 `liquor.yml`）：
+  - `/liarbar give <玩家> [数量]` 发**随机酒**：名字 = 随机前缀 + 现实酒名（如「冒泡的·伏特加」），
+    颜色也是随机的；外观是普通药水，但**不会触发任何原版药水效果**。
+  - **只要在酒馆区域里**（坐着、等人、甚至对局中）右键酒就能喝；喝完在背包里留下一个**空酒瓶**。
+  - 每瓶酒喝完都会获得一段**随机时长的反胃（Nausea）**，时长范围在 `liquor.yml` 的
+    `nausea.min-seconds` / `nausea.max-seconds` 里配置（默认 4~12 秒）。
+  - **右键空酒瓶**把它扔出去：砸中**没落座**的玩家会有轻微击退 + 受击变红；
+    砸中坐着的人不会推动他。投掷速度/击退/伤害都在 `liquor.yml` 的 `throw` 段。
+- **配置（config.yml）**：`server/plugins/LiarBar/config.yml`
+  - `settings.players-per-table`（4）、`min-players`（2）；开局倒计时固定为公共库的 3 秒
   - `hand-size`（5）、`max-play-cards`（3）
   - `turn-seconds`（30）、`round-delay-seconds`（4）、`end-delay-seconds`（5）
   - `chambers`（6）、`reveal-delay-ticks`（14）、`fire-wait-seconds`（15）
   - `burn-seconds`（6）、`burn-damage`（2.0）、`water-seconds`（3）、`flow-ticks-per-block`（6）
   - `room.*` 与 `tables.*` 由命令写入，不用手改
+- **配置（liquor.yml）**：`server/plugins/LiarBar/liquor.yml`
+  - `prefixes` / `names`：随机前缀与酒名列表，可任意增删
+  - `nausea.min-seconds` / `max-seconds`：反胃时长范围
+  - `throw.speed` / `knockback-horizontal` / `knockback-vertical` / `damage`：空瓶投掷参数
 - **常改文件**：
   | 需求 | 文件 |
   | --- | --- |
   | 牌局 / 揭幕 / 左轮 / 岩浆 / 回合 | `LiarBar/src/main/java/com/liarbar/LiarBarTable.java` |
   | 牌库与牌面材质 | `LiarBar/src/main/java/com/liarbar/LiarBarCards.java` |
-  | 手牌 / 钟 / 左轮 / 问号物品 | `LiarBar/src/main/java/com/liarbar/LiarBarItems.java` |
+  | 手牌 / 钟 / 左轮 / 问号 / 酒与空瓶物品 | `LiarBar/src/main/java/com/liarbar/LiarBarItems.java` |
+  | 酒名/反胃时长/投掷参数 | `LiarBar/src/main/java/com/liarbar/LiarBarLiquor.java` + `liquor.yml` |
   | 区域自动进入、进出房间、建场 | `LiarBar/src/main/java/com/liarbar/LiarBarManager.java` |
   | 事件（移动/右键/下坐骑/保护） | `LiarBar/src/main/java/com/liarbar/LiarBarListener.java` |
   | 房间、椅子登记、配置读写 | `LiarBar/src/main/java/com/liarbar/LiarBarRoom.java` |
@@ -86,11 +101,14 @@
 - **验证**：
   1. 直接走进 pos1~pos2 区域 → 提示「你已进入骗子酒馆」，背包里的菜单道具还在。
   2. 右键楼梯椅子 → 坐下，槽位 2 出现准备道具；右键同一把椅子 → 起身。
-  3. 2 人分别入座并右键准备 → 3 秒倒计时后开一局 2 人牌局；3 人同理。
-  4. 4 人坐满 → 3 秒倒计时 → 每人 5 张牌（钻石/绿宝石/金锭/下界之星）+ 目标牌提示 + 质疑钟。
-  5. 左键选牌发光 → 右键打出 → 别人看到「X 打出 N 张牌，声称是 钻石」。
-  6. 右键钟质疑 → 每人面前出现问号展示框 → 从左到右翻开 → 展示框消失。
-  7. 负责开枪的人拿到铁锄头「左轮」→ 右键 → 空枪时发射器慢慢往下放水；中弹时岩浆一格一格流下来、
+  3. 拉出 tab 列表 → 准备道具点过后应显示 `[已准备]`，再点一次变回 `[未准备]`。
+  4. 2 人分别入座并右键准备 → 3 秒倒计时后开一局 2 人牌局；3 人同理。
+  5. 4 人坐满 → 3 秒倒计时 → 每人 5 张牌（钻石/绿宝石/金锭/下界之星）+ 目标牌提示 + 质疑钟。
+  6. 左键选牌发光 → 右键打出 → 别人看到「X 打出 N 张牌，声称是 钻石」。
+  7. 右键钟质疑 → 每人面前出现问号展示框 → 从左到右翻开 → 展示框消失。
+  8. 负责开枪的人拿到铁锄头「左轮」→ 右键 → 空枪时发射器慢慢往下放水；中弹时岩浆一格一格流下来、
      缓慢掉血、血条见底前转观战并留下躺倒的玩家皮肤尸体和粒子。
-  8. 最后一人获胜全服播报；5 秒后所有人自动起身留在房间里。
-  9. `/liarbar build` 后，在区域内可以破坏/放置方块；再输一次恢复保护。
+  9. 最后一人获胜全服播报；5 秒后所有人自动起身留在房间里。
+  10. `/liarbar build` 后，在区域内可以破坏/放置方块；再输一次恢复保护。
+  11. `/liarbar give <玩家> 3` → 拿到 3 瓶随机名字/颜色的酒；在区域里右键喝 → 留空瓶 + 随机反胃。
+  12. 拿着空瓶右键扔向没落座的玩家 → 轻微击退 + 受击变红；砸坐着的人不会被推动。

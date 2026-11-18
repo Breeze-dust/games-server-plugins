@@ -103,8 +103,32 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
                     Chat.send(sender, "&c没有叫「" + args[1] + "」的桌子。");
                 }
             }
-            case "build" -> {
+            case "give" -> {
                 if (!admin(sender)) {
+                    return true;
+                }
+                if (args.length < 2) {
+                    Chat.send(sender, "&c用法：/liarbar give <玩家> [数量]");
+                    return true;
+                }
+                Player target = org.bukkit.Bukkit.getPlayerExact(args[1]);
+                if (target == null) {
+                    Chat.send(sender, "&c玩家不在线。");
+                    return true;
+                }
+                int amount = 1;
+                if (args.length >= 3) {
+                    try {
+                        amount = Math.max(1, Math.min(16, Integer.parseInt(args[2])));
+                    } catch (NumberFormatException ignored) {
+                        amount = 1;
+                    }
+                }
+                manager.giveLiquor(target, amount);
+                Chat.send(sender, "&a已给 &e" + target.getName() + " &a" + amount + " 瓶随机酒。");
+                Chat.send(target, "&6你收到了 " + amount + " 瓶酒，在骗子酒馆区域里右键就能喝。");
+            }
+            case "build" -> {                if (!admin(sender)) {
                     return true;
                 }
                 if (!(sender instanceof Player player)) {
@@ -216,6 +240,7 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/liarbar deltable <桌名> &7删除桌子");
             Chat.send(sender, "&e/liarbar start <桌名> &e/liarbar stop <桌名> &7强制开场/中止");
             Chat.send(sender, "&e/liarbar build &7切换建场模式（区域内可破坏/放置方块）");
+            Chat.send(sender, "&e/liarbar give <玩家> [数量] &7发随机酒（区域内右键喝，喝完给空瓶）");
             Chat.send(sender, "&e/liarbar reload &7重载配置");
         }
         Chat.send(sender, "&7玩法：右键楼梯椅子坐下，再右键准备道具；四人坐满自动开局，"
@@ -228,12 +253,19 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
             List<String> subs = new ArrayList<>(List.of("join", "leave", "list", "help"));
             if (isAdmin(sender)) {
                 subs.addAll(List.of("pos1", "pos2", "setspawn", "addchair", "deltable",
-                        "start", "stop", "build", "reload"));
+                        "start", "stop", "build", "give", "reload"));
             }
             return filter(subs, args[0]);
         }
         if (args.length == 2) {
             String sub = args[0].toLowerCase(Locale.ROOT);
+            if (sub.equals("give")) {
+                List<String> names = new ArrayList<>();
+                for (Player online : org.bukkit.Bukkit.getOnlinePlayers()) {
+                    names.add(online.getName());
+                }
+                return filter(names, args[1]);
+            }
             if (sub.equals("join") || sub.equals("addchair") || sub.equals("deltable")
                     || sub.equals("start") || sub.equals("stop")) {
                 return filter(new ArrayList<>(manager.tables().keySet()), args[1]);

@@ -3,6 +3,7 @@ package com.liarbar;
 import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.util.Chat;
+import com.hub.util.WaitCountdown;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -28,6 +29,7 @@ import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -73,16 +75,14 @@ public final class LiarBarTable {
     private Location center;
 
     private State state = State.WAITING;
-    private BukkitTask countdownTask;
     private BukkitTask tickTask;
     private BukkitTask endTask;
+    private final WaitCountdown countdown;
 
     /** 存活玩家（按座位顺序）。 */
     private final List<UUID> order = new ArrayList<>();
     private final Map<UUID, Set<Integer>> selections = new HashMap<>();
     private final Map<UUID, String> names = new HashMap<>();
-    /** 已点「准备」的入座玩家。 */
-    private final Set<UUID> ready = new HashSet<>();
     /** 入座时槽位 2 原来的物品（发准备道具前备份）。 */
     private final Map<UUID, ItemStack> readyBackup = new HashMap<>();
 
@@ -118,6 +118,58 @@ public final class LiarBarTable {
         this.manager = manager;
         this.settings = settings;
         this.name = name;
+        this.countdown = new WaitCountdown(plugin, new WaitCountdown.Host() {
+            @Override
+            public Collection<UUID> waitingPlayers() {
+                List<UUID> ids = new ArrayList<>();
+                for (Seat seat : seats) {
+                    if (seat.occupant != null) {
+                        ids.add(seat.occupant);
+                    }
+                }
+                return ids;
+            }
+
+            @Override
+            public int minPlayers() {
+                return settings.playersPerTable;
+            }
+
+            @Override
+            public int maxPlayers() {
+                return settings.playersPerTable;
+            }
+
+            @Override
+            public boolean hasOpQueued() {
+                return false;
+            }
+
+            @Override
+            public void onTick(long secondsLeft) {
+                for (Seat seat : seats) {
+                    Player p = playerOf(seat.occupant);
+                    if (p != null) {
+                        Chat.actionBar(p, "&6" + secondsLeft + "s 后自动开始…");
+                    }
+                }
+            }
+
+            @Override
+            public void onMessage(String message) {
+                broadcastSeated(message);
+            }
+
+            @Override
+            public void onStart() {
+                startGame();
+            }
+
+            @Override
+            public String startMessage(int seconds) {
+                return "&6" + seconds + "s 后自动开局…";
+            }
+        });
         setSeats(chairs);
     }
 
@@ -255,7 +307,6 @@ public final class LiarBarTable {
                 + "），右键准备道具或直接等四人坐满");
         tableSound(Sound.UI_BUTTON_CLICK, 0.9f, 1.4f);
         afterSeatChange();
-        checkStartCondition();
         return true;
     }
 
@@ -330,7 +381,7 @@ public final class LiarBarTable {
             seat.corpse = null;
         }
         if (id != null) {
-            ready.remove(id);
+            countdown.removeReady(id);
             if (player != null) {
                 restoreReadyItem(player);
             } else {
@@ -362,7 +413,6 @@ public final class LiarBarTable {
             }
         }
         afterSeatChange();
-        checkStartCondition();
     }
 
     /** 对局中离座 = 放弃本局。 */
@@ -380,8 +430,8 @@ public final class LiarBarTable {
 
     private void afterSeatChange() {
         manager.reportArena(this);
-        if (state == State.STARTING && !canStart()) {
-            cancelCountdown();
+        if (state == State.WAITING) {
+            countdown.update();
         }
     }
 
@@ -394,7 +444,7 @@ public final class LiarBarTable {
             ItemStack old = player.getInventory().getItem(READY_SLOT);
             readyBackup.put(id, old == null ? new ItemStack(Material.AIR) : old.clone());
         }
-        player.getInventory().setItem(READY_SLOT, manager.items().readyItem(ready.contains(id)));
+        countdown.giveReadyItem(player);
         player.updateInventory();
     }
 
@@ -404,66 +454,9 @@ public final class LiarBarTable {
         if (backup == null) {
             return;
         }
-        ItemStack current = player.getInventory().getItem(READY_SLOT);
-        if (manager.items().isReadyItem(current)) {
-            player.getInventory().setItem(READY_SLOT,
-                    backup.getType() == Material.AIR ? null : backup);
-            player.updateInventory();
-        }
-    }
-
-    /** 右键准备道具：在「已准备 / 未准备」之间切换。 */
-    public void toggleReady(Player player) {
-        if (state == State.PLAYING || state == State.ENDING || seatOf(player) == null) {
-            return;
-        }
-        UUID id = player.getUniqueId();
-        boolean nowReady;
-        if (ready.remove(id)) {
-            nowReady = false;
-        } else {
-            ready.add(id);
-            nowReady = true;
-        }
-        player.getInventory().setItem(READY_SLOT, manager.items().readyItem(nowReady));
+        player.getInventory().setItem(READY_SLOT,
+                backup.getType() == Material.AIR ? null : backup);
         player.updateInventory();
-        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, nowReady ? 1.8f : 1.0f);
-        Chat.actionBar(player, nowReady ? "&a已准备，等待其他玩家…" : "&7已取消准备。");
-        manager.reportArena(this);
-        checkStartCondition();
-    }
-
-    /**
-     * 开局条件：坐满 {@code players-per-table} 人直接开；否则至少 {@code min-players} 人
-     * 且所有入座玩家都点了准备才能开（两人局 / 三人局）。
-     */
-    private boolean canStart() {
-        int seated = occupiedCount();
-        if (seated < settings.minPlayers) {
-            return false;
-        }
-        if (seated >= settings.playersPerTable) {
-            return true;
-        }
-        for (Seat seat : seats) {
-            if (seat.occupant != null && !ready.contains(seat.occupant)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void checkStartCondition() {
-        if (state == State.PLAYING || state == State.ENDING) {
-            return;
-        }
-        if (canStart()) {
-            if (state == State.WAITING) {
-                beginCountdown();
-            }
-        } else if (state == State.STARTING) {
-            cancelCountdown();
-        }
     }
 
     /** 对局中是否禁止起身（潜行下坐骑会被拦下来）。 */
@@ -471,58 +464,13 @@ public final class LiarBarTable {
         return state == State.PLAYING || state == State.ENDING;
     }
 
-    // ---------- 倒计时与开局 ----------
-
-    private void beginCountdown() {
-        if (countdownTask != null) {
-            return;
-        }
-        state = State.STARTING;
-        manager.reportArena(this);
-        countdownTask = new BukkitRunnable() {
-            int left = settings.startCountdownSeconds;
-
-            @Override
-            public void run() {
-                if (state != State.STARTING || !canStart()) {
-                    cancelCountdown();
-                    return;
-                }
-                if (left <= 0) {
-                    cancel();
-                    countdownTask = null;
-                    startGame();
-                    return;
-                }
-                for (Seat seat : seats) {
-                    Player p = playerOf(seat.occupant);
-                    if (p != null) {
-                        Chat.title(p, "&e" + left, "&7对局即将开始", 1);
-                        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.6f);
-                    }
-                }
-                left--;
-            }
-        }.runTaskTimer(plugin, 0L, 20L);
-    }
-
-    private void cancelCountdown() {
-        if (countdownTask != null) {
-            countdownTask.cancel();
-            countdownTask = null;
-        }
-        if (state == State.STARTING) {
-            state = State.WAITING;
-            manager.reportArena(this);
-        }
-    }
+    // ---------- 开局 ----------
 
     /** 管理员 /liarbar start 强制开局。 */
     public void forceStart() {
         if (state != State.WAITING) {
             return;
         }
-        cancelCountdown();
         startGame();
     }
 
@@ -530,13 +478,13 @@ public final class LiarBarTable {
         if (occupiedCount() < settings.minPlayers) {
             return;
         }
+        countdown.cancel();
         state = State.PLAYING;
         transition = false;
         round = 0;
         order.clear();
         selections.clear();
         names.clear();
-        ready.clear();
         for (Seat seat : seats) {
             if (seat.occupant == null) {
                 continue;
@@ -546,6 +494,7 @@ public final class LiarBarTable {
             names.put(id, nameOf(id));
             Player p = playerOf(id);
             if (p != null) {
+                countdown.removeReady(id);
                 restoreReadyItem(p);
                 manager.captureSnapshot(p);
                 HubAPI.setPlaying(id, LiarBarManager.GAME);
@@ -1359,7 +1308,7 @@ public final class LiarBarTable {
 
     /** 管理员 /liarbar stop，或插件关闭。 */
     public void forceStop() {
-        cancelCountdown();
+        countdown.cancel();
         cancelTick();
         if (endTask != null) {
             endTask.cancel();
@@ -1452,7 +1401,7 @@ public final class LiarBarTable {
         if (state == State.PLAYING) {
             return "第 " + round + " 回合";
         }
-        if (state == State.STARTING) {
+        if (countdown.isRunning()) {
             return "即将开局";
         }
         if (state == State.ENDING) {

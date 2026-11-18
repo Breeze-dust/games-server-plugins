@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
@@ -117,26 +118,40 @@ public final class LiarBarItems {
         return "revolver".equals(uiOf(item));
     }
 
-    /** 准备道具（槽位 2）：未准备灰色染料，已准备青柠染料。 */
-    public ItemStack readyItem(boolean ready) {
-        ItemStack item = new ItemStack(ready ? Material.LIME_DYE : Material.GRAY_DYE);
+    /** 一瓶随机酒：普通药水外观（不会触发原版药水效果）。 */
+    public ItemStack liquor(String displayName, int rgb) {
+        ItemStack item = new ItemStack(Material.POTION);
         ItemMeta meta = item.getItemMeta();
-        if (meta == null) {
-            return item;
+        if (meta instanceof PotionMeta potion) {
+            potion.setColor(org.bukkit.Color.fromRGB(rgb & 0xFFFFFF));
+            potion.setBasePotionType(org.bukkit.potion.PotionType.MUNDANE);
+            potion.displayName(Chat.noItalic(Chat.color(displayName)));
+            potion.lore(lore("&7右键饮用", "&8喝完会留下一个空酒瓶"));
+            potion.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "liquor");
+            item.setItemMeta(potion);
         }
-        meta.displayName(Chat.noItalic(Chat.color(ready
-                ? "&a&l已准备 &7(右键取消)"
-                : "&f&l准备 &7(右键)")));
-        meta.lore(lore(ready
-                ? "&7已准备，等待其他玩家"
-                : "&7所有入座玩家都准备后自动开始"));
-        meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "ready");
-        item.setItemMeta(meta);
         return item;
     }
 
-    public boolean isReadyItem(ItemStack item) {
-        return "ready".equals(uiOf(item));
+    public boolean isLiquor(ItemStack item) {
+        return "liquor".equals(uiOf(item));
+    }
+
+    /** 喝完酒剩下的空瓶：右键可以扔出去砸人。 */
+    public ItemStack emptyBottle() {
+        ItemStack item = new ItemStack(Material.GLASS_BOTTLE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color("&f空酒瓶")));
+            meta.lore(lore("&7右键投掷出去砸人", "&8坐着的人不会被砸动"));
+            meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "bottle");
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public boolean isBottle(ItemStack item) {
+        return "bottle".equals(uiOf(item));
     }
 
     /** 给别人看的伪装手牌：一张普通的纸。 */

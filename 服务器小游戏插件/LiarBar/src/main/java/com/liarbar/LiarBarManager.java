@@ -7,13 +7,20 @@ import com.hub.util.Top3;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.Tag;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.entity.Snowball;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.util.Vector;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,6 +42,7 @@ public final class LiarBarManager {
     private final LiarBarSettings settings = new LiarBarSettings();
     private final LiarBarRoom room;
     private final LiarBarItems items;
+    private final LiarBarLiquor liquor;
     private final Map<String, LiarBarTable> tables = new LinkedHashMap<>();
     private final Map<UUID, LiarBarTable> seating = new HashMap<>();
     private final Set<UUID> inRoom = new HashSet<>();
@@ -44,8 +52,10 @@ public final class LiarBarManager {
     private final Set<UUID> builders = new HashSet<>();
     /** 在建场模式前保存的游戏模式，关闭时还原。 */
     private final Map<UUID, GameMode> buildPreviousMode = new HashMap<>();
-    /** 下一次伤害事件要放行的玩家（岩浆灼烧的受击动画）。 */
+    /** 下一次伤害事件要放行的玩家（岩浆灼烧 / 酒瓶砸人的受击动画）。 */
     private final Set<UUID> damageAllowed = new HashSet<>();
+    /** 扔出去的空酒瓶 -> 投掷者。 */
+    private final Map<UUID, UUID> thrownBottles = new HashMap<>();
 
     private YamlConfiguration stats;
     private int loadRetries;
@@ -54,6 +64,7 @@ public final class LiarBarManager {
         this.plugin = plugin;
         this.room = new LiarBarRoom(plugin);
         this.items = new LiarBarItems(plugin);
+        this.liquor = new LiarBarLiquor(plugin, items);
     }
 
     // ---------- 配置加载 ----------
@@ -62,6 +73,7 @@ public final class LiarBarManager {
         plugin.reloadConfig();
         settings.load(plugin.getConfig());
         room.load(plugin.getConfig());
+        liquor.load();
         rebuildTables();
         if (room.unresolved() && loadRetries++ < 30) {
             Bukkit.getScheduler().runTaskLater(plugin, this::load, 200L);
@@ -111,6 +123,10 @@ public final class LiarBarManager {
 
     public LiarBarItems items() {
         return items;
+    }
+
+    public LiarBarLiquor liquor() {
+        return liquor;
     }
 
     public LiarBarRoom room() {
@@ -366,6 +382,113 @@ public final class LiarBarManager {
                 refreshDisguise(player);
             }
         }
+    }
+
+    // ---------- 酒与空瓶 ----------
+
+    /** 给玩家发若干瓶随机酒（指令用）。 */
+    public void giveLiquor(Player target, int amount) {
+        if (target == null) {
+            return;
+        }
+        for (int i = 0; i < amount; i++) {
+            Map<Integer, ItemStack> leftover =
+                    target.getInventory().addItem(liquor.randomLiquor());
+            for (ItemStack drop : leftover.values()) {
+                target.getWorld().dropItemNaturally(target.getLocation(), drop);
+            }
+        }
+    }
+
+    /** 右键喝酒：消耗一瓶、留下空瓶、随机反胃。 */
+    public void drinkLiquor(Player player) {
+        PlayerInventory inv = player.getInventory();
+        ItemStack inHand = inv.getItemInMainHand();
+        if (!items.isLiquor(inHand)) {
+            return;
+        }
+        if (inHand.getAmount() > 1) {
+            inHand.setAmount(inHand.getAmount() - 1);
+        } else {
+            inv.setItemInMainHand(null);
+        }
+        Map<Integer, ItemStack> leftover = inv.addItem(items.emptyBottle());
+        for (ItemStack drop : leftover.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), drop);
+        }
+        int ticks = liquor.randomNauseaTicks();
+        player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, true, true));
+        player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_DRINK, 1.0f, 1.0f);
+        Chat.actionBar(player, "&6咕嘟咕嘟… &7反胃 " + (ticks / 20) + " 秒");
+        refreshDisguise(player);
+    }
+
+    /** 右键扔空酒瓶。 */
+    public void throwBottle(Player player) {
+        PlayerInventory inv = player.getInventory();
+        ItemStack inHand = inv.getItemInMainHand();
+        if (!items.isBottle(inHand)) {
+            return;
+        }
+        if (inHand.getAmount() > 1) {
+            inHand.setAmount(inHand.getAmount() - 1);
+        } else {
+            inv.setItemInMainHand(null);
+        }
+        Location eye = player.getEyeLocation();
+        Vector direction = eye.getDirection().normalize();
+        Snowball snowball = player.getWorld().spawn(
+                eye.clone().add(direction.clone().multiply(0.6)), Snowball.class, ball -> {
+                    ball.setShooter(player);
+                    ball.setVelocity(direction.multiply(liquor.throwSpeed()));
+                    ball.setItem(new ItemStack(Material.GLASS_BOTTLE));
+                });
+        thrownBottles.put(snowball.getUniqueId(), player.getUniqueId());
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> thrownBottles.remove(snowball.getUniqueId()), 200L);
+        player.playSound(player.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 0.8f);
+        refreshDisguise(player);
+    }
+
+    public UUID takeThrownBottle(UUID projectile) {
+        return thrownBottles.remove(projectile);
+    }
+
+    /** 空酒瓶砸中玩家：没落座才吃击退，并且触发受击变红。 */
+    public void bottleHit(UUID throwerId, Player target) {
+        if (target == null || !target.isOnline() || !inRoom(target)) {
+            return;
+        }
+        if (tableOf(target) != null) {
+            Chat.actionBar(target, "&7你坐在椅子上，酒瓶没能推动你。");
+            target.getWorld().playSound(target.getLocation(), Sound.BLOCK_GLASS_BREAK, 1.0f, 1.2f);
+            return;
+        }
+        Player thrower = Bukkit.getPlayer(throwerId);
+        Vector direction = thrower != null
+                ? target.getLocation().toVector().subtract(thrower.getLocation().toVector())
+                : target.getLocation().getDirection().multiply(-1);
+        if (direction.lengthSquared() < 0.0001) {
+            direction = new Vector(0, 0, 1);
+        }
+        direction = direction.normalize().multiply(liquor.knockbackHorizontal());
+        direction.setY(liquor.knockbackVertical());
+        target.setVelocity(target.getVelocity().add(direction));
+
+        double damage = liquor.bottleDamage();
+        if (damage > 0) {
+            target.setNoDamageTicks(0);
+            allowNextDamage(target.getUniqueId());
+            try {
+                target.damage(damage);
+            } finally {
+                clearDamageAllowed(target.getUniqueId());
+            }
+        }
+        Chat.actionBar(target, "&c被空酒瓶砸中了！");
+        target.getWorld().playSound(target.getLocation(), Sound.BLOCK_GLASS_BREAK, 1.0f, 1.0f);
+        target.getWorld().spawnParticle(Particle.CRIT,
+                target.getLocation().add(0, 1, 0), 16, 0.3, 0.4, 0.3, 0.1);
     }
 
     // ---------- 管理员建场 ----------

@@ -21,8 +21,7 @@ settings:
   players-per-table: 4
   # 不够坐满时，至少几人全部点「准备」才能开局（支持两人局 / 三人局）
   min-players: 2
-  # 四人坐满后自动开局的倒计时（秒）
-  start-countdown-seconds: 3
+  # 开局倒计时固定为公共库 WaitCountdown 的 3 秒（全员准备 / 坐满后）
   # 每人每回合手牌数（牌库固定 20 张：钻石/绿宝石/金锭各 6 张 + 万能牌 2 张）
   hand-size: 5
   # 一次最多声称几张牌

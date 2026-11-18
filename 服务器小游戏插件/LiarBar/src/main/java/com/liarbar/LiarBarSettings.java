@@ -8,7 +8,6 @@ public final class LiarBarSettings {
     public int playersPerTable = 4;
     /** 少于坐满时，至少几人全部准备好才能开局（两人局 / 三人局）。 */
     public int minPlayers = 2;
-    public int startCountdownSeconds = 3;
     public int handSize = 5;
     public int maxPlayCards = 3;
     public int turnSeconds = 30;
@@ -31,7 +30,6 @@ public final class LiarBarSettings {
     public void load(FileConfiguration c) {
         playersPerTable = clamp(c.getInt("settings.players-per-table", 4), 2, 4);
         minPlayers = clamp(c.getInt("settings.min-players", 2), 2, playersPerTable);
-        startCountdownSeconds = clamp(c.getInt("settings.start-countdown-seconds", 3), 1, 30);
         handSize = clamp(c.getInt("settings.hand-size", 5), 1, 5);
         maxPlayCards = clamp(c.getInt("settings.max-play-cards", 3), 1, 5);
         turnSeconds = clamp(c.getInt("settings.turn-seconds", 30), 5, 300);

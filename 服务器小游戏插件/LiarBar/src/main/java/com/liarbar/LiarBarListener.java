@@ -61,6 +61,20 @@ public class LiarBarListener implements Listener {
     }
 
     @EventHandler
+    public void onProjectileHit(org.bukkit.event.entity.ProjectileHitEvent event) {
+        java.util.UUID thrower = manager.takeThrownBottle(event.getEntity().getUniqueId());
+        if (thrower == null) {
+            return;
+        }
+        if (event.getHitEntity() instanceof Player target) {
+            manager.bottleHit(thrower, target);
+        } else {
+            event.getEntity().getWorld().playSound(
+                    event.getEntity().getLocation(), org.bukkit.Sound.BLOCK_GLASS_BREAK, 1.0f, 1.0f);
+        }
+    }
+
+    @EventHandler
     public void onItemHeld(org.bukkit.event.player.PlayerItemHeldEvent event) {
         if (manager.inRoom(event.getPlayer())) {
             manager.refreshDisguise(event.getPlayer());
@@ -86,9 +100,6 @@ public class LiarBarListener implements Listener {
         if (!manager.inRoom(player)) {
             return;
         }
-        if (manager.isBuilder(player)) {
-            return; // 建场模式：不拦右键，交给原版处理
-        }
         if (event.getHand() == EquipmentSlot.OFF_HAND) {
             return;
         }
@@ -97,6 +108,26 @@ public class LiarBarListener implements Listener {
         boolean left = action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK;
         if (!right && !left) {
             return;
+        }
+
+        // 酒与空酒瓶：只要在酒馆区域里，任何时候都能喝/扔
+        if (right && manager.items().isLiquor(event.getItem())) {
+            event.setCancelled(true);
+            if (debounce(player)) {
+                manager.drinkLiquor(player);
+            }
+            return;
+        }
+        if (right && manager.items().isBottle(event.getItem())) {
+            event.setCancelled(true);
+            if (debounce(player)) {
+                manager.throwBottle(player);
+            }
+            return;
+        }
+
+        if (manager.isBuilder(player)) {
+            return; // 建场模式：不拦右键，交给原版处理
         }
 
         LiarBarTable table = manager.tableOf(player);
@@ -132,15 +163,6 @@ public class LiarBarListener implements Listener {
                 }
                 return;
             }
-        }
-
-        if (right && manager.items().isReadyItem(event.getItem())) {
-            event.setCancelled(true);
-            LiarBarTable seated = manager.tableOf(player);
-            if (seated != null && debounce(player)) {
-                seated.toggleReady(player);
-            }
-            return;
         }
 
         // 房间内其它方块一律不响应（避免打开箱子、按按钮等）
