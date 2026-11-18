@@ -20,7 +20,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
 import java.io.File;
@@ -57,8 +56,6 @@ public final class LiarBarManager {
     private final Set<UUID> damageAllowed = new HashSet<>();
     /** 扔出去的空酒瓶 -> 投掷者。 */
     private final Map<UUID, UUID> thrownBottles = new HashMap<>();
-    /** 正在喝酒的玩家。 */
-    private final Map<UUID, Drinking> drinking = new HashMap<>();
     /** 自助领酒指令的冷却到期时间（毫秒）。 */
     private final Map<UUID, Long> liquorCooldowns = new HashMap<>();
 
@@ -201,7 +198,6 @@ public final class LiarBarManager {
 
     private void exitRegion(Player player) {
         UUID id = player.getUniqueId();
-        cancelDrinking(id, true);
         clearLiquorItems(player);
         inRoom.remove(id);
         HubAPI.clearGame(id);
@@ -251,7 +247,6 @@ public final class LiarBarManager {
             }
             return;
         }
-        cancelDrinking(id, true);
         if (table != null) {
             table.removePlayer(player);
         }
@@ -274,7 +269,6 @@ public final class LiarBarManager {
         buildPreviousMode.remove(id);
         damageAllowed.remove(id);
         liquorCooldowns.remove(id);
-        cancelDrinking(id, true);
         LiarBarTable table = seating.get(id);
         if (table != null) {
             table.removePlayer(player);
@@ -458,89 +452,24 @@ public final class LiarBarManager {
         }
     }
 
-    /** 右键酒：开始一个持续数秒的喝酒过程（期间移动/换手会打断）。 */
-    public void beginDrinking(Player player) {
+    /**
+     * 玩家用原版「喝」动作喝完酒（PlayerItemConsumeEvent）后触发：
+     * 取消原版消耗与药水效果，手动消耗一瓶、给空酒瓶、施加随机反胃。
+     */
+    public void finishDrinking(Player player, EquipmentSlot hand) {
         if (player == null) {
             return;
         }
-        UUID id = player.getUniqueId();
-        if (drinking.containsKey(id)) {
-            return;
-        }
-        if (!items.isLiquor(player.getInventory().getItemInMainHand())) {
-            return;
-        }
-        Drinking state = new Drinking(player.getLocation().clone(), liquor.drinkTicks(),
-                player.getLevel(), player.getExp());
-        drinking.put(id, state);
-        Chat.actionBar(player, "&6开始喝酒… &7（移动或换手会打断）");
-        player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_DRINK, 0.8f, 1.0f);
-        state.task = Bukkit.getScheduler().runTaskTimer(plugin, () -> tickDrinking(id), 1L, 1L);
-    }
-
-    private void tickDrinking(UUID id) {
-        Drinking state = drinking.get(id);
-        if (state == null) {
-            return;
-        }
-        Player player = Bukkit.getPlayer(id);
-        if (player == null || !player.isOnline() || !inRoom(player)
-                || player.getWorld() != state.start.getWorld()
-                || player.getLocation().distanceSquared(state.start) > 0.09
-                || !items.isLiquor(player.getInventory().getItemInMainHand())) {
-            cancelDrinking(id, true);
-            if (player != null && player.isOnline()) {
-                Chat.actionBar(player, "&7喝酒被打断了。");
-            }
-            return;
-        }
-        state.elapsed++;
-        float progress = Math.min(1.0f, (float) state.elapsed / state.totalTicks);
-        player.setExp(progress);
-        player.setLevel((int) (progress * 100));
-        Chat.actionBar(player, "&6正在喝酒… &f" + (int) (progress * 100) + "%");
-        if (state.elapsed % 8 == 0) {
-            player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_DRINK, 0.4f, 1.0f);
-            player.getWorld().spawnParticle(Particle.CRIT,
-                    player.getLocation().add(0, 1.1, 0), 4, 0.15, 0.15, 0.15, 0.02);
-        }
-        if (state.elapsed >= state.totalTicks) {
-            int level = state.savedLevel;
-            float exp = state.savedExp;
-            cancelDrinking(id, false);
-            finishDrinking(player, level, exp);
-        }
-    }
-
-    private void cancelDrinking(UUID id, boolean restoreExp) {
-        Drinking state = drinking.remove(id);
-        if (state == null) {
-            return;
-        }
-        if (state.task != null) {
-            state.task.cancel();
-        }
-        Player player = Bukkit.getPlayer(id);
-        if (player != null && player.isOnline()) {
-            if (restoreExp) {
-                player.setLevel(state.savedLevel);
-                player.setExp(state.savedExp);
-            }
-            player.updateInventory();
-        }
-    }
-
-    /** 喝酒完成：消耗一瓶、留下空瓶、随机反胃。 */
-    private void finishDrinking(Player player, int savedLevel, float savedExp) {
-        player.setLevel(savedLevel);
-        player.setExp(savedExp);
         PlayerInventory inv = player.getInventory();
-        ItemStack inHand = inv.getItemInMainHand();
+        boolean offhand = hand == EquipmentSlot.OFF_HAND;
+        ItemStack inHand = offhand ? inv.getItemInOffHand() : inv.getItemInMainHand();
         if (!items.isLiquor(inHand)) {
             return;
         }
         if (inHand.getAmount() > 1) {
             inHand.setAmount(inHand.getAmount() - 1);
+        } else if (offhand) {
+            inv.setItemInOffHand(null);
         } else {
             inv.setItemInMainHand(null);
         }
@@ -552,30 +481,8 @@ public final class LiarBarManager {
         player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, true, true));
         player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_DRINK, 1.0f, 0.8f);
         Chat.actionBar(player, "&6咕嘟咕嘟… &7反胃 " + (ticks / 20) + " 秒");
+        player.updateInventory();
         refreshDisguise(player);
-    }
-
-    public void cancelDrink(Player player) {
-        if (player != null) {
-            cancelDrinking(player.getUniqueId(), true);
-        }
-    }
-
-    /** 正在进行的喝酒过程。 */
-    private static final class Drinking {
-        final Location start;
-        final int totalTicks;
-        final int savedLevel;
-        final float savedExp;
-        BukkitTask task;
-        int elapsed;
-
-        Drinking(Location start, int totalTicks, int savedLevel, float savedExp) {
-            this.start = start;
-            this.totalTicks = totalTicks;
-            this.savedLevel = savedLevel;
-            this.savedExp = savedExp;
-        }
     }
 
     /** 右键扔空酒瓶。 */
@@ -761,12 +668,6 @@ public final class LiarBarManager {
         for (LiarBarTable table : tables.values()) {
             table.shutdown();
         }
-        for (Drinking state : drinking.values()) {
-            if (state.task != null) {
-                state.task.cancel();
-            }
-        }
-        drinking.clear();
         for (Map.Entry<UUID, Snapshot> entry : snapshots.entrySet()) {
             Player p = Bukkit.getPlayer(entry.getKey());
             if (p != null) {

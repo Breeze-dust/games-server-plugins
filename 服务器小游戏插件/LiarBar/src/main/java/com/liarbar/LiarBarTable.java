@@ -526,7 +526,6 @@ public final class LiarBarTable {
             names.put(id, nameOf(id));
             Player p = playerOf(id);
             if (p != null) {
-                manager.cancelDrink(p);
                 countdown.removeReady(id);
                 restoreReadyItem(p);
                 manager.captureSnapshot(p);

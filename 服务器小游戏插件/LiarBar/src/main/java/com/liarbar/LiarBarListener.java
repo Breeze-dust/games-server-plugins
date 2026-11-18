@@ -74,6 +74,21 @@ public class LiarBarListener implements Listener {
         }
     }
 
+    /** 喝完酒：取消原版消耗与效果，由插件手动结算（消耗、空瓶、反胃）。 */
+    @EventHandler
+    public void onConsume(org.bukkit.event.player.PlayerItemConsumeEvent event) {
+        Player player = event.getPlayer();
+        if (!manager.items().isLiquor(event.getItem())) {
+            return;
+        }
+        event.setCancelled(true);
+        if (!manager.inRoom(player)) {
+            Chat.actionBar(player, "&7只有在骗子酒馆里才能喝这种酒。");
+            return;
+        }
+        manager.finishDrinking(player, event.getHand());
+    }
+
     @EventHandler
     public void onItemHeld(org.bukkit.event.player.PlayerItemHeldEvent event) {
         if (manager.inRoom(event.getPlayer())) {
@@ -110,11 +125,10 @@ public class LiarBarListener implements Listener {
             return;
         }
 
-        // 酒与空酒瓶：只要在酒馆区域里，任何时候都能喝/扔
+        // 酒：放行右键，让原版播放「喝」的动作；喝完在 PlayerItemConsumeEvent 里结算
         if (right && manager.items().isLiquor(event.getItem())) {
-            event.setCancelled(true);
-            if (debounce(player)) {
-                manager.beginDrinking(player);
+            if (!manager.inRoom(player)) {
+                event.setCancelled(true);
             }
             return;
         }

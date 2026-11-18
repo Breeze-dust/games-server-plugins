@@ -30,10 +30,6 @@ names:
   - 苦艾酒
   - 朗姆可乐
 
-# 喝酒过程：右键后要持续这么久才喝完（秒），期间移动/换手会打断
-drink:
-  seconds: 2.5
-
 # 玩家自助领酒指令 /liarbar liquor 的冷却（秒）；0 = 不限制
 give-cooldown-seconds: 30
 
