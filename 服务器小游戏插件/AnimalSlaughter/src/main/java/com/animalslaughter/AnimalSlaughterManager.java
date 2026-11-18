@@ -6,6 +6,7 @@ import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
+import com.hub.util.SpectatorHud;
 import com.hub.util.StartCountdown;
 import com.hub.util.Top3;
 import com.hub.util.WaitCountdown;
@@ -108,6 +109,8 @@ public final class AnimalSlaughterManager {
     private String sidebarHeaderEntry;
     private String sidebarFooterEntry;
     private final Map<UUID, String> sidebarEntries = new HashMap<>();
+    /** 主城观战者：把同一块侧边栏也发给他们，比赛结束时还原。 */
+    private final SpectatorHud spectatorHud = new SpectatorHud();
 
     private YamlConfiguration stats;
 
@@ -1411,6 +1414,13 @@ public final class AnimalSlaughterManager {
             }
             sidebarObjective.getScore(entry).setScore(score(id));
         }
+
+        for (UUID id : spectatorHud.viewers("animalslaughter", playing, 96.0)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline() && !p.getScoreboard().equals(sidebar)) {
+                p.setScoreboard(sidebar);
+            }
+        }
     }
 
     private static String fillTime(String template, int time, String phase) {
@@ -1430,6 +1440,7 @@ public final class AnimalSlaughterManager {
 
     /** 结算：所有在场玩家还原主计分板。 */
     private void clearSidebar() {
+        spectatorHud.restore("animalslaughter");
         for (UUID id : playing) {
             restoreSidebar(Bukkit.getPlayer(id));
         }

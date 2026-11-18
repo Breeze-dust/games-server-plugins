@@ -95,6 +95,8 @@ public final class GameRoom {
     private Phase bossBarPhase;
     private int bossBarTotalTicks = -1;
     private int bossBarLastSeconds = -1;
+    /** 已经挂到 boss 血条上的主城观战者（离开场地/退出观战时摘掉）。 */
+    private final Set<UUID> bossBarSpectators = new HashSet<>();
 
     private Phase phase = Phase.WAITING;
     private int phaseTicks;
@@ -1772,6 +1774,7 @@ public final class GameRoom {
         if (seconds != bossBarLastSeconds) {
             bossBarLastSeconds = seconds;
             bossBar.setTitle(Msg.c(bossBarTitle(current, seconds)));
+            syncBossBarSpectators();
         }
         bossBar.setColor(bossBarColor(current));
         bossBar.setProgress(Math.max(0.0, Math.min(1.0,
@@ -1786,6 +1789,35 @@ public final class GameRoom {
             return runCountdownTicks;
         }
         return phaseTicks;
+    }
+
+    /** 把场地附近的主城观战者也挂到 boss 血条上；离开的观战者立刻摘掉。 */
+    private void syncBossBarSpectators() {
+        if (bossBar == null) {
+            return;
+        }
+        Set<UUID> participants = new HashSet<>();
+        for (Player p : onlinePlayers()) {
+            participants.add(p.getUniqueId());
+        }
+        Set<UUID> near = new HashSet<>(HubAPI.spectatorsNear(participants, 96.0));
+        for (UUID id : near) {
+            if (bossBarSpectators.add(id)) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) {
+                    bossBar.addPlayer(p);
+                }
+            }
+        }
+        for (UUID id : new ArrayList<>(bossBarSpectators)) {
+            if (!near.contains(id)) {
+                bossBarSpectators.remove(id);
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) {
+                    bossBar.removePlayer(p);
+                }
+            }
+        }
     }
 
     private String bossBarTitle(Phase current, int seconds) {
@@ -1819,6 +1851,7 @@ public final class GameRoom {
         bossBarPhase = null;
         bossBarTotalTicks = -1;
         bossBarLastSeconds = -1;
+        bossBarSpectators.clear();
     }
 
     private int secondsToTicks(int seconds) {

@@ -256,6 +256,7 @@ public class HubManager implements HubService {
         spots.put(key, location.clone());
     }
 
+    @Override
     public boolean isSpectating(UUID id) {
         return spectating.containsKey(id);
     }
@@ -418,7 +419,7 @@ public class HubManager implements HubService {
                     lastSpectatorSpot.put(id, spot.clone());
                 }
             }
-            Chat.actionBar(p, "&7观战中：&b" + game + " &7｜ 输入 &e/hub &7退出（聊天栏有按钮）");
+            Chat.actionBar(p, spectateBar(game, arena));
         }
     }
 
@@ -427,6 +428,47 @@ public class HubManager implements HubService {
         spectating.remove(id);
         spectatingArena.remove(id);
         lastSpectatorSpot.remove(id);
+    }
+
+    /** 观战动作栏：游戏·场地 + 该场地最新上报的阶段信息 + 场内人数 + 退出提示。 */
+    private String spectateBar(String game, String arena) {
+        StringBuilder sb = new StringBuilder("&7观战：&b").append(game);
+        if (arena != null && !arena.isEmpty()) {
+            sb.append("&7·&f").append(arena);
+        }
+        ArenaInfo info = arena == null || arena.isEmpty() ? null : arenasOf(game).get(arena);
+        if (info != null) {
+            if (info.extra() != null && !info.extra().isEmpty()) {
+                sb.append(" &7｜ &e").append(info.extra());
+            }
+            sb.append(" &7｜ 场内 &f").append(info.players()).append(" 人");
+        } else {
+            int count = playingCount(game);
+            if (count > 0) {
+                sb.append(" &7｜ 场内 &f").append(count).append(" 人");
+            }
+        }
+        sb.append(" &7｜ 输入 &e/hub &7退出");
+        return sb.toString();
+    }
+
+    /** 该游戏处于「已加入对局」状态的在线玩家数（场地没上报时用）。 */
+    private int playingCount(String game) {
+        int count = 0;
+        for (Map.Entry<UUID, PlayerGame> e : gameMap.entrySet()) {
+            PlayerGame pg = e.getValue();
+            if (pg == null || pg.state() != GameState.PLAYING) {
+                continue;
+            }
+            if (!game.equals(plugin.getRegistry().canonicalName(pg.game()))) {
+                continue;
+            }
+            Player p = Bukkit.getPlayer(e.getKey());
+            if (p != null && p.isOnline()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /** 该游戏当前有没有正在进行的对局（菜单红色羊毛的判定口径；没有场地信息的单场游戏看玩家状态）。 */

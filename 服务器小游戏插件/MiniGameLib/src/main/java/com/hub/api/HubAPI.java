@@ -1,9 +1,13 @@
 package com.hub.api;
 
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -89,6 +93,53 @@ public final class HubAPI {
     public static String gameOf(UUID player) {
         HubService s = service;
         return s == null ? null : s.gameOf(player);
+    }
+
+    /** 玩家是否正在主城观战（旧版主城没有观战功能时返回 false）。 */
+    public static boolean isSpectating(UUID player) {
+        HubService s = service;
+        return s != null && s.isSpectating(player);
+    }
+
+    /**
+     * 参赛者附近正在观战的主城玩家（旁观模式、与任一参赛者同世界且距离不超过 radius 格）。
+     * <p>
+     * 游戏把这些玩家一并加进自己 HUD 的观众名单，观战者就能看到和局内玩家一样的对局信息。
+     */
+    public static List<UUID> spectatorsNear(Collection<UUID> participants, double radius) {
+        if (participants == null || participants.isEmpty()) {
+            return List.of();
+        }
+        List<Player> anchors = new ArrayList<>();
+        for (UUID id : participants) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                anchors.add(p);
+            }
+        }
+        if (anchors.isEmpty()) {
+            return List.of();
+        }
+        double limit = Math.max(0, radius);
+        double limitSq = limit * limit;
+        List<UUID> out = new ArrayList<>();
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            UUID id = p.getUniqueId();
+            if (participants.contains(id) || p.getGameMode() != GameMode.SPECTATOR
+                    || !isSpectating(id)) {
+                continue;
+            }
+            for (Player anchor : anchors) {
+                if (anchor.getWorld() != p.getWorld()) {
+                    continue;
+                }
+                if (p.getLocation().distanceSquared(anchor.getLocation()) <= limitSq) {
+                    out.add(id);
+                    break;
+                }
+            }
+        }
+        return out;
     }
 
     /**

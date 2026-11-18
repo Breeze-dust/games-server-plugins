@@ -150,7 +150,14 @@
 - **入口 2**：主菜单点游戏图标 —— 该游戏没有等待中场地但正在打时直接进观战；子菜单点**红色（PLAYING）场地羊毛**进的是**那个场地**。
 - **落点（1.3.1 起精确到场）**：各游戏通过 `HubAPI.setArenaSpectator(游戏, 场地, Location)` 上报静态观战坐标（一般报场地中心或等待区，见各游戏 `reportArena`）。HubCore 存 `spectatorSpots`，进观战时先找该场地，再找 `arena=""` 的游戏级兜底；**都没上报**才退回老办法（`findRunningPlayer()` 挑一位 `PLAYING` 玩家，传到他头顶 3 格）。
 - **退出**：旁观模式用不了道具（快捷栏都不显示），所以进观战时清空背包，聊天栏发一行可点的「[ 点击这里退出观战 ]」（`ClickEvent.runCommand("/hub")`），也可以直接输 `/hub`、`/lobby`；`teleportToLobby` / `clearGame` 里都 remove 了 `spectating`。
-- **自动收尾**：`tickSpectate()` 每秒跑（`HubCorePlugin#onEnable` 里的第二个 20L 任务）：经验条上方刷「观战中：X ｜ 输入 /hub 退出（聊天栏有按钮）」；`isGameRunning()` 变 false 或玩家被改成非旁观 → 自动回大厅。
+- **自动收尾**：`tickSpectate()` 每秒跑（`HubCorePlugin#onEnable` 里的第二个 20L 任务）：经验条上方刷
+  `观战：<游戏>·<场地>｜<阶段>｜场内 N 人｜输入 /hub 退出`（阶段与人数来自该游戏 `setArena` 上报的
+  `ArenaInfo.extra/players`；没上报场地就只显示游戏名和 `gameMap` 里该游戏的在线人数）；
+  `isGameRunning()` 变 false 或玩家被改成非旁观 → 自动回大厅。
+- **观战者也能看到游戏自己的 HUD**（2026-11-18）：各游戏通过
+  `HubAPI.spectatorsNear(参赛者, 半径)` 找到「附近正在主城观战」的玩家，把侧边栏 / 计分板 / BossBar /
+  动作栏一并发给他们（`LiveSidebar` 已自动处理 25 个侧边栏游戏；自建 HUD 的游戏用
+  `com.hub.util.SpectatorHud`）。观战者据此能看到和局内玩家一样的存活人数、回合、倒计时等信息。
 - `isGameRunning()` = 有场地报 `PLAYING`，**或**有该游戏的玩家处于 `PLAYING`（兼容天坑 / 粒子枪战这种不上报场地的单场游戏）。
 - **观战者不算在局内**：不写 `gameMap`，所以 tab 仍在大厅分区、不参与 `announceJoin`/胜负；`lock-inventory` 相关的大厅保护（禁止捡东西等）对观战者照常生效。
 - 注意：末影之眼同样受「禁丢弃 / 禁换手 / 禁挪格」保护（`HubListener#onDrop/onSwapHands/onMenuClick`）。

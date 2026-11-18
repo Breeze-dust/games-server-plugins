@@ -9,6 +9,7 @@ import com.hub.api.GameState;
 import com.hub.data.PlayerStats;
 import com.hub.util.Top3;
 import com.hub.api.HubAPI;
+import com.hub.util.SpectatorHud;
 import com.hub.util.WaitCountdown;
 import com.buildbattle.gtb.words.Word;
 import net.kyori.adventure.text.Component;
@@ -59,6 +60,8 @@ public class GameManager {
     private final GuessBuildPlugin plugin;
 
     private final List<UUID> players = new ArrayList<>();
+    /** 主城观战者：把同一块计分板也发给他们，回到等待阶段时还原。 */
+    private final SpectatorHud spectatorHud = new SpectatorHud();
     private final Map<UUID, String> names = new HashMap<>();
     private final Map<UUID, PlayerState> states = new HashMap<>();
     private final Map<UUID, Integer> scores = new HashMap<>();
@@ -1590,10 +1593,20 @@ public class GameManager {
             setScore(obj, line--, "&7/gtb join 加入");
             setScore(obj, line--, "&7/gtb start 开始");
         }
-        for (UUID u : players) {
-            Player p = Bukkit.getPlayer(u);
-            if (p != null && p.isOnline()) {
-                p.setScoreboard(sb);
+        if (phase == Phase.PLAYING) {
+            for (UUID u : spectatorHud.viewers("gtb", players, 96.0)) {
+                Player p = Bukkit.getPlayer(u);
+                if (p != null && p.isOnline()) {
+                    p.setScoreboard(sb);
+                }
+            }
+        } else {
+            spectatorHud.restore("gtb");
+            for (UUID u : players) {
+                Player p = Bukkit.getPlayer(u);
+                if (p != null && p.isOnline()) {
+                    p.setScoreboard(sb);
+                }
             }
         }
     }

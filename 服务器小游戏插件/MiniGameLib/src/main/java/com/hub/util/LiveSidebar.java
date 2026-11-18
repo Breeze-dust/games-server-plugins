@@ -1,5 +1,6 @@
 package com.hub.util;
 
+import com.hub.api.HubAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -42,6 +43,9 @@ public final class LiveSidebar {
     /** 一行内容：显示文字 + 右侧数字。 */
     public record Line(String text, int score) {
     }
+
+    /** 主城观战者离任一参赛者多近才把这块侧边栏发给他。 */
+    private static final double SPECTATOR_RADIUS = 96.0;
 
     private static final class Board {
         Scoreboard scoreboard;
@@ -102,8 +106,10 @@ public final class LiveSidebar {
                     .getScore(e.getKey()).setScore(e.getValue());
             board.entries.put(e.getKey(), e.getValue());
         }
+        Set<UUID> viewers = new HashSet<>(players);
+        viewers.addAll(HubAPI.spectatorsNear(players, SPECTATOR_RADIUS));
         Set<UUID> now = new HashSet<>();
-        for (UUID id : players) {
+        for (UUID id : viewers) {
             Player p = Bukkit.getPlayer(id);
             if (p == null || !p.isOnline()) {
                 continue;

@@ -5,6 +5,7 @@ import com.hub.api.ArcadeBridge;
 import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.util.Chat;
+import com.hub.util.SpectatorHud;
 import com.hub.util.StartCountdown;
 import com.hub.util.WaitCountdown;
 import org.bukkit.Bukkit;
@@ -97,6 +98,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
     private Scoreboard sidebar;
     private Objective sidebarObjective;
     private final Map<UUID, String> sidebarEntries = new HashMap<>();
+    /** 主城观战者：把同一块侧边栏也发给他们，比赛结束时还原。 */
+    private final SpectatorHud spectatorHud = new SpectatorHud();
     /** 颁奖时逐个揭晓的名次行，全部揭晓后一起发到聊天栏。 */
     private final List<String> podiumLines = new ArrayList<>();
     /** 颁奖台上还没被揭晓的玩家：在揭晓前锁住移动。 */
@@ -1283,9 +1286,16 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
                 sidebarObjective.getScore(entry).setScore(starsOf(id));
             }
         }
+        for (UUID id : spectatorHud.viewers("arcadeparty", playing, 96.0)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline() && !p.getScoreboard().equals(sidebar)) {
+                p.setScoreboard(sidebar);
+            }
+        }
     }
 
     private void restoreAllSidebar() {
+        spectatorHud.restore("arcadeparty");
         for (UUID id : playing) {
             restoreSidebar(Bukkit.getPlayer(id));
         }
