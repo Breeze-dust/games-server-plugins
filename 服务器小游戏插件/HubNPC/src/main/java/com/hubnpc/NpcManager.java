@@ -88,6 +88,7 @@ final class NpcManager {
         data.yaw = (float) section.getDouble("yaw");
         data.pitch = (float) section.getDouble("pitch");
         data.displayName = section.getString("name", id);
+        data.description = normalizeDescription(section.getString("description"));
         data.skinName = section.getString("skin-name");
         data.skinValue = section.getString("skin-value");
         data.skinSignature = section.getString("skin-signature");
@@ -108,6 +109,7 @@ final class NpcManager {
             section.set("yaw", data.yaw);
             section.set("pitch", data.pitch);
             section.set("name", data.displayName);
+            section.set("description", data.description);
             section.set("skin-name", data.skinName);
             section.set("skin-value", data.skinValue);
             section.set("skin-signature", data.skinSignature);
@@ -216,7 +218,7 @@ final class NpcManager {
         mannequin.setImmovable(true);
         mannequin.setSkinParts(SkinParts.allParts());
         // 传 null 才会隐藏描述行；Component.empty() 仍然会渲染成一整行空白。
-        mannequin.setDescription(null);
+        mannequin.setDescription(data.description == null ? null : Text.parse(data.description));
         mannequin.customName(Text.parse(data.displayName));
         mannequin.setCustomNameVisible(true);
         mannequin.getPersistentDataContainer().set(keyId, PersistentDataType.STRING, data.id);
@@ -251,6 +253,20 @@ final class NpcManager {
             mannequin.customName(Text.parse(displayName));
         }
         save();
+    }
+
+    /** 设置副标题；null / 空白表示清除（传 null 才不渲染那一行）。 */
+    void setDescription(NpcData data, String description) {
+        data.description = normalizeDescription(description);
+        Mannequin mannequin = entity(data);
+        if (mannequin != null) {
+            mannequin.setDescription(data.description == null ? null : Text.parse(data.description));
+        }
+        save();
+    }
+
+    private static String normalizeDescription(String description) {
+        return description == null || description.isBlank() ? null : description;
     }
 
     void move(NpcData data, Location location) {

@@ -22,6 +22,8 @@ final class NpcData {
     float pitch;
     /** 名字原文（保留 & / 渐变标签，改名时重新解析）。 */
     String displayName;
+    /** 名字下方的副标题原文；null 表示不显示（不能用空串代替，会渲染成空白行）。 */
+    String description;
     /** 皮肤来源玩家名；没有设置皮肤时为 null。 */
     String skinName;
     String skinValue;

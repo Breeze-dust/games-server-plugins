@@ -20,9 +20,9 @@ import java.util.Set;
 final class NpcCommand implements CommandExecutor, TabCompleter {
 
     private static final Set<String> ID_COMMANDS =
-            Set.of("remove", "rename", "skin", "move", "tp", "info");
+            Set.of("remove", "rename", "skin", "move", "tp", "info", "desc");
     private static final String[] ROOT = {
-            "help", "create", "remove", "list", "rename",
+            "help", "create", "remove", "list", "rename", "desc",
             "skin", "command", "move", "tp", "info", "reload", "cleanup"
     };
 
@@ -45,6 +45,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
             case "remove", "delete" -> remove(sender, args);
             case "list" -> list(sender);
             case "rename" -> rename(sender, args);
+            case "desc" -> desc(sender, args);
             case "skin" -> skin(sender, args);
             case "command", "cmd" -> commands(sender, args);
             case "move" -> move(sender, args);
@@ -287,6 +288,27 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         msg(sender, "&a已传送到 NPC &f" + data.id + "&a。");
     }
 
+    private void desc(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            usage(sender, "/npc desc <id> <文本>");
+            usage(sender, "/npc desc <id> clear &7清除副标题");
+            return;
+        }
+        NpcData data = manager.get(args[1]);
+        if (data == null) {
+            notFound(sender, args[1]);
+            return;
+        }
+        String text = join(args, 2);
+        if (text.equalsIgnoreCase("clear") || text.equals("清除") || text.isBlank()) {
+            manager.setDescription(data, null);
+            msg(sender, "&a已清除 &f" + data.id + " &a的副标题。");
+            return;
+        }
+        manager.setDescription(data, text);
+        msg(sender, "&a已设置 &f" + data.id + " &a的副标题：&r" + text);
+    }
+
     private void info(CommandSender sender, String[] args) {
         if (args.length < 2) {
             usage(sender, "/npc info <id>");
@@ -299,6 +321,7 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         msg(sender, "&6&lNPC &f" + data.id);
         msg(sender, " &7名字：&r" + data.displayName);
+        msg(sender, " &7副标题：&r" + (data.description == null ? "&7无" : data.description));
         msg(sender, " &7位置：&f" + data.world + " " + fmt(data.x) + " " + fmt(data.y) + " " + fmt(data.z)
                 + " &7朝向：&f" + fmt(data.yaw) + " / " + fmt(data.pitch));
         msg(sender, " &7实体：&f" + data.entityId
@@ -358,8 +381,9 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         msg(sender, "&e/npc command add <id> <指令> &7添加右键执行指令");
         msg(sender, "&7  &fconsole: say 你好 &7由后台执行；不加前缀则以玩家身份执行");
         msg(sender, "&e/npc command list|remove|clear <id> [序号] &7查看/删除/清空右键指令");
-        msg(sender, "&e/npc rename <id> <新名字> &7改名　&e/npc move <id> [位置] &7移动");
-        msg(sender, "&e/npc list &7列表　&e/npc info <id> &7详情　&e/npc tp <id> &7传送　&e/npc remove <id> &7删除");
+        msg(sender, "&e/npc rename <id> <新名字> &7改名　&e/npc desc <id> <文本|clear> &7副标题");
+        msg(sender, "&e/npc move <id> [位置] &7移动　&e/npc list &7列表　&e/npc info <id> &7详情");
+        msg(sender, "&e/npc tp <id> &7传送　&e/npc remove <id> &7删除");
         msg(sender, "&e/npc reload &7重读 config.yml（朝向玩家开关/距离/刷新间隔），不影响 npcs.yml");
         msg(sender, "&e/npc cleanup [confirm] &7列出/删除未登记的副本实体（复制粘贴、回档留下的）");
         msg(sender, "&7颜色：&f&6 &7颜色代码、&f&#FFAA00 &7单色、"
@@ -546,6 +570,9 @@ final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3 && sub.equals("skin")) {
             return filter(args[2], List.of("reset"));
+        }
+        if (args.length == 3 && sub.equals("desc")) {
+            return filter(args[2], List.of("clear"));
         }
         if (args.length == 2 && sub.equals("cleanup")) {
             return filter(args[1], List.of("confirm"));

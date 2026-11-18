@@ -22,6 +22,8 @@
 /npc command remove <id> <序号>       删除某一条
 /npc command clear <id>               清空
 /npc rename <id> <新名字>             改名（同样支持颜色与渐变）
+/npc desc <id> <文本>                 设置名字下方的副标题（同样支持颜色与渐变）
+/npc desc <id> clear                  清除副标题（不会留下空白行）
 /npc move <id> [位置]                 移动 / 改朝向
 /npc list                             列出全部 NPC（含是否已加载）
 /npc info <id>                        详情
@@ -45,7 +47,7 @@ at <世界> <x> <y> <z> ...             同上，`at` 可省略
 
 ## 名字颜色与渐变
 
-NPC 名字、`/npc rename`、提示消息共用 `Text` 的解析，支持混用：
+NPC 名字、副标题（`/npc desc`）、`/npc rename`、提示消息共用 `Text` 的解析，支持混用：
 
 | 写法 | 效果 |
 | --- | --- |
@@ -84,7 +86,9 @@ NPC 右键有 400ms 防连点冷却；只处理主手。
 - `setImmovable(true)`：**不会被其他实体/玩家推挤**（NBT `immovable:1b`）
 - `setGravity(false)`、`setSilent(true)`、`setInvulnerable(true)`、`setCollidable(false)`
 - `setPersistent(true)`、`setRemoveWhenFarAway(false)`：重进服务器还在
-- `setSkinParts(allParts)`、`setDescription(null)`（隐藏名字下方的描述行）、`setAI(false)`
+- `setSkinParts(allParts)`、`setAI(false)`
+- 副标题（描述行）存 `npcs.yml` 的 `description`；**没有副标题时必须传 `null`**，
+  传空组件会在客户端渲染成一行空白。清除用 `/npc desc <id> clear`。
 - 名字组件 + 可见名牌；皮肤 profile 存在实体 NBT 和 `npcs.yml` 里，重启后不用重新联网拉取。
 
 ## 朝向玩家
