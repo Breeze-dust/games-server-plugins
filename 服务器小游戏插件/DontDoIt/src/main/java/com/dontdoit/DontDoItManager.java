@@ -502,6 +502,12 @@ public final class DontDoItManager {
         reportArena(game);
     }
 
+    public void unmapPlayer(Player player) {
+        if (player != null) {
+            playerGame.remove(player.getUniqueId());
+        }
+    }
+
     public void forget(Game game) {
         for (Team t : game.teams()) {
             for (Player p : t.members()) {

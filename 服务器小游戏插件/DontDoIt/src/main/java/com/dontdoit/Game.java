@@ -267,6 +267,12 @@ public final class Game {
             }
             return false;
         }
+        if (mgr.library().isEmpty()) {
+            if (starter != null) {
+                Chat.send(starter, "&c词条库为空，请检查 plugins/DontDoIt/criteria.yml。");
+            }
+            return false;
+        }
         World world = arena.world();
         Location center = arena.center();
         if (world == null || center == null) {
@@ -794,9 +800,11 @@ public final class Game {
         stopTasks();
         countdown.cancel();
         restoreBorder();
+        state = State.WAITING;
         mgr.sidebar().hide(sidebarKey());
         for (Team t : teams) {
             for (Player p : new ArrayList<>(t.members())) {
+                mgr.unmapPlayer(p);
                 p.setGameMode(GameMode.SURVIVAL);
                 p.getInventory().clear();
                 p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
@@ -812,6 +820,7 @@ public final class Game {
         for (UUID id : new ArrayList<>(waiting)) {
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
+                mgr.unmapPlayer(p);
                 p.setGameMode(GameMode.SURVIVAL);
                 HubAPI.clearGame(id);
                 HubAPI.teleportToLobby(p);
@@ -866,6 +875,7 @@ public final class Game {
         states.remove(id);
         if (state == State.RUNNING) {
             player.setGameMode(GameMode.SURVIVAL);
+            player.getInventory().clear();
         }
         if (!silent) {
             HubAPI.clearGame(id);
