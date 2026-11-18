@@ -125,12 +125,23 @@ public class LiarBarListener implements Listener {
             return;
         }
 
-        // 酒：放行右键，让原版播放「喝」的动作；喝完在 PlayerItemConsumeEvent 里结算
+        if (manager.isBuilder(player)) {
+            return; // 建场模式：不拦右键，交给原版处理
+        }
+
+        // 酒：右键空气放行，让原版播放「喝」的动作；右键场景方块则拦下，避免开箱子/按按钮
         if (right && manager.items().isLiquor(event.getItem())) {
-            if (!manager.inRoom(player)) {
-                event.setCancelled(true);
+            Block clicked = event.getClickedBlock();
+            if (clicked == null) {
+                return;
             }
-            return;
+            if (manager.tableAt(clicked) != null || manager.tableAtButton(clicked) != null) {
+                // 椅子 / 开火按钮照常处理，继续往下走
+            } else {
+                event.setCancelled(true);
+                Chat.actionBar(player, "&7拿着酒时不能操作场景方块；抬头右键空气可以喝。");
+                return;
+            }
         }
         if (right && manager.items().isBottle(event.getItem())) {
             event.setCancelled(true);
@@ -138,10 +149,6 @@ public class LiarBarListener implements Listener {
                 manager.throwBottle(player);
             }
             return;
-        }
-
-        if (manager.isBuilder(player)) {
-            return; // 建场模式：不拦右键，交给原版处理
         }
 
         // 发射器上的开火按钮：对局中也要先处理，不能落到后面的出牌逻辑里
