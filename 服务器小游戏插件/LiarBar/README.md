@@ -56,6 +56,8 @@
   - **在发射器的任意一个面上贴一个按钮**（木按钮/石按钮都行）；坐下时自动检测，
     轮到你开枪时**按这个按钮**就能扣扳机（其他时间按只会提示"现在不是开枪的时候"）。
   - 没检测到按钮时，`fire-wait-seconds`（默认 15 秒）后会**自动开枪**。
+  - **流体从按钮的位置往下流**（按钮方块会被暂时替换成水/岩浆，结算结束自动把按钮装回去）；
+    没有按钮时退回从发射口下方流出。
   - 识别不到发射器时，岩浆/水会直接从座椅上方往下流，效果仍在但少了发射器动画。
   - 按钮是在**入座时**检测的：如果坐好之后才装按钮，需要起身再坐下才会生效。
 - **酒与空瓶**（独立配置 `liquor.yml`）：
@@ -79,7 +81,9 @@
   - `hand-size`（5）、`max-play-cards`（3）
   - `turn-seconds`（30）、`round-delay-seconds`（4）、`end-delay-seconds`（5）
   - `chambers`（6）、`reveal-delay-ticks`（14）、`fire-wait-seconds`（15）
-  - `burn-seconds`（6）、`burn-damage`（2.0）、`water-seconds`（3）、`flow-ticks-per-block`（6）
+  - `burn-seconds`（6）、`burn-damage`（2.0）、`water-seconds`（3）
+  - `flow-ticks-per-block`（6）、`lava-flow-ticks-per-block`（6）、`water-flow-ticks-per-block`（6）
+    —— 水流/岩浆每下一格的间隔（tick），越大越慢；后两个不写就沿用第一个
   - `room.*` 与 `tables.*` 由命令写入，不用手改
 - **配置（liquor.yml）**：`server/plugins/LiarBar/liquor.yml`
   - `prefixes` / `names`：随机前缀与酒名列表，可任意增删

@@ -26,6 +26,10 @@ public final class LiarBarSettings {
     public int waterSeconds = 3;
     /** 水/岩浆每往下流一格间隔多少 tick。 */
     public int flowTicksPerBlock = 6;
+    /** 岩浆单独的流速（tick/格），默认跟 flowTicksPerBlock 一致。 */
+    public int lavaFlowTicksPerBlock = 6;
+    /** 水单独的流速（tick/格），默认跟 flowTicksPerBlock 一致。 */
+    public int waterFlowTicksPerBlock = 6;
 
     public void load(FileConfiguration c) {
         playersPerTable = clamp(c.getInt("settings.players-per-table", 4), 2, 4);
@@ -42,6 +46,10 @@ public final class LiarBarSettings {
         burnDamage = Math.max(0.5, Math.min(20.0, c.getDouble("settings.burn-damage", 2.0)));
         waterSeconds = clamp(c.getInt("settings.water-seconds", 3), 1, 20);
         flowTicksPerBlock = clamp(c.getInt("settings.flow-ticks-per-block", 6), 1, 40);
+        lavaFlowTicksPerBlock = clamp(
+                c.getInt("settings.lava-flow-ticks-per-block", flowTicksPerBlock), 1, 40);
+        waterFlowTicksPerBlock = clamp(
+                c.getInt("settings.water-flow-ticks-per-block", flowTicksPerBlock), 1, 40);
     }
 
     private static int clamp(int value, int min, int max) {

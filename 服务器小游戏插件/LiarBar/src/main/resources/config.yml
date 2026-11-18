@@ -46,3 +46,6 @@ settings:
   water-seconds: 3
   # 水/岩浆每次往下流一格间隔多少 tick（20 tick = 1 秒；越大流得越慢）
   flow-ticks-per-block: 6
+  # 岩浆/水各自的流速覆盖；不写就沿用上面的 flow-ticks-per-block
+  lava-flow-ticks-per-block: 6
+  water-flow-ticks-per-block: 6

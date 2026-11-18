@@ -113,6 +113,9 @@ public final class LiarBarTable {
     private BukkitTask fluidGuardTask;
     private final Map<UUID, BukkitTask> burnTasks = new HashMap<>();
     private final List<Block> fluidBlocks = new ArrayList<>();
+    /** 流体从按钮位置流出时，暂存按钮方块，结算结束后恢复。 */
+    private Block fluidButtonBlock;
+    private org.bukkit.block.data.BlockData fluidButtonData;
 
     public LiarBarTable(Plugin plugin, LiarBarManager manager, LiarBarSettings settings,
                         String name, List<Location> chairs) {
@@ -1122,16 +1125,34 @@ public final class LiarBarTable {
             return;
         }
         int bottomY = seat.chair.getBlockY() + 1;
-        int topY = dispenser != null ? dispenser.getBlockY() - 1 : seat.chair.getBlockY() + 3;
+        int topY;
+        int columnX = seat.chair.getBlockX();
+        int columnZ = seat.chair.getBlockZ();
+        if (seat.button != null) {
+            // 从按钮位置流出；按钮方块先记下来，结算结束后恢复
+            fluidButtonBlock = seat.button.getBlock();
+            fluidButtonData = fluidButtonBlock.getBlockData();
+            topY = seat.button.getBlockY();
+            columnX = seat.button.getBlockX();
+            columnZ = seat.button.getBlockZ();
+        } else if (dispenser != null) {
+            topY = dispenser.getBlockY() - 1;
+        } else {
+            topY = seat.chair.getBlockY() + 3;
+        }
         if (topY < bottomY) {
             topY = bottomY;
         }
         final int floorY = bottomY;
+        final int x = columnX;
+        final int z = columnZ;
         final int[] y = {topY};
         startFluidGuard();
         if (dispenser != null) {
             world.playSound(dispenser, Sound.BLOCK_DISPENSER_DISPENSE, 1.0f, 1.0f);
         }
+        int interval = material == Material.LAVA
+                ? settings.lavaFlowTicksPerBlock : settings.waterFlowTicksPerBlock;
         flowTask = new BukkitRunnable() {
             @Override
             public void run() {
@@ -1141,9 +1162,11 @@ public final class LiarBarTable {
                     clearColumn();
                     return;
                 }
-                Block block = world.getBlockAt(seat.chair.getBlockX(), y[0], seat.chair.getBlockZ());
-                if (block.getType().isAir() || block.getType() == Material.WATER
-                        || block.getType() == Material.LAVA) {
+                Block block = world.getBlockAt(x, y[0], z);
+                boolean buttonCell = fluidButtonBlock != null
+                        && sameBlock(block.getLocation(), fluidButtonBlock);
+                if (buttonCell || block.getType().isAir()
+                        || block.getType() == Material.WATER || block.getType() == Material.LAVA) {
                     block.setType(material, false);
                     fluidBlocks.add(block);
                 }
@@ -1156,14 +1179,14 @@ public final class LiarBarTable {
                 }
                 y[0]--;
             }
-        }.runTaskTimer(plugin, settings.flowTicksPerBlock, settings.flowTicksPerBlock);
+        }.runTaskTimer(plugin, interval, interval);
     }
 
     private void startFluidGuard() {
         if (fluidGuardTask != null) {
             return;
         }
-        fluidGuardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::clearSides, 1L, 2L);
+        fluidGuardTask = Bukkit.getScheduler().runTaskTimer(plugin, this::clearSides, 1L, 1L);
     }
 
     private void stopFluidGuard() {
@@ -1195,6 +1218,12 @@ public final class LiarBarTable {
             }
         }
         fluidBlocks.clear();
+        // 流体是从按钮位置流出来的：结算结束把按钮装回去
+        if (fluidButtonBlock != null && fluidButtonData != null) {
+            fluidButtonBlock.setBlockData(fluidButtonData, false);
+        }
+        fluidButtonBlock = null;
+        fluidButtonData = null;
     }
 
     private void eliminateByFire(UUID id) {

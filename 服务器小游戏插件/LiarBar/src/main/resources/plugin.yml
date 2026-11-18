@@ -1,5 +1,5 @@
 name: LiarBar
-version: '1.4.1'
+version: '1.4.2'
 main: com.liarbar.LiarBarPlugin
 api-version: '1.21'
 description: 骗子酒馆：大厅多桌落座，四人坐满或全员准备即可开局，出牌吹牛 + 质疑 + 俄罗斯轮盘
