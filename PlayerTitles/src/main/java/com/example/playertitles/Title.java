@@ -91,7 +91,7 @@ public record Title(String id, String name, String color, String description, bo
     }
 
     private Component bracket(String text, String color) {
-        return Text.parse(color + text);
+        return Text.parse(Text.legacyColor(color) + text);
     }
 
     public Component descriptionComponent() {

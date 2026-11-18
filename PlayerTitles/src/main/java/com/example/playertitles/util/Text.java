@@ -57,7 +57,22 @@ public final class Text {
         if (gradient != null) {
             return gradient.render();
         }
-        return parse((color == null ? "" : color) + (raw == null ? "" : raw));
+        return parse(legacyColor(color) + (raw == null ? "" : raw));
+    }
+
+    /**
+     * 把规范化后的颜色转成 LegacyComponentSerializer 认识的写法。
+     * 这个序列化器的十六进制颜色要写成 {@code &#RRGGBB}，单独写 {@code #RRGGBB} 会被当成普通文字。
+     */
+    public static String legacyColor(String color) {
+        if (color == null) {
+            return "";
+        }
+        String value = color.trim();
+        if (value.matches("#[0-9a-fA-F]{6}")) {
+            return "&" + value;
+        }
+        return value;
     }
 
     /** 称号名称的纯文本（去掉渐变语法和颜色/格式代码），用于预填和“名称没变”判断。 */

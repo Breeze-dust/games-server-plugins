@@ -36,7 +36,7 @@ public final class TitleEditMenu {
 
         List<Component> colorLore = new ArrayList<>();
         colorLore.add(Component.text("当前颜色: ", NamedTextColor.GRAY)
-                .append(Text.parse(title.color() + "■ " + title.color())));
+                .append(Text.parse(Text.legacyColor(title.color()) + "■ " + title.color())));
         colorLore.add(Component.text("点击从调色板中选择颜色", NamedTextColor.YELLOW));
         inventory.setItem(12, GuiItems.icon(Material.WHITE_WOOL, Text.parse("&e修改颜色"), colorLore));
 
