@@ -263,6 +263,39 @@ public final class DontDoItListener implements Listener {
         }
     }
 
+    /**
+     * 放行本方场地的方块破坏：GuessTheBuild 在 NORMAL 优先级对任何非 OP、不在 GTB 局内的玩家
+     * 无条件取消破坏（不分世界），DigToBottom/BuildRun 也是用同样的“取消取消”处理。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onBreakAllow(BlockBreakEvent event) {
+        if (!event.isCancelled()) {
+            return;
+        }
+        Game game = manager.gameOf(event.getPlayer());
+        if (game == null || game.state() != Game.State.RUNNING) {
+            return;
+        }
+        if (game.arena().contains(event.getBlock().getLocation())) {
+            event.setCancelled(false);
+        }
+    }
+
+    /** 同理放行本方场地的放置（等待室的放置拦截在 WAITING 生效，不冲突）。 */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPlaceAllow(BlockPlaceEvent event) {
+        if (!event.isCancelled()) {
+            return;
+        }
+        Game game = manager.gameOf(event.getPlayer());
+        if (game == null || game.state() != Game.State.RUNNING) {
+            return;
+        }
+        if (game.arena().contains(event.getBlock().getLocation())) {
+            event.setCancelled(false);
+        }
+    }
+
     @EventHandler
     public void onPlaceProtected(BlockPlaceEvent event) {
         Game game = manager.gameOf(event.getPlayer());

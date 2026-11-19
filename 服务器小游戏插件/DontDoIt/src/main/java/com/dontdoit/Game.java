@@ -216,6 +216,7 @@ public final class Game {
         }
         target.add(player);
         teamOf.put(player.getUniqueId(), target);
+        HubAPI.setTabNameColor(player.getUniqueId(), target.getColor().legacy);
         Chat.send(player, "&a你加入了 " + target.displayName());
         mgr.refreshWaitItems(player);
         countdown.update();
@@ -792,47 +793,65 @@ public final class Game {
 
     public void updateSidebar(boolean force) {
         if (state == State.WAITING) {
-            mgr.sidebar().hide(sidebarKey());
+            hideSidebars();
             return;
         }
         if (!force && tick - lastSidebar < 20) {
             return;
         }
         lastSidebar = tick;
-        List<UUID> viewers = new ArrayList<>();
-        for (Team t : teams) {
-            for (Player p : t.members()) {
+        for (Team viewerTeam : teams) {
+            String key = sidebarKey(viewerTeam);
+            if (viewerTeam.isEmpty()) {
+                mgr.sidebar().hide(key);
+                continue;
+            }
+            List<UUID> viewers = new ArrayList<>();
+            for (Player p : viewerTeam.members()) {
                 viewers.add(p.getUniqueId());
             }
-        }
-        if (viewers.isEmpty()) {
-            mgr.sidebar().hide(sidebarKey());
-            return;
-        }
-        List<LiveSidebar.Line> lines = new ArrayList<>();
-        int score = 100;
-        int eliminated = 0;
-        for (Team t : teams) {
-            if (t.isEmpty()) {
+            if (viewers.isEmpty()) {
+                mgr.sidebar().hide(key);
                 continue;
             }
-            if (t.isEliminated()) {
-                eliminated++;
-                continue;
+            List<LiveSidebar.Line> lines = new ArrayList<>();
+            int score = 100;
+            int eliminated = 0;
+            for (Team t : teams) {
+                if (t.isEmpty()) {
+                    continue;
+                }
+                if (t.isEliminated()) {
+                    eliminated++;
+                    continue;
+                }
+                if (t == viewerTeam && !viewerTeam.isEliminated()) {
+                    continue; // 自己的词条不显示（这是游戏规则）
+                }
+                String criterion = t.getCriterion() == null ? "—" : t.getCriterion().name;
+                lines.add(new LiveSidebar.Line(
+                        t.getColor().sectionColor() + t.getColor().name + " §7❤" + t.getLives()
+                                + " " + t.getColor().sectionColor() + criterion,
+                        score--));
             }
-            String criterion = t.getCriterion() == null ? "—" : t.getCriterion().name;
-            lines.add(new LiveSidebar.Line(
-                    t.getColor().sectionColor() + t.getColor().name + " §7❤" + t.getLives() + " §f" + criterion,
-                    score--));
+            if (eliminated > 0) {
+                lines.add(new LiveSidebar.Line("§8已淘汰 §7" + eliminated + " 队", 0));
+            }
+            if (lines.isEmpty()) {
+                lines.add(new LiveSidebar.Line("§7等待其他队伍…", 0));
+            }
+            mgr.sidebar().update(key, "§d§l※ 禁止事项 ※", viewers, lines);
         }
-        if (eliminated > 0) {
-            lines.add(new LiveSidebar.Line("§8已淘汰 §7" + eliminated + " 队", 0));
-        }
-        mgr.sidebar().update(sidebarKey(), "§d§l※ 禁止事项 ※", viewers, lines);
     }
 
-    private String sidebarKey() {
-        return "dontdoit:" + arena.getName();
+    private String sidebarKey(Team team) {
+        return "dontdoit:" + arena.getName() + ":" + team.getColor().id;
+    }
+
+    private void hideSidebars() {
+        for (Team t : teams) {
+            mgr.sidebar().hide(sidebarKey(t));
+        }
     }
 
     // ================== 结束 / 重置 ==================
@@ -842,7 +861,7 @@ public final class Game {
         countdown.cancel();
         restoreBorder();
         state = State.WAITING;
-        mgr.sidebar().hide(sidebarKey());
+        hideSidebars();
         for (Team t : teams) {
             for (Player p : new ArrayList<>(t.members())) {
                 mgr.unmapPlayer(p);
@@ -890,7 +909,7 @@ public final class Game {
         stopTasks();
         countdown.cancel();
         restoreBorder();
-        mgr.sidebar().hide(sidebarKey());
+        hideSidebars();
     }
 
     private void restoreBorder() {
@@ -918,6 +937,7 @@ public final class Game {
         Team team = teamOf.remove(id);
         if (team != null) {
             team.remove(player);
+            HubAPI.setTabNameColor(id, null);
             if (state == State.RUNNING && team.isEmpty() && !team.isEliminated()) {
                 eliminate(team);
             }
@@ -971,6 +991,7 @@ public final class Game {
             if (smallest != null && smallest.size() < mgr.maxPlayersPerTeam()) {
                 smallest.add(p);
                 teamOf.put(id, smallest);
+                HubAPI.setTabNameColor(id, smallest.getColor().legacy);
             }
         }
     }

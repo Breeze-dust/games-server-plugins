@@ -121,6 +121,7 @@ public final class TeamSelectMenu {
             Team team = game.teamOf(player);
             if (team != null) {
                 team.remove(player);
+                com.hub.api.HubAPI.setTabNameColor(player.getUniqueId(), null);
                 player.closeInventory();
                 Chat.send(player, "&7你退出了 " + team.displayName());
                 manager.refreshWaitItems(player);

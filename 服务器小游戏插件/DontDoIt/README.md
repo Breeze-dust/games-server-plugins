@@ -20,6 +20,11 @@
     `start/stop <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
     `settings`（打开设置菜单）、`settings <custom|guess|diamond-behavior|nightvision|border|ylevel>`、
     `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）、`savemap <场地>`（把当前场地存成地图基线）
+- **自己的词条不可见**：侧边栏按队伍分别下发——每个队伍只看到**其他存活队伍**的词条；
+  自己的队伍名/规则数量在动作栏里显示。队伍名、词条、tab 名字都用同一队伍颜色。
+- **方块破坏放行**：GuessTheBuild 在 NORMAL 优先级全局取消非 OP 的方块破坏，
+  本插件在 HIGHEST 优先级对自己场地内（且在对局中）的破坏/放置显式 `setCancelled(false)`，
+  与 DigToBottom / BuildRun 的处理一致。
 - **选队菜单**（用户要求的等待厅适配）：等待室槽 1 的白羊毛右键打开一屏队伍图标（16~48 队），
   显示每队人数与成员，点一下换队；`allow-unbalanced-teams: false` 时只能加入人数最少的队伍。
 - **词条库**：`server/plugins/DontDoIt/criteria.yml`（模板 = 官方中文版原文件，145 条，29 种类型）。
