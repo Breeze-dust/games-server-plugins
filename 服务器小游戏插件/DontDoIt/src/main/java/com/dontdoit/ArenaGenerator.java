@@ -38,6 +38,39 @@ public final class ArenaGenerator {
     public record OreRule(Material material, int depthMin, int depthMax, double ratio) {
     }
 
+    /** 只检测石层 Y（从中心往下 30 格，某一层石头类方块占比 ≥25% 即命中）。 */
+    public static int detectStoneY(DontDoItArena arena) {
+        World world = arena.world();
+        if (world == null) {
+            return Integer.MIN_VALUE;
+        }
+        int cx = arena.center().getBlockX();
+        int cy = arena.center().getBlockY();
+        int cz = arena.center().getBlockZ();
+        int radius = arena.radius();
+        int side = arena.side();
+        for (int offset = 0; offset < STONE_SEARCH_MAX_DISTANCE; offset++) {
+            int y = cy - offset;
+            int count = 0;
+            for (int x = cx - radius; x <= cx + radius; x++) {
+                for (int z = cz - radius; z <= cz + radius; z++) {
+                    if (STONE_LIKE.contains(world.getBlockAt(x, y, z).getType())) {
+                        count++;
+                    }
+                }
+            }
+            if ((double) count / (side * side) >= STONE_PERCENTAGE) {
+                return y;
+            }
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    /** 场地底部（基岩上一层）的 Y。 */
+    public static int bedrockY(int stoneY, int bedrockDepth) {
+        return stoneY - bedrockDepth + 1;
+    }
+
     /**
      * @return 检测到的石层 Y；失败返回 Integer.MIN_VALUE
      */
@@ -52,22 +85,7 @@ public final class ArenaGenerator {
         int radius = arena.radius();
         int side = arena.side();
 
-        int stoneY = Integer.MIN_VALUE;
-        for (int offset = 0; offset < STONE_SEARCH_MAX_DISTANCE; offset++) {
-            int y = cy - offset;
-            int count = 0;
-            for (int x = cx - radius; x <= cx + radius; x++) {
-                for (int z = cz - radius; z <= cz + radius; z++) {
-                    if (STONE_LIKE.contains(world.getBlockAt(x, y, z).getType())) {
-                        count++;
-                    }
-                }
-            }
-            if ((double) count / (side * side) >= STONE_PERCENTAGE) {
-                stoneY = y;
-                break;
-            }
-        }
+        int stoneY = detectStoneY(arena);
         if (stoneY == Integer.MIN_VALUE) {
             return Integer.MIN_VALUE;
         }

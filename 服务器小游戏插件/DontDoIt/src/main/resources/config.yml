@@ -39,6 +39,12 @@ game-difficulty: NORMAL
 night-vision: true
 # 是否把世界边界缩到场地范围（会临时改世界边界，重置时还原）
 use-world-border: true
+# 是否在开局前恢复、结束后还原场地（挖掉的方块会填回来）
+# 第一次开局会把当时的场地存成基线（plugins/DontDoIt/arena-<场地>.baseline），
+# 之后改过地图要重新执行 /ddi savemap <场地>
+restore-map: true
+# 基线包含中心/石层上方多少格（地表、树也能还原）
+restore-top-offset: 16
 # 世界边界比场地半径多留几格
 world-border-padding: 4
 

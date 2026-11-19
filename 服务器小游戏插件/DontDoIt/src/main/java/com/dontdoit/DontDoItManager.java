@@ -70,6 +70,8 @@ public final class DontDoItManager {
     private boolean nightVision = true;
     private boolean useWorldBorder = true;
     private boolean yLevelCriteriaEnabled = true;
+    private boolean restoreMap = true;
+    private int restoreTopOffset = 16;
     private String diamondBehavior = "reduce_others_life";
     private Difficulty gameDifficulty = Difficulty.NORMAL;
     private List<ArenaGenerator.OreRule> oreRules = List.of();
@@ -159,6 +161,8 @@ public final class DontDoItManager {
         useWorldBorder = c.getBoolean("use-world-border", true);
         worldBorderPadding = Math.max(0, c.getInt("world-border-padding", 4));
         yLevelCriteriaEnabled = c.getBoolean("enable-y-level-criteria", true);
+        restoreMap = c.getBoolean("restore-map", true);
+        restoreTopOffset = Math.max(0, c.getInt("restore-top-offset", 16));
         yLevelOffsetGround = c.getInt("y-level-offset-ground", 1);
         yLevelOffsetOnAir = c.getInt("y-level-offset-on-air", 14);
         bedrockDepth = Math.max(2, c.getInt("bedrock-depth", 11));
@@ -213,6 +217,7 @@ public final class DontDoItManager {
         c.set("night-vision", nightVision);
         c.set("use-world-border", useWorldBorder);
         c.set("enable-y-level-criteria", yLevelCriteriaEnabled);
+        c.set("restore-map", restoreMap);
         plugin.saveConfig();
     }
 
@@ -359,6 +364,46 @@ public final class DontDoItManager {
     public void setYLevelCriteriaEnabled(boolean value) {
         yLevelCriteriaEnabled = value;
         saveSettings();
+    }
+
+    public boolean restoreMap() {
+        return restoreMap;
+    }
+
+    public void setRestoreMap(boolean value) {
+        restoreMap = value;
+        saveSettings();
+    }
+
+    public int restoreTopOffset() {
+        return restoreTopOffset;
+    }
+
+    public java.io.File baselineFile(DontDoItArena arena) {
+        String safe = arena.getName().replaceAll("[^a-zA-Z0-9_-]", "_");
+        return new java.io.File(plugin.getDataFolder(), "arena-" + safe + ".baseline");
+    }
+
+    /** 读取场地基线；没有或损坏时返回 null。 */
+    public MapBaseline loadBaseline(DontDoItArena arena) {
+        java.io.File file = baselineFile(arena);
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            return MapBaseline.load(file);
+        } catch (Exception e) {
+            plugin.getLogger().warning("读取地图快照失败（" + file.getName() + "）：" + e.getMessage());
+            return null;
+        }
+    }
+
+    public void saveBaseline(DontDoItArena arena, MapBaseline baseline) {
+        try {
+            baseline.save(baselineFile(arena));
+        } catch (Exception e) {
+            plugin.getLogger().warning("保存地图快照失败：" + e.getMessage());
+        }
     }
 
     public int yLevelOffsetGround() {

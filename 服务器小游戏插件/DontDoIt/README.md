@@ -19,11 +19,14 @@
     （都针对当前场地，站在目标位置执行）、`gen <场地>`（只跑一遍地形生成，检查石层）、`save`、`reload`、
     `start/stop <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
     `settings`（打开设置菜单）、`settings <custom|guess|diamond-behavior|nightvision|border|ylevel>`、
-    `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）
+    `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）、`savemap <场地>`（把当前场地存成地图基线）
 - **选队菜单**（用户要求的等待厅适配）：等待室槽 1 的白羊毛右键打开一屏队伍图标（16~48 队），
   显示每队人数与成员，点一下换队；`allow-unbalanced-teams: false` 时只能加入人数最少的队伍。
 - **词条库**：`server/plugins/DontDoIt/criteria.yml`（模板 = 官方中文版原文件，145 条，29 种类型）。
   支持官方全部字段：`*` 通配、`#tag`、`!排除`、`a..b` 范围、`reversed`。改词条只需改这个文件后 `/ddi reload`。
+- **地图还原**：`restore-map: true` 时，每局开始前先还原基线（第一次开局自动保存到
+  `plugins/DontDoIt/arena-<场地>.baseline`，含 `restore-top-offset` 格地表），开局生成矿石，
+  对局结束再还原一次；基线只存在磁盘，重开服也不会丢。
 - **地形生成**：照官方 `GameAreaGenerator`——从场地中心往下最多 30 格找「≥25% 石头类方块」的一层作为石层，
   石层下方放基岩（`bedrock-depth`），石层以上按深度比例把石头换成安山岩/煤矿/铁矿/钻石矿。
   **OP 必须先有一块石头地形**（例如中心下方挖出来的石层），否则开局会报「找不到石层」。
@@ -57,6 +60,9 @@
   6. `/ddi setlife 矿井 <队伍> 1` 后再触发一次 → 该队淘汰转旁观；剩一队时结算并记胜场（`/ddi stats`）。
   7. `/ddi settings` 打开设置菜单，点击开关应立即生效并写入 config.yml。
   8. 没人时可用 `/ddi selftest <场地>` 自检：期望依次出现「触发了规则」「已淘汰」「无人获胜/获得胜利」，最后 `[WAITING]`。
+  9. 地图还原：`/ddi savemap <场地>` 保存基线（写入 `plugins/DontDoIt/arena-<场地>.baseline`），
+     手动挖掉几个方块后 `/ddi selftest <场地>`，日志应出现「开局前还原了 N 个方块」「结束后还原了 N 个方块」，
+     被挖掉的方块恢复原样。第一次开局若没有基线会自动保存当时的场地；改过地图要重新 `savemap`。
 - **未确认**：
   - 未做真人联机实测：选队菜单/开局/触发/结算路径已通过编译与启动冒烟，但点击链路需要在游戏内手工验证。
   - 世界边界默认会改 **arena 所在世界** 的边界（开 `use-world-border` 时）；多个场地共用同一世界会互相影响。

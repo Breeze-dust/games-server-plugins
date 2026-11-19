@@ -57,6 +57,7 @@ public final class Game {
     private List<Criterion> pool = List.of();
     private int groundY;
     private boolean borderApplied;
+    private MapBaseline baseline;
 
     public Game(DontDoItManager mgr, DontDoItArena arena) {
         this.mgr = mgr;
@@ -116,6 +117,11 @@ public final class Game {
 
     public DontDoItArena arena() {
         return arena;
+    }
+
+    /** 让下次开局重新从磁盘读取地图基线（/ddi savemap 后调用）。 */
+    public void invalidateBaseline() {
+        baseline = null;
     }
 
     public State state() {
@@ -283,10 +289,41 @@ public final class Game {
         }
 
         groundY = center.getBlockY();
-        int stoneY = ArenaGenerator.generate(arena, mgr.oreRules(), mgr.bedrockDepth(), random);
+        if (mgr.restoreMap()) {
+            if (baseline == null) {
+                baseline = mgr.loadBaseline(arena);
+            }
+            if (baseline != null) {
+                int changed = baseline.restore(world);
+                if (changed > 0) {
+                    mgr.getLogger().info("场地 " + arena.getName() + " 开局前还原了 " + changed + " 个方块");
+                }
+            }
+        }
+        int stoneY = ArenaGenerator.detectStoneY(arena);
         if (stoneY == Integer.MIN_VALUE) {
             if (starter != null) {
                 Chat.send(starter, "&c在场地中心往下 30 格内找不到石层（需要至少 25% 石头类方块）。请用 /ddi setcenter 重新定位。");
+            }
+            return false;
+        }
+        if (mgr.restoreMap() && baseline == null) {
+            int bottom = ArenaGenerator.bedrockY(stoneY, mgr.bedrockDepth());
+            int top = Math.min(world.getMaxHeight() - 1,
+                    Math.max(center.getBlockY(), stoneY) + mgr.restoreTopOffset());
+            if (top > bottom) {
+                baseline = MapBaseline.capture(world,
+                        center.getBlockX() - arena.radius(), bottom,
+                        center.getBlockZ() - arena.radius(), arena.side(), top - bottom + 1);
+                mgr.saveBaseline(arena, baseline);
+                mgr.getLogger().info("场地 " + arena.getName() + " 已保存地图基线："
+                        + baseline.volume() + " 个方块（Y " + bottom + "~" + top + "）");
+            }
+        }
+        int generated = ArenaGenerator.generate(arena, mgr.oreRules(), mgr.bedrockDepth(), random);
+        if (generated == Integer.MIN_VALUE) {
+            if (starter != null) {
+                Chat.send(starter, "&c场地生成失败，请检查 /ddi gen " + arena.getName() + "。");
             }
             return false;
         }
@@ -835,6 +872,15 @@ public final class Game {
         states.clear();
         state = State.WAITING;
         arena.clearBorder();
+        if (mgr.restoreMap() && baseline != null) {
+            World world = arena.world();
+            if (world != null) {
+                int changed = baseline.restore(world);
+                if (changed > 0) {
+                    mgr.getLogger().info("场地 " + arena.getName() + " 结束后还原了 " + changed + " 个方块");
+                }
+            }
+        }
         mgr.forget(this);
         mgr.reportArena(this);
     }

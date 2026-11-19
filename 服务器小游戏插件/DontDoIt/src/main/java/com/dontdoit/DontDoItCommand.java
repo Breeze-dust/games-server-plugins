@@ -54,6 +54,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
             case "setspectator" -> admin(sender, () -> setSpectator(sender, args));
             case "gen" -> admin(sender, () -> gen(sender, args));
             case "selftest" -> admin(sender, () -> selfTest(sender, args));
+            case "savemap" -> admin(sender, () -> saveMap(sender, args));
             case "save" -> admin(sender, () -> {
                 manager.saveArenas();
                 Chat.send(sender, "&a场地配置已保存。");
@@ -99,7 +100,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&e/ddi guess <队伍> <true|false> &7猜词条");
         Chat.send(sender, "&e/ddi trigger <队伍> &7触发别人的自定义词条");
         if (sender.isOp() || sender.hasPermission("ddi.admin")) {
-            Chat.send(sender, "&6管理：&ecreate|remove|setcenter|setarea|setlobby|setspectator|gen|selftest|save|reload");
+            Chat.send(sender, "&6管理：&ecreate|remove|setcenter|setarea|setlobby|setspectator|gen|selftest|savemap|save|reload");
             Chat.send(sender, "&6对局：&estart|stop|change|grant|setlife|settings|words");
         }
     }
@@ -331,6 +332,42 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         arena.setStoneY(stoneY);
         Chat.send(sender, "&a生成完成：石层 Y=" + stoneY + "，基岩 Y="
                 + (stoneY - manager.bedrockDepth() + 1) + "，耗时 " + cost + " ms。");
+    }
+
+    /** 把当前场地存成基线（之后每局开始/结束都会还原到这份状态）。 */
+    private void saveMap(CommandSender sender, String[] args) {
+        DontDoItArena arena = arenaArg(sender, args);
+        if (arena == null) {
+            return;
+        }
+        if (arena.world() == null) {
+            Chat.send(sender, "&c世界不存在：" + arena.getWorldName());
+            return;
+        }
+        int stoneY = ArenaGenerator.detectStoneY(arena);
+        if (stoneY == Integer.MIN_VALUE) {
+            Chat.send(sender, "&c找不到石层，先 /ddi gen 检查场地。");
+            return;
+        }
+        int bottom = ArenaGenerator.bedrockY(stoneY, manager.bedrockDepth());
+        int top = Math.min(arena.world().getMaxHeight() - 1,
+                Math.max(arena.center().getBlockY(), stoneY) + manager.restoreTopOffset());
+        if (top <= bottom) {
+            Chat.send(sender, "&c基线范围为空（检查 restore-top-offset）。");
+            return;
+        }
+        long start = System.currentTimeMillis();
+        MapBaseline baseline = MapBaseline.capture(arena.world(),
+                arena.center().getBlockX() - arena.radius(), bottom,
+                arena.center().getBlockZ() - arena.radius(), arena.side(), top - bottom + 1);
+        manager.saveBaseline(arena, baseline);
+        Game game = manager.game(arena.getName());
+        if (game != null) {
+            game.invalidateBaseline();
+        }
+        Chat.send(sender, "&a已保存地图基线：&f" + baseline.volume() + " &a个方块（Y "
+                + bottom + "~" + top + "），耗时 " + (System.currentTimeMillis() - start)
+                + " ms，" + manager.baselineFile(arena).getName());
     }
 
     /** 运维自检：不需要真人，跑一遍开局→触发→淘汰→结算→重置。 */
