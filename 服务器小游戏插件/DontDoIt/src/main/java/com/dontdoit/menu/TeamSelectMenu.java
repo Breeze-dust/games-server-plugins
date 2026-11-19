@@ -67,7 +67,7 @@ public final class TeamSelectMenu {
                 meta.displayName(Chat.noItalic(Chat.color(color.coloredName()
                         + (team == mine ? " &a（当前）" : ""))));
                 List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
-                lore.add(Chat.color("&7人数：&f" + team.size() + "&7/&f" + manager.maxPlayersPerTeam()));
+                lore.add(Chat.color("&7人数：&f" + team.size() + "&7/&f" + manager.effectiveMaxPerTeam()));
                 if (!team.isEmpty()) {
                     StringBuilder names = new StringBuilder("&f");
                     for (Player p : team.members()) {

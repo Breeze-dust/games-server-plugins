@@ -8,8 +8,10 @@ min-teams: 2
 min-players: 2
 # 最多几支队伍（1~48；前 16 支用羊毛，17~32 用陶瓦，33~48 用混凝土）
 max-teams: 16
-# 每队最多几人
+# 每队最多几人（solo-mode 打开时固定为 1）
 max-players-per-team: 4
+# 单人模式：每名玩家单独一队（队伍数 = 可玩人数上限）
+solo-mode: true
 # 是否允许各队人数不平衡（false = 只能加入人数最少的队伍）
 allow-unbalanced-teams: false
 # 每队初始「规则数量」（生命值）

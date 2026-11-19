@@ -31,6 +31,9 @@
 - **PvP 放行**：SkyPit（天坑）在 LOWEST 优先级全局取消「任意一方不在天坑内」的玩家互伤，
   本插件在 HIGHEST 对「双方都是本局玩家且都在场地内」的伤害显式 `setCancelled(false)`，
   并通过对局期间 `world.setPVP(true)` 让服务端放行。
+- **单人模式**：`solo-mode: true`（默认）时每名玩家单独一队，`max-players-per-team` 自动按 1 生效；
+  侧边栏和播报都显示**玩家名字**（用该玩家队伍的原版颜色码染色），组队模式则显示队名。
+  可玩人数上限 = `max-teams`（默认 16）。
 - **选队菜单**（用户要求的等待厅适配）：等待室槽 1 的白羊毛右键打开一屏队伍图标（16~48 队），
   显示每队人数与成员，点一下换队；`allow-unbalanced-teams: false` 时只能加入人数最少的队伍。
 - **词条库**：`server/plugins/DontDoIt/criteria.yml`（模板 = 官方中文版原文件，145 条，29 种类型）。

@@ -53,6 +53,7 @@ public final class DontDoItManager {
     private int minPlayers = 2;
     private int maxTeams = 16;
     private int maxPlayersPerTeam = 4;
+    private boolean soloMode = true;
     private int lives = 15;
     private int criteriaChangeSeconds = 120;
     private int guessCooldownSeconds = 120;
@@ -150,6 +151,7 @@ public final class DontDoItManager {
         minPlayers = Math.max(2, c.getInt("min-players", 2));
         maxTeams = Math.min(48, Math.max(2, c.getInt("max-teams", 16)));
         maxPlayersPerTeam = Math.max(1, c.getInt("max-players-per-team", 4));
+        soloMode = c.getBoolean("solo-mode", true);
         allowUnbalancedTeams = c.getBoolean("allow-unbalanced-teams", false);
         lives = Math.max(1, c.getInt("lives", 15));
         criteriaChangeSeconds = Math.max(10, c.getInt("criteria-change-seconds", 120));
@@ -281,6 +283,15 @@ public final class DontDoItManager {
 
     public int maxPlayersPerTeam() {
         return maxPlayersPerTeam;
+    }
+
+    /** 单人模式下每队上限固定为 1。 */
+    public int effectiveMaxPerTeam() {
+        return soloMode ? 1 : maxPlayersPerTeam;
+    }
+
+    public boolean soloMode() {
+        return soloMode;
     }
 
     public boolean allowUnbalancedTeams() {

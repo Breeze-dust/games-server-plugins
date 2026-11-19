@@ -199,11 +199,11 @@ public final class Game {
             Chat.send(player, "&7你已经在 " + target.displayName() + " &7了。");
             return;
         }
-        if (target.size() >= mgr.maxPlayersPerTeam()) {
-            Chat.send(player, "&c这支队伍已满（" + mgr.maxPlayersPerTeam() + " 人）。");
+        if (target.size() >= mgr.effectiveMaxPerTeam()) {
+            Chat.send(player, "&c这支队伍已满（" + mgr.effectiveMaxPerTeam() + " 人）。");
             return;
         }
-        if (!mgr.allowUnbalancedTeams()) {
+        if (!mgr.soloMode() && !mgr.allowUnbalancedTeams()) {
             int smallest = Integer.MAX_VALUE;
             for (Team t : teams) {
                 if (t != target) {
@@ -452,7 +452,7 @@ public final class Game {
         Criterion old = team.getCriterion();
         assignCriterion(team, old);
         if (announce && old != null) {
-            notifyGame(team.displayName() + " &e更换了词条，上一个词条是：&f" + old.name);
+            notifyGame(teamLabel(team) + " &e更换了词条，上一个词条是：&f" + old.name);
             for (Player p : team.members()) {
                 Chat.title(p, "&e词条更换", "&7上一个词条：&f" + old.name, 2);
             }
@@ -493,14 +493,14 @@ public final class Game {
         team.setLives(0);
         team.setEliminated(true);
         team.setCriterion(null, tick);
-        notifyGame(team.displayName() + " &4已淘汰");
+        notifyGame(teamLabel(team) + " &4已淘汰");
         Location spectator = arena.spectator();
         for (Player p : team.members()) {
             if (spectator != null) {
                 p.teleport(spectator);
             }
             p.setGameMode(GameMode.SPECTATOR);
-            Chat.title(p, team.displayName(), "&4已淘汰", 3);
+            Chat.title(p, teamLabel(team), "&4已淘汰", 3);
         }
         updateSidebar(true);
         checkEnd();
@@ -532,9 +532,9 @@ public final class Game {
         if (winner == null) {
             notifyGame("&7不要做挑战：&c无人获胜");
         } else {
-            notifyGame(winner.displayName() + " &6获得胜利！");
+            notifyGame(teamLabel(winner) + " &6获得胜利！");
             for (Player p : recipients()) {
-                Chat.title(p, winner.displayName(), "&6获得胜利", 4);
+                Chat.title(p, teamLabel(winner), "&6获得胜利", 4);
             }
             mgr.recordWin(winner);
         }
@@ -725,7 +725,7 @@ public final class Game {
         if ("add_self_life".equalsIgnoreCase(mgr.diamondBehavior())) {
             team.setLives(Math.min(mgr.lives(), team.getLives() + 1));
             notifyGame("&f" + player.getName() + " &6获得了 &b钻石&6，"
-                    + team.displayName() + " &a规则数量 +1");
+                    + teamLabel(team) + " &a规则数量 +1");
         } else {
             List<Team> others = new ArrayList<>();
             for (Team t : aliveTeams()) {
@@ -739,7 +739,7 @@ public final class Game {
             Team target = others.get(random.nextInt(others.size()));
             target.setLives(Math.max(0, target.getLives() - 1));
             notifyGame("&f" + player.getName() + " &6获得了 &b钻石&6，"
-                    + target.displayName() + " &c规则数量 -1");
+                    + teamLabel(target) + " &c规则数量 -1");
             if (target.getLives() <= 0) {
                 eliminate(target);
             }
@@ -782,11 +782,11 @@ public final class Game {
         }
         if (correct) {
             target.setLives(Math.min(mgr.lives(), target.getLives() + mgr.guessSuccessLives()));
-            notifyGame("&f" + guesser.getName() + " &a猜中了 " + target.displayName()
+            notifyGame("&f" + guesser.getName() + " &a猜中了 " + teamLabel(target)
                     + " &a的词条，规则数量 +" + mgr.guessSuccessLives());
         } else {
             target.setLives(Math.max(0, target.getLives() - mgr.guessFailedLives()));
-            notifyGame("&f" + guesser.getName() + " &c猜错了 " + target.displayName()
+            notifyGame("&f" + guesser.getName() + " &c猜错了 " + teamLabel(target)
                     + " &c的词条，规则数量 -" + mgr.guessFailedLives());
         }
         target.setGuessReadyTick(tick + mgr.guessCooldownSeconds() * 20L);
@@ -840,8 +840,9 @@ public final class Game {
                 }
                 String criterion = t.getCriterion() == null ? "—" : t.getCriterion().name;
                 lines.add(new LiveSidebar.Line(
-                        t.getColor().sectionColor() + t.getColor().name + " §7❤" + t.getLives()
-                                + " " + t.getColor().sectionColor() + criterion,
+                        "§" + t.getColor().legacy + sidebarName(t)
+                                + " §7❤" + t.getLives()
+                                + " §" + t.getColor().legacy + criterion,
                         score--));
             }
             if (eliminated > 0) {
@@ -852,6 +853,26 @@ public final class Game {
             }
             mgr.sidebar().update(key, "§d§l※ 禁止事项 ※", viewers, lines);
         }
+    }
+
+    private String sidebarName(Team team) {
+        if (mgr.soloMode()) {
+            for (Player p : team.members()) {
+                return p.getName();
+            }
+        }
+        return team.getColor().name;
+    }
+
+    /** 播报里用的名字：单人模式显示玩家名，组队模式显示队名。 */
+    public String teamLabel(Team team) {
+        if (mgr.soloMode()) {
+            for (Player p : team.members()) {
+                return "&" + team.getColor().legacy + p.getName();
+            }
+            return team.getColor().coloredName();
+        }
+        return team.displayName();
     }
 
     private String sidebarKey(Team team) {
@@ -1100,7 +1121,7 @@ public final class Game {
                 continue;
             }
             Team smallest = smallestTeam();
-            if (smallest != null && smallest.size() < mgr.maxPlayersPerTeam()) {
+            if (smallest != null && smallest.size() < mgr.effectiveMaxPerTeam()) {
                 smallest.add(p);
                 teamOf.put(id, smallest);
                 HubAPI.setTabNameColor(id, smallest.getColor().legacy);
