@@ -75,7 +75,7 @@ public final class Game {
         this.countdown = new WaitCountdown(mgr.plugin(), new WaitCountdown.Host() {
             @Override
             public Collection<UUID> waitingPlayers() {
-                return waiting;
+                return state == State.WAITING ? waiting : java.util.Set.of();
             }
 
             @Override
@@ -90,6 +90,9 @@ public final class Game {
 
             @Override
             public boolean hasOpQueued() {
+                if (state != State.WAITING) {
+                    return false;
+                }
                 for (UUID id : waiting) {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null && p.isOp()) {
@@ -106,6 +109,9 @@ public final class Game {
 
             @Override
             public void onMessage(String message) {
+                if (state != State.WAITING) {
+                    return;
+                }
                 forEachWaiting(p -> Chat.send(p, message));
             }
 
@@ -995,6 +1001,8 @@ public final class Game {
         countdown.cancel();
         restoreBorder();
         restoreWorldRules();
+        List<UUID> waitingCopy = new ArrayList<>(waiting);
+        waiting.clear();
         state = State.WAITING;
         hideSidebars();
         for (Team t : teams) {
@@ -1012,7 +1020,7 @@ public final class Game {
             t.setCriterion(null, tick);
             t.setCustomCriteria(null);
         }
-        for (UUID id : new ArrayList<>(waiting)) {
+        for (UUID id : waitingCopy) {
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
                 mgr.unmapPlayer(p);
@@ -1021,10 +1029,8 @@ public final class Game {
                 HubAPI.teleportToLobby(p);
             }
         }
-        waiting.clear();
         teamOf.clear();
         states.clear();
-        state = State.WAITING;
         arena.clearBorder();
         if (mgr.restoreMap() && baseline == null) {
             // 插件重载/服务器重启后 Game 是新建的，这里补加载一次基线
@@ -1200,16 +1206,9 @@ public final class Game {
     }
 
     public void broadcastGame(String message) {
-        for (UUID id : waiting) {
-            Player p = Bukkit.getPlayer(id);
-            if (p != null) {
-                Chat.send(p, message);
-            }
-        }
-        for (Team t : teams) {
-            for (Player p : t.members()) {
-                Chat.send(p, message);
-            }
+        // 等待室里的玩家同时也在某支队伍里，必须去重，否则开局播报会发两遍
+        for (Player p : recipients()) {
+            Chat.send(p, message);
         }
     }
 
