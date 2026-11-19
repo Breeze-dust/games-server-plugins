@@ -17,7 +17,7 @@
     `trigger <队伍>`（触发别人的自定义词条）
   - 管理（OP 或 `ddi.admin`）：`create <名>`、`remove <名>`、`setcenter/setarea/setlobby/setspectator`
     （都针对当前场地，站在目标位置执行）、`gen <场地>`（只跑一遍地形生成，检查石层）、`save`、`reload`、
-    `start/stop <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
+    `start/stop(reset) <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
     `settings`（打开设置菜单）、`settings <custom|guess|diamond-behavior|nightvision|border|ylevel>`、
     `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）、`savemap <场地>`（把当前场地存成地图基线）、`rules <场地>`（查看世界 PvP/刷怪/死亡掉落）
 - **自己的词条不可见**：侧边栏按队伍分别下发——每个队伍只看到**其他存活队伍**的词条；
@@ -34,6 +34,10 @@
 - **世界规则**：对局开始时按配置把场地所在世界设为 `pvp-enabled`、`mob-spawning-enabled`、
   `keep-inventory-on-death`（false = 死亡掉落），结束时还原世界原来的值。注意这些是世界级设置，
   同一世界的其他区域在对局期间也会受影响；建议把场地放在单独世界。
+- **删除场地**：`/ddi remove <场地>` 会先重置（把玩家送回主城、还原地图与世界规则），
+  再删除配置和 `plugins/DontDoIt/arena-<场地>.baseline`；`/ddi list` 查看现有场地。
+- **强制重置**：`/ddi stop <场地>`（别名 `/ddi reset <场地>`），任何阶段都能用，等价于结算后的自动重置。
+  对局打到一半服务器关服/重启时不会走自动重置，重开服后执行一次 reset 或开下一局即可还原。
 - **地图还原**：`restore-map: true` 时，每局开始前先还原基线（第一次开局自动保存到
   `plugins/DontDoIt/arena-<场地>.baseline`，含 `restore-top-offset` 格地表），开局生成矿石，
   对局结束再还原一次；**方块和实体（猪牛羊等非玩家实体）一起还原**。还原范围 =

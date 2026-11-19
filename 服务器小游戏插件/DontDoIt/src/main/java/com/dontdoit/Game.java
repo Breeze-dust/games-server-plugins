@@ -904,6 +904,10 @@ public final class Game {
         states.clear();
         state = State.WAITING;
         arena.clearBorder();
+        if (mgr.restoreMap() && baseline == null) {
+            // 插件重载/服务器重启后 Game 是新建的，这里补加载一次基线
+            baseline = mgr.loadBaseline(arena);
+        }
         if (mgr.restoreMap() && baseline != null) {
             World world = arena.world();
             if (world != null) {

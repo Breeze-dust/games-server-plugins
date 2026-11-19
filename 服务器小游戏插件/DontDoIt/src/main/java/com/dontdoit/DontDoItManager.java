@@ -489,8 +489,17 @@ public final class DontDoItManager {
 
     public void removeArena(String name) {
         Game game = games.remove(name);
+        DontDoItArena arena = arenas.get(name);
         if (game != null) {
+            // 先把人送回主城、还原地图与世界规则，再删场地
+            game.reset();
             game.shutdown();
+        }
+        if (arena != null) {
+            java.io.File baseline = baselineFile(arena);
+            if (baseline.isFile() && !baseline.delete()) {
+                plugin.getLogger().warning("删除地图基线失败：" + baseline.getName());
+            }
         }
         arenas.remove(name);
         saveArenas();

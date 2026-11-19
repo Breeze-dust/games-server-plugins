@@ -71,7 +71,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
                 Chat.send(sender, "&a已重载配置与词条库。");
             });
             case "start" -> admin(sender, () -> start(sender, args));
-            case "stop" -> admin(sender, () -> stop(sender, args));
+            case "stop", "reset" -> admin(sender, () -> stop(sender, args));
             case "change" -> admin(sender, () -> change(sender, args));
             case "grant" -> admin(sender, () -> grant(sender, args));
             case "trigger" -> trigger(sender, args);
@@ -102,7 +102,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&e/ddi trigger <队伍> &7触发别人的自定义词条");
         if (sender.isOp() || sender.hasPermission("ddi.admin")) {
             Chat.send(sender, "&6管理：&ecreate|remove|setcenter|setarea|setlobby|setspectator|gen|selftest|savemap|save|reload");
-            Chat.send(sender, "&6对局：&estart|stop|change|grant|setlife|settings|words");
+            Chat.send(sender, "&6对局：&estart|stop(reset)|change|grant|setlife|settings|words");
         }
     }
 
@@ -629,7 +629,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             for (String s : List.of("help", "join", "leave", "list", "stats", "custom", "guess",
                     "trigger", "settings", "create", "remove", "setcenter", "setarea", "setlobby",
-                    "setspectator", "save", "reload", "start", "stop", "change", "grant", "setlife", "words")) {
+                    "setspectator", "save", "reload", "start", "stop", "reset", "change", "grant", "setlife", "words")) {
                 if (s.startsWith(args[0].toLowerCase(Locale.ROOT))) {
                     out.add(s);
                 }
