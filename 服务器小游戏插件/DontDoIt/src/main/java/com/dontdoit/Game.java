@@ -945,8 +945,16 @@ public final class Game {
         return Integer.MAX_VALUE;
     }
 
+    /** 可玩范围 = 场地边长 + 世界边界留白，与世界边界、地图基线一致。 */
     public boolean isInsideArena(Location loc) {
-        return arena.contains(loc);
+        Location center = arena.center();
+        if (center == null || loc == null || loc.getWorld() == null
+                || !loc.getWorld().equals(center.getWorld())) {
+            return false;
+        }
+        int half = restoreWidth() / 2;
+        return Math.abs(loc.getBlockX() - center.getBlockX()) <= half
+                && Math.abs(loc.getBlockZ() - center.getBlockZ()) <= half;
     }
 
     private void applyWorldRules(World world) {

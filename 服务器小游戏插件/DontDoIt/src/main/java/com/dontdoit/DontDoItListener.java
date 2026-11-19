@@ -279,7 +279,7 @@ public final class DontDoItListener implements Listener {
         if (game == null || game.state() != Game.State.RUNNING) {
             return;
         }
-        if (game.arena().contains(event.getBlock().getLocation())) {
+        if (game.isInsideArena(event.getBlock().getLocation())) {
             event.setCancelled(false);
         }
     }
