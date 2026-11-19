@@ -31,6 +31,8 @@
 - **PvP 放行**：SkyPit（天坑）在 LOWEST 优先级全局取消「任意一方不在天坑内」的玩家互伤，
   本插件在 HIGHEST 对「双方都是本局玩家且都在场地内」的伤害显式 `setCancelled(false)`，
   并通过对局期间 `world.setPVP(true)` 让服务端放行。
+- **开局倒计时**：点开始纸 / `/ddi start` 后先倒数 `start-countdown-seconds`（默认 5 秒，0 = 关闭），
+  屏幕标题和动作栏每秒刷新；倒计时期间有人退出导致队伍不足会提示并取消开局。`selftest` 跳过倒计时。
 - **单人模式**：`solo-mode: true`（默认）时每名玩家单独一队，`max-players-per-team` 自动按 1 生效；
   侧边栏和播报都显示**玩家名字**（用该玩家队伍的原版颜色码染色），组队模式则显示队名。
   可玩人数上限 = `max-teams`（默认 16）。
@@ -58,7 +60,7 @@
   石层下方放基岩（`bedrock-depth`），石层以上按深度比例把石头换成安山岩/煤矿/铁矿/钻石矿。
   **OP 必须先有一块石头地形**（例如中心下方挖出来的石层），否则开局会报「找不到石层」。
 - **配置**：`server/plugins/DontDoIt/config.yml`（模板 `DontDoIt/src/main/resources/config.yml`）——
-  `min-teams/min-players/max-teams/max-players-per-team/allow-unbalanced-teams/lives/criteria-change-seconds`；
+  `min-teams/min-players/max-teams/max-players-per-team/solo-mode/allow-unbalanced-teams/lives/criteria-change-seconds/start-countdown-seconds`；
   玩法开关 `custom-criteria-enabled / guess-criteria-enabled / diamond-behavior-enabled / diamond-behavior /
   diamond-behavior-disabled-threshold / guess-cooldown-seconds / guess-success-lives / guess-failed-lives /
   night-vision / use-world-border / enable-y-level-criteria`；地形 `bedrock-depth` + 四组 `*-generation`；

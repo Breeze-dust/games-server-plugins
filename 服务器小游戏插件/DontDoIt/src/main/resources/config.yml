@@ -18,6 +18,8 @@ allow-unbalanced-teams: false
 lives: 15
 # 自动更换词条的间隔（秒）
 criteria-change-seconds: 120
+# 点击开始后到真正开局之间的倒数（秒，0 = 不倒数）
+start-countdown-seconds: 5
 # 是否允许每队用「书与笔」写一条自定义词条
 custom-criteria-enabled: true
 # 是否开启「猜词条」玩法

@@ -434,7 +434,8 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         }
         game.autoAssignTeams();
         if (game.start(sender)) {
-            Chat.send(sender, "&a对局开始。");
+            Chat.send(sender, game.state() == Game.State.RUNNING
+                    ? "&a对局开始。" : "&a已开始开局倒计时。");
         }
     }
 

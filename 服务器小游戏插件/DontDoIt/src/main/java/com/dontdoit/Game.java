@@ -36,7 +36,7 @@ import java.util.UUID;
 /** 一个场地的对局：等待、开局、判定、淘汰、结算。 */
 public final class Game {
 
-    public enum State { WAITING, RUNNING, ENDED }
+    public enum State { WAITING, STARTING, RUNNING, ENDED }
 
     private final DontDoItManager mgr;
     private final DontDoItArena arena;
@@ -58,6 +58,9 @@ public final class Game {
     private int groundY;
     private boolean borderApplied;
     private boolean rulesApplied;
+    private BukkitTask startTask;
+    private int startSecondsLeft;
+    private org.bukkit.command.CommandSender pendingStarter;
     private boolean prevPvp;
     private boolean prevMobSpawning;
     private boolean prevKeepInventory;
@@ -247,8 +250,97 @@ public final class Game {
 
     // ================== 开局 ==================
 
+    /** 点击开始 / 自动开局入口：校验后先倒数，再真正开局。 */
     public boolean start(org.bukkit.command.CommandSender starter) {
         if (state != State.WAITING) {
+            if (starter != null) {
+                Chat.send(starter, "&c这个场地已经开始了。");
+            }
+            return false;
+        }
+        List<Team> playing = new ArrayList<>();
+        for (Team t : teams) {
+            if (!t.isEmpty()) {
+                playing.add(t);
+            }
+        }
+        if (playing.size() < mgr.minTeams()) {
+            if (starter != null) {
+                Chat.send(starter, "&c至少需要 " + mgr.minTeams() + " 支有人的队伍才能开始。");
+            } else {
+                broadcastGame("&c人数不足：至少需要 " + mgr.minTeams() + " 支有人的队伍。");
+            }
+            return false;
+        }
+        int totalPlayers = 0;
+        for (Team t : playing) {
+            totalPlayers += t.size();
+        }
+        if (totalPlayers < mgr.minPlayers()) {
+            if (starter != null) {
+                Chat.send(starter, "&c至少需要 " + mgr.minPlayers() + " 名玩家才能开始。");
+            }
+            return false;
+        }
+        if (mgr.library().isEmpty()) {
+            if (starter != null) {
+                Chat.send(starter, "&c词条库为空，请检查 plugins/DontDoIt/criteria.yml。");
+            }
+            return false;
+        }
+        if (arena.world() == null || arena.center() == null) {
+            if (starter != null) {
+                Chat.send(starter, "&c场地世界不存在：" + arena.getWorldName());
+            }
+            return false;
+        }
+        int seconds = mgr.startCountdownSeconds();
+        if (seconds <= 0) {
+            return begin(starter);
+        }
+        countdown.cancel();
+        state = State.STARTING;
+        pendingStarter = starter;
+        startSecondsLeft = seconds;
+        announceStartCountdown(startSecondsLeft);
+        startTask = Bukkit.getScheduler().runTaskTimer(mgr.plugin(), this::tickStartCountdown, 20L, 20L);
+        return true;
+    }
+
+    private void tickStartCountdown() {
+        if (state != State.STARTING) {
+            cancelStartTask();
+            return;
+        }
+        startSecondsLeft--;
+        if (startSecondsLeft <= 0) {
+            cancelStartTask();
+            if (!begin(pendingStarter)) {
+                state = State.WAITING;
+                broadcastGame("&c开局失败，倒计时已取消。");
+            }
+            pendingStarter = null;
+            return;
+        }
+        announceStartCountdown(startSecondsLeft);
+    }
+
+    private void announceStartCountdown(int seconds) {
+        for (Player p : recipients()) {
+            Chat.title(p, "&e&l游戏即将开始", "&f" + seconds, 1);
+            Chat.actionBar(p, "&e" + seconds + " 秒后开始…");
+        }
+    }
+
+    private void cancelStartTask() {
+        if (startTask != null) {
+            startTask.cancel();
+            startTask = null;
+        }
+    }
+
+    public boolean begin(org.bukkit.command.CommandSender starter) {
+        if (state != State.WAITING && state != State.STARTING) {
             if (starter != null) {
                 Chat.send(starter, "&c这个场地已经开始了。");
             }
@@ -389,7 +481,7 @@ public final class Game {
             }
             assignCriterion(t, null);
         }
-        broadcastGame("&a&l游戏开始！&7每队一条禁止词条，做了就扣 1 点规则数量。");
+        broadcastGame("&a&l游戏开始！&7每个人会随机到自己不可见禁止词条，若做了词条内容则会扣除一点规则血量！");
         broadcastGame("&7每 " + mgr.criteriaChangeSeconds() + " 秒自动更换一次词条。");
 
         tickTask = Bukkit.getScheduler().runTaskTimer(mgr.plugin(), this::tickTask, 5L, 5L);
@@ -511,6 +603,16 @@ public final class Game {
         if (alive.size() <= 1) {
             endGame(alive.isEmpty() ? null : alive.get(0));
         }
+    }
+
+    private int countTeamsWithPlayers() {
+        int n = 0;
+        for (Team t : teams) {
+            if (!t.isEmpty()) {
+                n++;
+            }
+        }
+        return n;
     }
 
     public List<Team> aliveTeams() {
@@ -889,6 +991,7 @@ public final class Game {
 
     public void reset() {
         stopTasks();
+        cancelStartTask();
         countdown.cancel();
         restoreBorder();
         restoreWorldRules();
@@ -943,6 +1046,7 @@ public final class Game {
     /** 插件关闭：只收尾，不传送玩家。 */
     public void shutdown() {
         stopTasks();
+        cancelStartTask();
         countdown.cancel();
         restoreBorder();
         restoreWorldRules();
@@ -1035,6 +1139,12 @@ public final class Game {
             if (state == State.RUNNING && team.isEmpty() && !team.isEliminated()) {
                 eliminate(team);
             }
+        }
+        if (state == State.STARTING && countTeamsWithPlayers() < mgr.minTeams()) {
+            cancelStartTask();
+            pendingStarter = null;
+            state = State.WAITING;
+            broadcastGame("&c人数不足，开局倒计时已取消。");
         }
         states.remove(id);
         if (state == State.RUNNING) {
@@ -1164,7 +1274,7 @@ public final class Game {
         StringBuilder out = new StringBuilder();
         boolean ok;
         try {
-            ok = start(null);
+            ok = begin(null);
         } catch (RuntimeException e) {
             a.clearMembers();
             b.clearMembers();
@@ -1217,7 +1327,8 @@ public final class Game {
     }
 
     public GameState hubState() {
-        return state == State.RUNNING ? GameState.PLAYING : GameState.WAITING;
+        return state == State.RUNNING || state == State.STARTING
+                ? GameState.PLAYING : GameState.WAITING;
     }
 
     public String hubExtra() {

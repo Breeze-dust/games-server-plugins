@@ -56,6 +56,7 @@ public final class DontDoItManager {
     private boolean soloMode = true;
     private int lives = 15;
     private int criteriaChangeSeconds = 120;
+    private int startCountdownSeconds = 5;
     private int guessCooldownSeconds = 120;
     private int guessSuccessLives = 1;
     private int guessFailedLives = 1;
@@ -155,6 +156,7 @@ public final class DontDoItManager {
         allowUnbalancedTeams = c.getBoolean("allow-unbalanced-teams", false);
         lives = Math.max(1, c.getInt("lives", 15));
         criteriaChangeSeconds = Math.max(10, c.getInt("criteria-change-seconds", 120));
+        startCountdownSeconds = Math.max(0, c.getInt("start-countdown-seconds", 5));
         customCriteriaEnabled = c.getBoolean("custom-criteria-enabled", true);
         guessCriteriaEnabled = c.getBoolean("guess-criteria-enabled", true);
         guessCooldownSeconds = Math.max(0, c.getInt("guess-cooldown-seconds", 120));
@@ -304,6 +306,10 @@ public final class DontDoItManager {
 
     public int criteriaChangeSeconds() {
         return criteriaChangeSeconds;
+    }
+
+    public int startCountdownSeconds() {
+        return startCountdownSeconds;
     }
 
     public boolean customCriteriaEnabled() {
