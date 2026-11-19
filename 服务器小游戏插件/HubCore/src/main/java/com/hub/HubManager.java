@@ -1055,6 +1055,10 @@ public class HubManager implements HubService {
             }
         }
         // 头部文字先缓存下来：动画任务只重发头部/底部，不重建整份名单
+        // 去掉最后一行的换行，否则 tab 会多渲染一行空白
+        if (hb.length() > 0 && hb.charAt(hb.length() - 1) == '\n') {
+            hb.setLength(hb.length() - 1);
+        }
         headerBase = hb.toString();
 
         // 固定格子布局：把玩家按 大厅 → 各游戏 的顺序填进槽位（其余槽位由假条目占满）
@@ -1121,7 +1125,7 @@ public class HubManager implements HubService {
         List<String> headerExtra = configLines("tab.header-extra");
         List<String> footerLines = configLines("tab.footer");
         for (Player p : Bukkit.getOnlinePlayers()) {
-            String head = (headerExtra.isEmpty() ? "" : fillLines(headerExtra, p, stats)) + fill(base, p, stats);
+            String head = (headerExtra.isEmpty() ? "" : fillLines(headerExtra, p, stats) + '\n') + fill(base, p, stats);
             Component header = LEGACY.deserialize(head);
             Component footer = footerLines.isEmpty()
                     ? Component.empty()
@@ -1194,7 +1198,10 @@ public class HubManager implements HubService {
     private String fillLines(List<String> lines, Player player, TabStats stats) {
         StringBuilder sb = new StringBuilder();
         for (String line : lines) {
-            sb.append(fill(line, player, stats)).append('\n');
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(fill(line, player, stats));
         }
         return sb.toString();
     }
