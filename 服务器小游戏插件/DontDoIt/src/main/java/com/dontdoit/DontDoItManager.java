@@ -74,6 +74,7 @@ public final class DontDoItManager {
     private boolean pvpEnabled = true;
     private boolean mobSpawningEnabled = true;
     private boolean keepInventoryOnDeath = false;
+    private boolean broadcastServerWide = false;
     private int restoreTopOffset = 16;
     private String diamondBehavior = "reduce_others_life";
     private Difficulty gameDifficulty = Difficulty.NORMAL;
@@ -168,6 +169,7 @@ public final class DontDoItManager {
         pvpEnabled = c.getBoolean("pvp-enabled", true);
         mobSpawningEnabled = c.getBoolean("mob-spawning-enabled", true);
         keepInventoryOnDeath = c.getBoolean("keep-inventory-on-death", false);
+        broadcastServerWide = c.getBoolean("broadcast-server-wide", false);
         restoreTopOffset = Math.max(0, c.getInt("restore-top-offset", 16));
         yLevelOffsetGround = c.getInt("y-level-offset-ground", 1);
         yLevelOffsetOnAir = c.getInt("y-level-offset-on-air", 14);
@@ -382,6 +384,10 @@ public final class DontDoItManager {
 
     public boolean keepInventoryOnDeath() {
         return keepInventoryOnDeath;
+    }
+
+    public boolean broadcastServerWide() {
+        return broadcastServerWide;
     }
 
     public boolean restoreMap() {

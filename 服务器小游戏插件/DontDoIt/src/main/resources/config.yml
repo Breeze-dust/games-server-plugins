@@ -43,6 +43,8 @@ pvp-enabled: true
 mob-spawning-enabled: true
 # 对局期间是否保留死亡背包（false = 死亡掉落物品）
 keep-inventory-on-death: false
+# 对局消息是否全服广播（false = 只发给本局玩家和附近的观战者）
+broadcast-server-wide: false
 # 是否把世界边界缩到场地范围（会临时改世界边界，重置时还原）
 use-world-border: true
 # 是否在开局前恢复、结束后还原场地（挖掉的方块会填回来）

@@ -20,6 +20,9 @@
     `start/stop(reset) <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
     `settings`（打开设置菜单）、`settings <custom|guess|diamond-behavior|nightvision|border|ylevel>`、
     `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）、`savemap <场地>`（把当前场地存成地图基线）、`rules <场地>`（查看世界 PvP/刷怪/死亡掉落）
+- **消息范围**：默认只有本局玩家和附近观战者能看到「触发/换词条/淘汰/猜词条/钻石/胜负」播报、
+  胜利字幕以及触发音效/粒子；`broadcast-server-wide: true` 可恢复全服广播。
+  加入游戏的公告仍由 HubCore 全服播报（与其他小游戏一致）。
 - **自己的词条不可见**：侧边栏按队伍分别下发——每个队伍只看到**其他存活队伍**的词条；
   自己的队伍名/规则数量在动作栏里显示。队伍名、词条、tab 名字都用同一队伍颜色。
 - **方块破坏放行**：GuessTheBuild 在 NORMAL 优先级全局取消非 OP 的方块破坏，

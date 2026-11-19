@@ -452,7 +452,7 @@ public final class Game {
         Criterion old = team.getCriterion();
         assignCriterion(team, old);
         if (announce && old != null) {
-            Bukkit.broadcast(Chat.color(team.displayName() + " &e更换了词条，上一个词条是：&f" + old.name));
+            notifyGame(team.displayName() + " &e更换了词条，上一个词条是：&f" + old.name);
             for (Player p : team.members()) {
                 Chat.title(p, "&e词条更换", "&7上一个词条：&f" + old.name, 2);
             }
@@ -466,16 +466,14 @@ public final class Game {
             return;
         }
         String whoName = who == null ? team.displayName() : "&f" + who.getName();
-        Bukkit.broadcast(Chat.color(whoName + " &6触发了规则 &e" + criterion.name));
+        notifyGame(whoName + " &6触发了规则 &e" + criterion.name);
         for (Player p : team.members()) {
             Chat.title(p, "&c" + criterion.name, whoName + " &6触发了规则", 2);
         }
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (arena.world() != null && p.getWorld().equals(arena.world())) {
-                p.playSound(p.getLocation(), Sound.ENTITY_ENDER_EYE_DEATH, 1f, 1f);
-                p.getWorld().spawnParticle(Particle.ASH, p.getLocation().add(0, 1, 0),
-                        200, 0.5, 0.5, 0.5, 0.0);
-            }
+        for (Player p : recipients()) {
+            p.playSound(p.getLocation(), Sound.ENTITY_ENDER_EYE_DEATH, 1f, 1f);
+            p.getWorld().spawnParticle(Particle.ASH, p.getLocation().add(0, 1, 0),
+                    200, 0.5, 0.5, 0.5, 0.0);
         }
         team.setLives(team.getLives() - 1);
         if (team.getLives() <= 0) {
@@ -495,7 +493,7 @@ public final class Game {
         team.setLives(0);
         team.setEliminated(true);
         team.setCriterion(null, tick);
-        Bukkit.broadcast(Chat.color(team.displayName() + " &4已淘汰"));
+        notifyGame(team.displayName() + " &4已淘汰");
         Location spectator = arena.spectator();
         for (Player p : team.members()) {
             if (spectator != null) {
@@ -532,10 +530,10 @@ public final class Game {
         state = State.ENDED;
         stopTasks();
         if (winner == null) {
-            Bukkit.broadcast(Chat.color("&7不要做挑战：&c无人获胜"));
+            notifyGame("&7不要做挑战：&c无人获胜");
         } else {
-            Bukkit.broadcast(Chat.color(winner.displayName() + " &6获得胜利！"));
-            for (Player p : Bukkit.getOnlinePlayers()) {
+            notifyGame(winner.displayName() + " &6获得胜利！");
+            for (Player p : recipients()) {
                 Chat.title(p, winner.displayName(), "&6获得胜利", 4);
             }
             mgr.recordWin(winner);
@@ -726,8 +724,8 @@ public final class Game {
         }
         if ("add_self_life".equalsIgnoreCase(mgr.diamondBehavior())) {
             team.setLives(Math.min(mgr.lives(), team.getLives() + 1));
-            Bukkit.broadcast(Chat.color("&f" + player.getName() + " &6获得了 &b钻石&6，"
-                    + team.displayName() + " &a规则数量 +1"));
+            notifyGame("&f" + player.getName() + " &6获得了 &b钻石&6，"
+                    + team.displayName() + " &a规则数量 +1");
         } else {
             List<Team> others = new ArrayList<>();
             for (Team t : aliveTeams()) {
@@ -740,8 +738,8 @@ public final class Game {
             }
             Team target = others.get(random.nextInt(others.size()));
             target.setLives(Math.max(0, target.getLives() - 1));
-            Bukkit.broadcast(Chat.color("&f" + player.getName() + " &6获得了 &b钻石&6，"
-                    + target.displayName() + " &c规则数量 -1"));
+            notifyGame("&f" + player.getName() + " &6获得了 &b钻石&6，"
+                    + target.displayName() + " &c规则数量 -1");
             if (target.getLives() <= 0) {
                 eliminate(target);
             }
@@ -784,12 +782,12 @@ public final class Game {
         }
         if (correct) {
             target.setLives(Math.min(mgr.lives(), target.getLives() + mgr.guessSuccessLives()));
-            Bukkit.broadcast(Chat.color("&f" + guesser.getName() + " &a猜中了 " + target.displayName()
-                    + " &a的词条，规则数量 +" + mgr.guessSuccessLives()));
+            notifyGame("&f" + guesser.getName() + " &a猜中了 " + target.displayName()
+                    + " &a的词条，规则数量 +" + mgr.guessSuccessLives());
         } else {
             target.setLives(Math.max(0, target.getLives() - mgr.guessFailedLives()));
-            Bukkit.broadcast(Chat.color("&f" + guesser.getName() + " &c猜错了 " + target.displayName()
-                    + " &c的词条，规则数量 -" + mgr.guessFailedLives()));
+            notifyGame("&f" + guesser.getName() + " &c猜错了 " + target.displayName()
+                    + " &c的词条，规则数量 -" + mgr.guessFailedLives());
         }
         target.setGuessReadyTick(tick + mgr.guessCooldownSeconds() * 20L);
         if (target.getLives() <= 0) {
@@ -1027,6 +1025,45 @@ public final class Game {
         }
         updateSidebar(true);
         countdown.update();
+    }
+
+    /** 本局消息的收件人：所有参赛/等待玩家 + 附近的观战者（去重）。 */
+    public List<Player> recipients() {
+        java.util.LinkedHashSet<UUID> ids = new java.util.LinkedHashSet<>(waiting);
+        for (Team t : teams) {
+            for (Player p : t.members()) {
+                ids.add(p.getUniqueId());
+            }
+        }
+        List<Player> out = new ArrayList<>();
+        for (UUID id : ids) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                out.add(p);
+            }
+        }
+        try {
+            for (UUID id : HubAPI.spectatorsNear(ids, 96.0)) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline() && !out.contains(p)) {
+                    out.add(p);
+                }
+            }
+        } catch (Throwable ignored) {
+            // 没有主城/旧版主城时自动忽略
+        }
+        return out;
+    }
+
+    /** 本局播报：默认只发给本局玩家和附近观战者；broadcast-server-wide=true 时全服。 */
+    public void notifyGame(String message) {
+        if (mgr.broadcastServerWide()) {
+            Bukkit.broadcast(Chat.color(message));
+            return;
+        }
+        for (Player p : recipients()) {
+            Chat.send(p, message);
+        }
     }
 
     public void broadcastGame(String message) {
