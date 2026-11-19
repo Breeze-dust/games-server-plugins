@@ -18,6 +18,9 @@ public final class LiarBarLiquor {
             "伏特加", "威士忌", "朗姆酒", "龙舌兰", "白兰地", "金酒",
             "二锅头", "清酒", "梅酒", "黄酒", "苦艾酒", "朗姆可乐");
 
+    /** 玩家自助领酒指令的冷却（秒），固定 3 秒。 */
+    private static final int GIVE_COOLDOWN_SECONDS = 3;
+
     private final Plugin plugin;
     private final LiarBarItems items;
 
@@ -25,7 +28,6 @@ public final class LiarBarLiquor {
     private List<String> names = DEFAULT_NAMES;
     private int nauseaMinSeconds = 4;
     private int nauseaMaxSeconds = 12;
-    private int giveCooldownSeconds = 30;
     private double throwSpeed = 1.4;
     private double knockbackHorizontal = 0.45;
     private double knockbackVertical = 0.2;
@@ -50,7 +52,6 @@ public final class LiarBarLiquor {
 
         nauseaMinSeconds = Math.max(1, config.getInt("nausea.min-seconds", 4));
         nauseaMaxSeconds = Math.max(nauseaMinSeconds, config.getInt("nausea.max-seconds", 12));
-        giveCooldownSeconds = Math.max(0, config.getInt("give-cooldown-seconds", 30));
         throwSpeed = Math.max(0.2, config.getDouble("throw.speed", 1.4));
         knockbackHorizontal = Math.max(0.0, config.getDouble("throw.knockback-horizontal", 0.45));
         knockbackVertical = Math.max(0.0, config.getDouble("throw.knockback-vertical", 0.2));
@@ -73,9 +74,9 @@ public final class LiarBarLiquor {
         return seconds * 20;
     }
 
-    /** 玩家自助领酒指令的冷却（秒）。 */
+    /** 玩家自助领酒指令的冷却（秒），固定 3 秒。 */
     public int giveCooldownSeconds() {
-        return giveCooldownSeconds;
+        return GIVE_COOLDOWN_SECONDS;
     }
 
     public double throwSpeed() {

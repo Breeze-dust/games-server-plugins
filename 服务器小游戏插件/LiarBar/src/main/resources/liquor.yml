@@ -30,8 +30,7 @@ names:
   - 苦艾酒
   - 朗姆可乐
 
-# 玩家自助领酒指令 /liarbar liquor 的冷却（秒）；0 = 不限制
-give-cooldown-seconds: 30
+# 玩家自助领酒指令 /liarbar liquor 的冷却固定为 3 秒（插件内写死，不读取本文件）
 
 # 喝完后的反胃（Nausea）时长：在这个区间内随机（秒）
 nausea:
