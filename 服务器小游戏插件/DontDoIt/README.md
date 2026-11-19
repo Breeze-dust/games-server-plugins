@@ -28,6 +28,9 @@
 - **方块破坏放行**：GuessTheBuild 在 NORMAL 优先级全局取消非 OP 的方块破坏，
   本插件在 HIGHEST 优先级对自己场地内（且在对局中）的破坏/放置显式 `setCancelled(false)`，
   与 DigToBottom / BuildRun 的处理一致。
+- **PvP 放行**：SkyPit（天坑）在 LOWEST 优先级全局取消「任意一方不在天坑内」的玩家互伤，
+  本插件在 HIGHEST 对「双方都是本局玩家且都在场地内」的伤害显式 `setCancelled(false)`，
+  并通过对局期间 `world.setPVP(true)` 让服务端放行。
 - **选队菜单**（用户要求的等待厅适配）：等待室槽 1 的白羊毛右键打开一屏队伍图标（16~48 队），
   显示每队人数与成员，点一下换队；`allow-unbalanced-teams: false` 时只能加入人数最少的队伍。
 - **词条库**：`server/plugins/DontDoIt/criteria.yml`（模板 = 官方中文版原文件，145 条，29 种类型）。

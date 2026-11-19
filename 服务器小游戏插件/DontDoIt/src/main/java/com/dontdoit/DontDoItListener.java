@@ -6,11 +6,13 @@ import com.hub.util.Chat;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -264,6 +266,46 @@ public final class DontDoItListener implements Listener {
         if (manager.isStartPaper(item) || manager.isLeaveBed(item) || manager.isTeamMenuItem(item)) {
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * 放行本方场地的 PvP：SkyPit（天坑）在 LOWEST 优先级全局取消「任意一方不在天坑内」的玩家互伤，
+     * 场地不在天坑里就永远打不动。这里在 HIGHEST 对本局双方都放行（与天坑自己放行的机制一致）。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPvPAllow(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player victim)) {
+            return;
+        }
+        Player attacker = asPlayerDamager(event);
+        if (attacker == null) {
+            return;
+        }
+        Game game = manager.gameOf(victim);
+        if (game == null || game.state() != Game.State.RUNNING || game != manager.gameOf(attacker)) {
+            return;
+        }
+        if (!manager.pvpEnabled()) {
+            return;
+        }
+        if (!game.isInsideArena(victim.getLocation()) || !game.isInsideArena(attacker.getLocation())) {
+            return;
+        }
+        if (event.isCancelled()) {
+            event.setCancelled(false);
+        }
+    }
+
+    /** 取造成伤害的玩家：直接攻击或弓箭/投掷物射手。 */
+    private Player asPlayerDamager(EntityDamageByEntityEvent event) {
+        if (event.getDamager() instanceof Player p) {
+            return p;
+        }
+        if (event.getDamager() instanceof Projectile projectile
+                && projectile.getShooter() instanceof Player p) {
+            return p;
+        }
+        return null;
     }
 
     /**
