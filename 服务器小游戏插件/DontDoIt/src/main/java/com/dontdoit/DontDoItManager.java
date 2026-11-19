@@ -71,6 +71,9 @@ public final class DontDoItManager {
     private boolean useWorldBorder = true;
     private boolean yLevelCriteriaEnabled = true;
     private boolean restoreMap = true;
+    private boolean pvpEnabled = true;
+    private boolean mobSpawningEnabled = true;
+    private boolean keepInventoryOnDeath = false;
     private int restoreTopOffset = 16;
     private String diamondBehavior = "reduce_others_life";
     private Difficulty gameDifficulty = Difficulty.NORMAL;
@@ -162,6 +165,9 @@ public final class DontDoItManager {
         worldBorderPadding = Math.max(0, c.getInt("world-border-padding", 4));
         yLevelCriteriaEnabled = c.getBoolean("enable-y-level-criteria", true);
         restoreMap = c.getBoolean("restore-map", true);
+        pvpEnabled = c.getBoolean("pvp-enabled", true);
+        mobSpawningEnabled = c.getBoolean("mob-spawning-enabled", true);
+        keepInventoryOnDeath = c.getBoolean("keep-inventory-on-death", false);
         restoreTopOffset = Math.max(0, c.getInt("restore-top-offset", 16));
         yLevelOffsetGround = c.getInt("y-level-offset-ground", 1);
         yLevelOffsetOnAir = c.getInt("y-level-offset-on-air", 14);
@@ -364,6 +370,18 @@ public final class DontDoItManager {
     public void setYLevelCriteriaEnabled(boolean value) {
         yLevelCriteriaEnabled = value;
         saveSettings();
+    }
+
+    public boolean pvpEnabled() {
+        return pvpEnabled;
+    }
+
+    public boolean mobSpawningEnabled() {
+        return mobSpawningEnabled;
+    }
+
+    public boolean keepInventoryOnDeath() {
+        return keepInventoryOnDeath;
     }
 
     public boolean restoreMap() {

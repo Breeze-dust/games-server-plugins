@@ -31,11 +31,14 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.UUID;
+
 /** 事件入口：等待室道具 + 词条判定。 */
 public final class DontDoItListener implements Listener {
 
     private final DontDoItPlugin plugin;
     private final DontDoItManager manager;
+    private final java.util.Map<UUID, Long> ceilingWarnAt = new java.util.HashMap<>();
 
     public DontDoItListener(DontDoItPlugin plugin, DontDoItManager manager) {
         this.plugin = plugin;
@@ -281,17 +284,31 @@ public final class DontDoItListener implements Listener {
         }
     }
 
-    /** 同理放行本方场地的放置（等待室的放置拦截在 WAITING 生效，不冲突）。 */
+    /**
+     * 同理放行本方场地的放置（等待室的放置拦截在 WAITING 生效，不冲突）。
+     * 超过地图基线高度上限的放置直接拒绝，否则那些方块脱离还原范围、会一直留着。
+     */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlaceAllow(BlockPlaceEvent event) {
-        if (!event.isCancelled()) {
-            return;
-        }
         Game game = manager.gameOf(event.getPlayer());
         if (game == null || game.state() != Game.State.RUNNING) {
             return;
         }
-        if (game.arena().contains(event.getBlock().getLocation())) {
+        if (!game.isInsideArena(event.getBlock().getLocation())) {
+            return;
+        }
+        if (event.getBlock().getY() > game.restoreCeilingY()) {
+            event.setCancelled(true);
+            Player player = event.getPlayer();
+            long now = System.currentTimeMillis();
+            Long last = ceilingWarnAt.get(player.getUniqueId());
+            if (last == null || now - last > 3000) {
+                ceilingWarnAt.put(player.getUniqueId(), now);
+                Chat.send(player, "&c超出可还原高度，不能在这里放方块。");
+            }
+            return;
+        }
+        if (event.isCancelled()) {
             event.setCancelled(false);
         }
     }

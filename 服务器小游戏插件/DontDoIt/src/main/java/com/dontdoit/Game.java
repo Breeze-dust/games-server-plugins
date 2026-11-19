@@ -57,6 +57,10 @@ public final class Game {
     private List<Criterion> pool = List.of();
     private int groundY;
     private boolean borderApplied;
+    private boolean rulesApplied;
+    private boolean prevPvp;
+    private boolean prevMobSpawning;
+    private boolean prevKeepInventory;
     private MapBaseline baseline;
 
     public Game(DontDoItManager mgr, DontDoItArena arena) {
@@ -295,6 +299,11 @@ public final class Game {
                 baseline = mgr.loadBaseline(arena);
             }
             if (baseline != null) {
+                if (baseline.width() != restoreWidth()) {
+                    mgr.getLogger().warning("场地 " + arena.getName() + " 的地图基线尺寸与当前场地不一致"
+                            + "（基线 " + baseline.width() + "，当前 " + restoreWidth() + "）："
+                            + "请清理残留方块后执行 /ddi savemap " + arena.getName());
+                }
                 int changed = baseline.restore(world);
                 if (changed > 0) {
                     mgr.getLogger().info("场地 " + arena.getName() + " 开局前还原了 " + changed + " 个方块");
@@ -310,15 +319,17 @@ public final class Game {
         }
         if (mgr.restoreMap() && baseline == null) {
             int bottom = ArenaGenerator.bedrockY(stoneY, mgr.bedrockDepth());
-            int top = Math.min(world.getMaxHeight() - 1,
-                    Math.max(center.getBlockY(), stoneY) + mgr.restoreTopOffset());
+            int top = restoreTopY(world, center, stoneY);
+            int width = restoreWidth();
             if (top > bottom) {
-                baseline = MapBaseline.capture(world,
-                        center.getBlockX() - arena.radius(), bottom,
-                        center.getBlockZ() - arena.radius(), arena.side(), top - bottom + 1);
+                int minX = center.getBlockX() - width / 2;
+                int minZ = center.getBlockZ() - width / 2;
+                baseline = MapBaseline.capture(world, minX, bottom, minZ, width, top - bottom + 1);
                 mgr.saveBaseline(arena, baseline);
                 mgr.getLogger().info("场地 " + arena.getName() + " 已保存地图基线："
-                        + baseline.volume() + " 个方块（Y " + bottom + "~" + top + "）");
+                        + baseline.volume() + " 个方块 + " + baseline.entityCount() + " 个实体（"
+                        + width + "×" + (top - bottom + 1) + "×" + width
+                        + "，Y " + bottom + "~" + top + "）");
             }
         }
         int generated = ArenaGenerator.generate(arena, mgr.oreRules(), mgr.bedrockDepth(), random);
@@ -341,6 +352,7 @@ public final class Game {
         if (mgr.gameDifficulty() != null) {
             world.setDifficulty(mgr.gameDifficulty());
         }
+        applyWorldRules(world);
 
         pool = new ArrayList<>(mgr.library().all());
         if (mgr.yLevelCriteriaEnabled()) {
@@ -860,6 +872,7 @@ public final class Game {
         stopTasks();
         countdown.cancel();
         restoreBorder();
+        restoreWorldRules();
         state = State.WAITING;
         hideSidebars();
         for (Team t : teams) {
@@ -909,7 +922,57 @@ public final class Game {
         stopTasks();
         countdown.cancel();
         restoreBorder();
+        restoreWorldRules();
         hideSidebars();
+    }
+
+    /** 还原区域的水平宽度：世界边界留白也算在内，否则留白圈里放的方块清不掉。 */
+    private int restoreWidth() {
+        int pad = mgr.useWorldBorder() ? mgr.worldBorderPadding() : 0;
+        return arena.side() + pad * 2;
+    }
+
+    private int restoreTopY(World world, Location center, int stoneY) {
+        int top = Math.max(center.getBlockY(), stoneY) + mgr.restoreTopOffset();
+        return Math.min(world.getMaxHeight() - 1, top);
+    }
+
+    /** 可还原高度上限；对局中禁止在这个高度以上放方块，避免留下清不掉的方块。 */
+    public int restoreCeilingY() {
+        if (baseline != null) {
+            return baseline.maxY();
+        }
+        return Integer.MAX_VALUE;
+    }
+
+    public boolean isInsideArena(Location loc) {
+        return arena.contains(loc);
+    }
+
+    private void applyWorldRules(World world) {
+        prevPvp = world.getPVP();
+        prevMobSpawning = Boolean.TRUE.equals(world.getGameRuleValue(org.bukkit.GameRule.DO_MOB_SPAWNING));
+        prevKeepInventory = Boolean.TRUE.equals(world.getGameRuleValue(org.bukkit.GameRule.KEEP_INVENTORY));
+        world.setPVP(mgr.pvpEnabled());
+        world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, mgr.mobSpawningEnabled());
+        world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, mgr.keepInventoryOnDeath());
+        rulesApplied = true;
+        mgr.getLogger().info("场地 " + arena.getName() + " 对局规则（应用后读回）：pvp=" + world.getPVP()
+                + "，刷怪=" + world.getGameRuleValue(org.bukkit.GameRule.DO_MOB_SPAWNING)
+                + "，保留背包=" + world.getGameRuleValue(org.bukkit.GameRule.KEEP_INVENTORY));
+    }
+
+    private void restoreWorldRules() {
+        if (!rulesApplied) {
+            return;
+        }
+        World world = arena.world();
+        if (world != null) {
+            world.setPVP(prevPvp);
+            world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, prevMobSpawning);
+            world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, prevKeepInventory);
+        }
+        rulesApplied = false;
     }
 
     private void restoreBorder() {

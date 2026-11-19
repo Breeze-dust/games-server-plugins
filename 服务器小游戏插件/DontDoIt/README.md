@@ -19,7 +19,7 @@
     （都针对当前场地，站在目标位置执行）、`gen <场地>`（只跑一遍地形生成，检查石层）、`save`、`reload`、
     `start/stop <场地>`、`change <场地> <队伍>`、`grant <场地> <队伍> <词条名>`、`setlife <场地> <队伍> <数>`、
     `settings`（打开设置菜单）、`settings <custom|guess|diamond-behavior|nightvision|border|ylevel>`、
-    `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）、`savemap <场地>`（把当前场地存成地图基线）
+    `settings diamond <add|reduce>`、`words [关键字]`、`selftest <场地>`（不需要真人，跑一遍开局→触发→淘汰→结算→重置）、`savemap <场地>`（把当前场地存成地图基线）、`rules <场地>`（查看世界 PvP/刷怪/死亡掉落）
 - **自己的词条不可见**：侧边栏按队伍分别下发——每个队伍只看到**其他存活队伍**的词条；
   自己的队伍名/规则数量在动作栏里显示。队伍名、词条、tab 名字都用同一队伍颜色。
 - **方块破坏放行**：GuessTheBuild 在 NORMAL 优先级全局取消非 OP 的方块破坏，
@@ -28,10 +28,18 @@
 - **选队菜单**（用户要求的等待厅适配）：等待室槽 1 的白羊毛右键打开一屏队伍图标（16~48 队），
   显示每队人数与成员，点一下换队；`allow-unbalanced-teams: false` 时只能加入人数最少的队伍。
 - **词条库**：`server/plugins/DontDoIt/criteria.yml`（模板 = 官方中文版原文件，145 条，29 种类型）。
-  支持官方全部字段：`*` 通配、`#tag`、`!排除`、`a..b` 范围、`reversed`。改词条只需改这个文件后 `/ddi reload`。
+  支持官方全部字段：`*` 通配、`#tag`、`!排除`、`a..b` 范围、`reversed`。
+  **禁用词条**：在条目里加 `disabled: true`（本插件扩展），或直接删掉该条目/整段类型，再 `/ddi reload`
+  （对局中不能 reload，先 `/ddi stop <场地>`）。想降低出现率可以调低 `difficulty`。
+- **世界规则**：对局开始时按配置把场地所在世界设为 `pvp-enabled`、`mob-spawning-enabled`、
+  `keep-inventory-on-death`（false = 死亡掉落），结束时还原世界原来的值。注意这些是世界级设置，
+  同一世界的其他区域在对局期间也会受影响；建议把场地放在单独世界。
 - **地图还原**：`restore-map: true` 时，每局开始前先还原基线（第一次开局自动保存到
   `plugins/DontDoIt/arena-<场地>.baseline`，含 `restore-top-offset` 格地表），开局生成矿石，
-  对局结束再还原一次；基线只存在磁盘，重开服也不会丢。
+  对局结束再还原一次；**方块和实体（猪牛羊等非玩家实体）一起还原**。还原范围 =
+  场地边长 + 世界边界留白（`world-border-padding`）× 同宽，底部到基岩、顶部到 `restore-top-offset`；
+  这个高度以上禁止放方块（会提示超出可还原高度）。基线只存在磁盘，重开服也不会丢。
+  基线尺寸和当前场地不一致时会在控制台提示，清理残留后重新 `/ddi savemap`。
 - **地形生成**：照官方 `GameAreaGenerator`——从场地中心往下最多 30 格找「≥25% 石头类方块」的一层作为石层，
   石层下方放基岩（`bedrock-depth`），石层以上按深度比例把石头换成安山岩/煤矿/铁矿/钻石矿。
   **OP 必须先有一块石头地形**（例如中心下方挖出来的石层），否则开局会报「找不到石层」。

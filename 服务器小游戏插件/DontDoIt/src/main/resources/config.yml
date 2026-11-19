@@ -37,6 +37,12 @@ diamond-behavior-disabled-threshold: 10
 game-difficulty: NORMAL
 # 是否给对局玩家无限夜视
 night-vision: true
+# 对局期间是否允许 PvP（结束后还原世界原来的设置）
+pvp-enabled: true
+# 对局期间是否允许自然刷怪（僵尸等；铁傀儡不受此影响）
+mob-spawning-enabled: true
+# 对局期间是否保留死亡背包（false = 死亡掉落物品）
+keep-inventory-on-death: false
 # 是否把世界边界缩到场地范围（会临时改世界边界，重置时还原）
 use-world-border: true
 # 是否在开局前恢复、结束后还原场地（挖掉的方块会填回来）

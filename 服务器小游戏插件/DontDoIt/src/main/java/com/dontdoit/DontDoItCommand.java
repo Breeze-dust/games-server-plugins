@@ -55,6 +55,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
             case "gen" -> admin(sender, () -> gen(sender, args));
             case "selftest" -> admin(sender, () -> selfTest(sender, args));
             case "savemap" -> admin(sender, () -> saveMap(sender, args));
+            case "rules" -> admin(sender, () -> rules(sender, args));
             case "save" -> admin(sender, () -> {
                 manager.saveArenas();
                 Chat.send(sender, "&a场地配置已保存。");
@@ -334,6 +335,27 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
                 + (stoneY - manager.bedrockDepth() + 1) + "，耗时 " + cost + " ms。");
     }
 
+    /** 查看场地所在世界的 PvP / 刷怪 / 死亡掉落规则。 */
+    private void rules(CommandSender sender, String[] args) {
+        DontDoItArena arena = arenaArg(sender, args);
+        if (arena == null) {
+            return;
+        }
+        org.bukkit.World world = arena.world();
+        if (world == null) {
+            Chat.send(sender, "&c世界不存在：" + arena.getWorldName());
+            return;
+        }
+        Chat.send(sender, "&e" + arena.getName() + " &7世界 " + world.getName() + "：");
+        Chat.send(sender, "&7PvP=" + (world.getPVP() ? "&a开" : "&c关")
+                + "&7，刷怪=" + boolText(world.getGameRuleValue(org.bukkit.GameRule.DO_MOB_SPAWNING))
+                + "&7，保留背包=" + boolText(world.getGameRuleValue(org.bukkit.GameRule.KEEP_INVENTORY)));
+    }
+
+    private static String boolText(Boolean value) {
+        return Boolean.TRUE.equals(value) ? "&a开" : "&c关";
+    }
+
     /** 把当前场地存成基线（之后每局开始/结束都会还原到这份状态）。 */
     private void saveMap(CommandSender sender, String[] args) {
         DontDoItArena arena = arenaArg(sender, args);
@@ -357,17 +379,19 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
             return;
         }
         long start = System.currentTimeMillis();
+        int pad = manager.useWorldBorder() ? manager.worldBorderPadding() : 0;
+        int width = arena.side() + pad * 2;
         MapBaseline baseline = MapBaseline.capture(arena.world(),
-                arena.center().getBlockX() - arena.radius(), bottom,
-                arena.center().getBlockZ() - arena.radius(), arena.side(), top - bottom + 1);
+                arena.center().getBlockX() - width / 2, bottom,
+                arena.center().getBlockZ() - width / 2, width, top - bottom + 1);
         manager.saveBaseline(arena, baseline);
         Game game = manager.game(arena.getName());
         if (game != null) {
             game.invalidateBaseline();
         }
-        Chat.send(sender, "&a已保存地图基线：&f" + baseline.volume() + " &a个方块（Y "
-                + bottom + "~" + top + "），耗时 " + (System.currentTimeMillis() - start)
-                + " ms，" + manager.baselineFile(arena).getName());
+        Chat.send(sender, "&a已保存地图基线：&f" + baseline.volume() + " &a个方块 + &f"
+                + baseline.entityCount() + " &a个实体（Y " + bottom + "~" + top + "），耗时 "
+                + (System.currentTimeMillis() - start) + " ms，" + manager.baselineFile(arena).getName());
     }
 
     /** 运维自检：不需要真人，跑一遍开局→触发→淘汰→结算→重置。 */

@@ -1,14 +1,22 @@
 package com.dontdoit;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -33,9 +41,14 @@ public final class MapBaseline {
     private final int height;
     private final String[] palette;
     private final int[] indices;
+    private final List<EntitySnapshot> entities;
+
+    /** 基线里记录的一个实体（类型 + 位置 + 朝向）。 */
+    public record EntitySnapshot(String type, double x, double y, double z, float yaw, float pitch) {
+    }
 
     private MapBaseline(int minX, int minY, int minZ, int width, int height,
-                        String[] palette, int[] indices) {
+                        String[] palette, int[] indices, List<EntitySnapshot> entities) {
         this.minX = minX;
         this.minY = minY;
         this.minZ = minZ;
@@ -43,6 +56,23 @@ public final class MapBaseline {
         this.height = height;
         this.palette = palette;
         this.indices = indices;
+        this.entities = entities;
+    }
+
+    public int minX() {
+        return minX;
+    }
+
+    public int minZ() {
+        return minZ;
+    }
+
+    public int width() {
+        return width;
+    }
+
+    public int height() {
+        return height;
     }
 
     public int minY() {
@@ -76,12 +106,58 @@ public final class MapBaseline {
                 }
             }
         }
+        List<EntitySnapshot> entities = new ArrayList<>();
+        BoundingBox box = new BoundingBox(minX, minY, minZ,
+                minX + width, minY + height, minZ + width);
+        for (Entity entity : world.getNearbyEntities(box)) {
+            if (entity instanceof Player || entity.getType() == EntityType.ITEM
+                    || entity.getType() == EntityType.EXPERIENCE_ORB) {
+                continue;
+            }
+            Location loc = entity.getLocation();
+            entities.add(new EntitySnapshot(entity.getType().getKey().toString(),
+                    loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch()));
+        }
         return new MapBaseline(minX, minY, minZ, width, height,
-                palette.toArray(new String[0]), data);
+                palette.toArray(new String[0]), data, entities);
+    }
+
+    public int entityCount() {
+        return entities.size();
+    }
+
+    /** 方块 + 实体一起还原。返回改动过的方块数量。 */
+    public int restore(World world) {
+        int changed = restoreBlocks(world);
+        restoreEntities(world);
+        return changed;
+    }
+
+    private void restoreEntities(World world) {
+        BoundingBox box = new BoundingBox(minX, minY, minZ,
+                minX + width, minY + height, minZ + width);
+        for (Entity entity : new ArrayList<>(world.getNearbyEntities(box))) {
+            if (!(entity instanceof Player)) {
+                entity.remove();
+            }
+        }
+        for (EntitySnapshot snap : entities) {
+            NamespacedKey key = NamespacedKey.fromString(snap.type());
+            EntityType type = key == null ? null : Registry.ENTITY_TYPE.get(key);
+            if (type == null) {
+                continue;
+            }
+            Location loc = new Location(world, snap.x(), snap.y(), snap.z(), snap.yaw(), snap.pitch());
+            try {
+                world.spawnEntity(loc, type);
+            } catch (RuntimeException ignored) {
+                // 单个实体生成失败不影响其它实体
+            }
+        }
     }
 
     /** @return 实际改动过的方块数量 */
-    public int restore(World world) {
+    private int restoreBlocks(World world) {
         BlockData[] parsed = new BlockData[palette.length];
         int changed = 0;
         int i = 0;
@@ -124,6 +200,15 @@ public final class MapBaseline {
             for (int v : indices) {
                 out.writeInt(v);
             }
+            out.writeInt(entities.size());
+            for (EntitySnapshot e : entities) {
+                out.writeUTF(e.type());
+                out.writeDouble(e.x());
+                out.writeDouble(e.y());
+                out.writeDouble(e.z());
+                out.writeFloat(e.yaw());
+                out.writeFloat(e.pitch());
+            }
         }
     }
 
@@ -152,7 +237,20 @@ public final class MapBaseline {
             for (int i = 0; i < volume; i++) {
                 indices[i] = in.readInt();
             }
-            return new MapBaseline(minX, minY, minZ, width, height, palette, indices);
+            int entityCount = 0;
+            List<EntitySnapshot> entities = new ArrayList<>();
+            try {
+                entityCount = in.readInt();
+                for (int i = 0; i < entityCount; i++) {
+                    entities.add(new EntitySnapshot(in.readUTF(),
+                            in.readDouble(), in.readDouble(), in.readDouble(),
+                            in.readFloat(), in.readFloat()));
+                }
+            } catch (EOFException oldFormat) {
+                // 旧版快照没有实体段：按 0 个实体处理
+                entities.clear();
+            }
+            return new MapBaseline(minX, minY, minZ, width, height, palette, indices, entities);
         }
     }
 }

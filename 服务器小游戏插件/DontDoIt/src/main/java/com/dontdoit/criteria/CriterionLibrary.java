@@ -38,6 +38,10 @@ public final class CriterionLibrary {
                 if (name == null || name.isEmpty()) {
                     continue;
                 }
+                // 本插件扩展：disabled: true 的条目跳过（方便不删条目地禁用某条词条）
+                if (Boolean.parseBoolean(String.valueOf(raw.get("disabled")))) {
+                    continue;
+                }
                 Difficulty difficulty = Difficulty.byId(string(raw.get("difficulty")));
                 java.util.Map<String, String> params = new java.util.HashMap<>();
                 for (Map.Entry<?, ?> e : raw.entrySet()) {
