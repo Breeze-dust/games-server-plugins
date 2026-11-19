@@ -56,6 +56,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
             case "selftest" -> admin(sender, () -> selfTest(sender, args));
             case "savemap" -> admin(sender, () -> saveMap(sender, args));
             case "rules" -> admin(sender, () -> rules(sender, args));
+            case "setpvp" -> admin(sender, () -> setWorldPvp(sender, args));
             case "save" -> admin(sender, () -> {
                 manager.saveArenas();
                 Chat.send(sender, "&a场地配置已保存。");
@@ -333,6 +334,26 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
         arena.setStoneY(stoneY);
         Chat.send(sender, "&a生成完成：石层 Y=" + stoneY + "，基岩 Y="
                 + (stoneY - manager.bedrockDepth() + 1) + "，耗时 " + cost + " ms。");
+    }
+
+    /** 直接设置场地所在世界的 PvP 开关（用于清理被旧对局留在 true 的世界标志）。 */
+    private void setWorldPvp(CommandSender sender, String[] args) {
+        DontDoItArena arena = arenaArg(sender, args);
+        if (arena == null) {
+            return;
+        }
+        org.bukkit.World world = arena.world();
+        if (world == null) {
+            Chat.send(sender, "&c世界不存在：" + arena.getWorldName());
+            return;
+        }
+        if (args.length < 3) {
+            Chat.send(sender, "&c用法：/ddi setpvp <场地> <on|off>");
+            return;
+        }
+        boolean on = args[2].equalsIgnoreCase("on") || args[2].equalsIgnoreCase("true");
+        world.setPVP(on);
+        Chat.send(sender, "&a已把世界 &f" + world.getName() + " &a的 PvP 设为 &f" + (on ? "开" : "关"));
     }
 
     /** 查看场地所在世界的 PvP / 刷怪 / 死亡掉落规则。 */

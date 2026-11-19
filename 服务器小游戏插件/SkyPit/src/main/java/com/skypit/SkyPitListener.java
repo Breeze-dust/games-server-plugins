@@ -45,11 +45,11 @@ public class SkyPitListener implements Listener {
     }
 
     /**
-     * PvP 守卫（LOWEST）：世界 PvP 关闭时禁止玩家互伤（主城等区域）。
-     * <p>世界本身允许 PvP（如决斗/足球/不要做挑战等小游戏在对局期间会临时
-     * {@code world.setPVP(true)}）时不再插手，交给各游戏自己的规则判断；
-     * 否则会像以前那样把整个服务器的 PvP 都拦掉，其它 PvP 玩法必须再加一层
-     * HIGHEST “取消取消”才能工作。双方都在天坑内时仍由下面的 HIGHEST 放行。
+     * PvP 守卫（LOWEST）：主城等区域禁止玩家互伤。
+     * <p>只要有一方不在天坑内就取消；需要 PvP 的其它小游戏（决斗/足球/不要做挑战等）
+     * 在 HIGHEST 优先级显式 {@code setCancelled(false)} 覆盖本层——这是仓库里现有的约定，
+     * 不要在这里看 {@code world.getPVP()}：世界 PvP 标志会被其它插件临时打开，
+     * 一旦没有恢复，主城就会跟着变成可 PvP。
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDamageGuard(EntityDamageByEntityEvent event) {
@@ -61,13 +61,9 @@ public class SkyPitListener implements Listener {
             return;
         }
         SkyPitManager m = plugin.getManager();
-        if (m.inPit(victim.getUniqueId()) && m.inPit(attacker.getUniqueId())) {
-            return; // 天坑内：由 onDamageAllow 放行
+        if (!m.inPit(victim.getUniqueId()) || !m.inPit(attacker.getUniqueId())) {
+            event.setCancelled(true);
         }
-        if (victim.getWorld().equals(attacker.getWorld()) && victim.getWorld().getPVP()) {
-            return; // 世界本身允许 PvP：不归天坑管
-        }
-        event.setCancelled(true);
     }
 
     /**

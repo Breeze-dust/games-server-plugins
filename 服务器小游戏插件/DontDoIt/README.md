@@ -44,7 +44,9 @@
   （对局中不能 reload，先 `/ddi stop <场地>`）。想降低出现率可以调低 `difficulty`。
 - **世界规则**：对局开始时按配置把场地所在世界设为 `pvp-enabled`、`mob-spawning-enabled`、
   `keep-inventory-on-death`（false = 死亡掉落），结束时还原世界原来的值。注意这些是世界级设置，
-  同一世界的其他区域在对局期间也会受影响；建议把场地放在单独世界。
+  同一世界的其他区域在对局期间也会受影响；建议把场地放在单独世界。原值会写进
+  `plugins/DontDoIt/applied-rules-<场地>.yml`，服务器中途崩溃/重启后下次启动会自动还原；
+  若世界 PvP 已经被旧版本留在开启状态，用 `/ddi setpvp <场地> <on|off>` 手动修正。
 - **删除场地**：`/ddi remove <场地>` 会先重置（把玩家送回主城、还原地图与世界规则），
   再删除配置和 `plugins/DontDoIt/arena-<场地>.baseline`；`/ddi list` 查看现有场地。
 - **强制重置**：`/ddi stop <场地>`（别名 `/ddi reset <场地>`），任何阶段都能用，等价于结算后的自动重置。

@@ -124,6 +124,7 @@ public final class DontDoItManager {
             reportArena(game);
         }
 
+        restoreLeftoverWorldRules();
         stats = PlayerStats.load(STATS_NAMESPACE, new File(plugin.getDataFolder(), "data.yml"));
     }
 
@@ -436,6 +437,62 @@ public final class DontDoItManager {
         } catch (Exception e) {
             plugin.getLogger().warning("读取地图快照失败（" + file.getName() + "）：" + e.getMessage());
             return null;
+        }
+    }
+
+    private java.io.File worldRulesFile(DontDoItArena arena) {
+        String safe = arena.getName().replaceAll("[^a-zA-Z0-9_-]", "_");
+        return new java.io.File(plugin.getDataFolder(), "applied-rules-" + safe + ".yml");
+    }
+
+    /** 对局开始时把世界原规则落盘，防止服务器中途崩溃/重启后 PVP 等标志留在对局值上。 */
+    public void saveWorldRules(DontDoItArena arena, org.bukkit.World world,
+                               boolean pvp, boolean mobSpawning, boolean keepInventory) {
+        YamlConfiguration yml = new YamlConfiguration();
+        yml.set("world", world.getName());
+        yml.set("pvp", pvp);
+        yml.set("mob-spawning", mobSpawning);
+        yml.set("keep-inventory", keepInventory);
+        try {
+            yml.save(worldRulesFile(arena));
+        } catch (IOException e) {
+            plugin.getLogger().warning("保存世界规则记录失败：" + e.getMessage());
+        }
+    }
+
+    public void clearWorldRules(DontDoItArena arena) {
+        java.io.File file = worldRulesFile(arena);
+        if (file.isFile() && !file.delete()) {
+            plugin.getLogger().warning("删除世界规则记录失败：" + file.getName());
+        }
+    }
+
+    /** 启动时如果发现上次对局没走完还原流程，把世界规则恢复回去。 */
+    public void restoreLeftoverWorldRules() {
+        for (DontDoItArena arena : arenas.values()) {
+            java.io.File file = worldRulesFile(arena);
+            if (!file.isFile()) {
+                continue;
+            }
+            try {
+                YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
+                String worldName = yml.getString("world", arena.getWorldName());
+                org.bukkit.World world = org.bukkit.Bukkit.getWorld(worldName);
+                if (world != null) {
+                    world.setPVP(yml.getBoolean("pvp", world.getPVP()));
+                    world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING,
+                            yml.getBoolean("mob-spawning", true));
+                    world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY,
+                            yml.getBoolean("keep-inventory", false));
+                    plugin.getLogger().info("已恢复场地 " + arena.getName() + " 上次未还原的世界规则（"
+                            + worldName + "）");
+                }
+                if (!file.delete()) {
+                    plugin.getLogger().warning("删除世界规则记录失败：" + file.getName());
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("恢复世界规则记录失败：" + e.getMessage());
+            }
         }
     }
 

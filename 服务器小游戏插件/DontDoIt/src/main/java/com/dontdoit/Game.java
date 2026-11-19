@@ -1088,6 +1088,7 @@ public final class Game {
         prevPvp = world.getPVP();
         prevMobSpawning = Boolean.TRUE.equals(world.getGameRuleValue(org.bukkit.GameRule.DO_MOB_SPAWNING));
         prevKeepInventory = Boolean.TRUE.equals(world.getGameRuleValue(org.bukkit.GameRule.KEEP_INVENTORY));
+        mgr.saveWorldRules(arena, world, prevPvp, prevMobSpawning, prevKeepInventory);
         world.setPVP(mgr.pvpEnabled());
         world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, mgr.mobSpawningEnabled());
         world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, mgr.keepInventoryOnDeath());
@@ -1107,6 +1108,7 @@ public final class Game {
             world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, prevMobSpawning);
             world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, prevKeepInventory);
         }
+        mgr.clearWorldRules(arena);
         rulesApplied = false;
     }
 
