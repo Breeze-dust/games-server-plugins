@@ -35,6 +35,12 @@ placement:
   max-distance: 12         # 滚轮能推到的最大距离（格）
   reach-distance: 40       # 摆放阶段临时扩大的方块交互距离，供中键对准星定位
 
+observation:
+  seconds: 10              # 摆放结束后以观察者视角查看最终场景的时长，0 表示直接进入跑酷倒计时
+
+protection:
+  spawn-radius: 2          # 起点保护：以跑酷起点方块为中心的 (2r+1) 立方体内不能摆机关，箭进入即消失
+
 running:
   duration-seconds: 180    # 跑酷环节最长时长，超时未到终点算失败
   countdown-seconds: 3     # 传送到起点后的跑酷倒计时

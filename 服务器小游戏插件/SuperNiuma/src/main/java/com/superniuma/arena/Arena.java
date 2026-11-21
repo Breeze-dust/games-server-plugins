@@ -129,6 +129,16 @@ public final class Arena {
                 && loc.getBlockZ() >= buildMin.getBlockZ() && loc.getBlockZ() <= buildMax.getBlockZ();
     }
 
+    /** 起点保护：以跑酷起点方块为中心的 (2*radius+1) 立方体。 */
+    public boolean inSpawnProtection(Location loc, int radius) {
+        if (start == null || loc == null || radius < 0) {
+            return false;
+        }
+        return Math.abs(loc.getBlockX() - start.getBlockX()) <= radius
+                && Math.abs(loc.getBlockY() - start.getBlockY()) <= radius
+                && Math.abs(loc.getBlockZ() - start.getBlockZ()) <= radius;
+    }
+
     /** 玩家是否进入终点区域。 */
     public boolean inFinish(Location loc) {
         if (finishMin == null || finishMax == null || loc == null) {

@@ -52,7 +52,7 @@ import java.util.UUID;
 public final class GameRoom {
 
     public enum Phase {
-        WAITING, SELECTING, PLACING, STARTING, RUNNING, SCORING, ENDED
+        WAITING, SELECTING, PLACING, OBSERVING, STARTING, RUNNING, SCORING, ENDED
     }
 
     public static final String GAME_NAME = "超级牛马";
@@ -163,6 +163,16 @@ public final class GameRoom {
 
     public boolean isRunning() {
         return phase == Phase.RUNNING;
+    }
+
+    /** 起点保护半径（格），保护范围是以起点为中心的 (2r+1) 立方体。 */
+    public int spawnProtectionRadius() {
+        return Math.max(0, plugin.getConfig().getInt("protection.spawn-radius", 2));
+    }
+
+    /** 位置是否在起点保护区内：这里不能摆机关，箭矢进入会被清除。 */
+    public boolean inSpawnProtection(Location loc) {
+        return arena.inSpawnProtection(loc, spawnProtectionRadius());
     }
 
     public int round() {
@@ -354,6 +364,12 @@ public final class GameRoom {
                     sessions.put(player.getUniqueId(),
                             new PlacementSession(player, participant.choice(), startDistance));
                 }
+            }
+            case OBSERVING -> {
+                if (arena.getStart() != null) {
+                    player.teleport(arena.getStart());
+                }
+                player.setGameMode(org.bukkit.GameMode.SPECTATOR);
             }
             case STARTING -> {
                 restoreRoundResult(player, participant);
@@ -1031,6 +1047,36 @@ public final class GameRoom {
 
     // ---------- 跑酷 ----------
 
+    /** 摆放结束后先让所有人以观察者视角看一遍最终场景，再进入跑酷倒计时。 */
+    private void beginObservation() {
+        for (PlacementSession session : sessions.values()) {
+            if (!session.confirmed()) {
+                MechanismManager.PlaceResult result = plugin.mechanismManager().place(this, session);
+                if (result.success()) {
+                    session.setConfirmed(true);
+                }
+            }
+            plugin.mechanismManager().clearPreview(session);
+        }
+
+        phase = Phase.OBSERVING;
+        int seconds = Math.max(0, plugin.getConfig().getInt("observation.seconds", 10));
+        phaseTicks = secondsToTicks(seconds);
+        for (Player player : onlinePlayers()) {
+            if (arena.getStart() != null) {
+                player.teleport(arena.getStart());
+            }
+            player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+            restoreReach(player);
+            player.setFireTicks(0);
+        }
+        if (phaseTicks <= 0) {
+            beginRunning();
+            return;
+        }
+        broadcast("&e机关已放置完毕，观察场景 &f" + seconds + "&e 秒后开始跑酷。");
+    }
+
     private void beginRunning() {
         for (PlacementSession session : sessions.values()) {
             if (!session.confirmed()) {
@@ -1685,6 +1731,7 @@ public final class GameRoom {
             case WAITING -> "等待中";
             case SELECTING -> "选择机关";
             case PLACING -> "摆放机关";
+            case OBSERVING -> "观察场景";
             case STARTING -> "跑酷倒计时";
             case RUNNING -> "跑酷中";
             case SCORING -> "记分中";
@@ -1759,9 +1806,15 @@ public final class GameRoom {
                     }
                 }
                 if (allPlaced()) {
-                    broadcast("&a所有机关都已放置，提前开始跑酷！");
-                    beginRunning();
+                    broadcast("&a所有机关都已放置，提前结束摆放！");
+                    beginObservation();
                 } else if (phaseTicks <= 0) {
+                    beginObservation();
+                }
+            }
+            case OBSERVING -> {
+                phaseTicks--;
+                if (phaseTicks <= 0) {
                     beginRunning();
                 }
             }
@@ -1795,8 +1848,8 @@ public final class GameRoom {
     private void updateBossBar() {
         Phase current = phase;
         if (current != Phase.SELECTING && current != Phase.PLACING
-                && current != Phase.STARTING && current != Phase.RUNNING
-                && current != Phase.SCORING) {
+                && current != Phase.OBSERVING && current != Phase.STARTING
+                && current != Phase.RUNNING && current != Phase.SCORING) {
             hideBossBar();
             return;
         }
@@ -1867,6 +1920,7 @@ public final class GameRoom {
         return switch (current) {
             case SELECTING -> "&e" + roundTag + "选择机关 &f" + seconds + " 秒";
             case PLACING -> "&b" + roundTag + "摆放机关 &f" + seconds + " 秒";
+            case OBSERVING -> "&d" + roundTag + "观察场景 &f" + seconds + " 秒";
             case STARTING -> "&6跑酷倒计时 &f" + seconds + " 秒";
             case RUNNING -> "&a" + roundTag + "跑酷中 &f" + seconds + " 秒";
             case SCORING -> "&d" + roundTag + "结算中 &f" + seconds + " 秒";
@@ -1878,6 +1932,7 @@ public final class GameRoom {
         return switch (current) {
             case SELECTING -> BarColor.YELLOW;
             case PLACING -> BarColor.BLUE;
+            case OBSERVING -> BarColor.PURPLE;
             case STARTING -> BarColor.RED;
             case RUNNING -> BarColor.GREEN;
             case SCORING -> BarColor.PURPLE;

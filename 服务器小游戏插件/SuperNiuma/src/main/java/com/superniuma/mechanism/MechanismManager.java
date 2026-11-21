@@ -591,6 +591,9 @@ public final class MechanismManager {
             if (!arena.inBuildBounds(anchor)) {
                 return PlaceResult.fail((nuke ? "核弹" : "炸弹") + "只能放在可建造范围内。");
             }
+            if (room.inSpawnProtection(anchor)) {
+                return PlaceResult.fail("起点保护区内不能摆放机关。");
+            }
             bomb(room, anchor, def.bombRadius(), nuke);
             return PlaceResult.ok(null);
         }
@@ -599,6 +602,9 @@ public final class MechanismManager {
         for (Location cell : cells) {
             if (!arena.inBuildBounds(cell)) {
                 return PlaceResult.fail("机关超出了可建造范围。");
+            }
+            if (room.inSpawnProtection(cell)) {
+                return PlaceResult.fail("起点保护区内不能摆放机关。");
             }
             if (!cell.getBlock().isEmpty()) {
                 return PlaceResult.fail("目标位置被方块挡住了。");
@@ -730,6 +736,9 @@ public final class MechanismManager {
         for (Location cell : cells) {
             if (!arena.inBuildBounds(cell)) {
                 return "机关超出了可建造范围。";
+            }
+            if (room.inSpawnProtection(cell)) {
+                return "起点保护区内不能摆放机关。";
             }
             if (!cell.getBlock().isEmpty()) {
                 return "目标位置被方块挡住了。";
@@ -1394,6 +1403,12 @@ public final class MechanismManager {
             if (entity.getLocation().distanceSquared(shot.start()) > max) {
                 entity.remove();
                 iterator.remove();
+                continue;
+            }
+            // 箭不能进入起点保护区：一进去就直接清掉。
+            if (shot.room().inSpawnProtection(entity.getLocation())) {
+                entity.remove();
+                iterator.remove();
             }
         }
     }
@@ -1401,6 +1416,9 @@ public final class MechanismManager {
     public void handleArrowHit(ProjectileHitEvent event) {
         ArrowShot shot = arrows.remove(event.getEntity().getUniqueId());
         if (shot == null) {
+            return;
+        }
+        if (shot.room().inSpawnProtection(event.getEntity().getLocation())) {
             return;
         }
         if (event.getHitEntity() instanceof Player player) {
