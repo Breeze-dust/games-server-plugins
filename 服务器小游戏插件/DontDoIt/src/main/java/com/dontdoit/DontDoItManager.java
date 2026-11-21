@@ -7,7 +7,6 @@ import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
-import com.hub.util.LiveSidebar;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
 import org.bukkit.GameMode;
@@ -44,7 +43,7 @@ public final class DontDoItManager {
     private final Map<String, Game> games = new LinkedHashMap<>();
     private final Map<UUID, Game> playerGame = new LinkedHashMap<>();
     private final CriterionLibrary library = new CriterionLibrary();
-    private final LiveSidebar sidebar;
+    private final Sidebar sidebar;
     private final Random random = new Random();
 
     private YamlConfiguration stats;
@@ -85,7 +84,7 @@ public final class DontDoItManager {
 
     public DontDoItManager(DontDoItPlugin plugin) {
         this.plugin = plugin;
-        this.sidebar = new LiveSidebar(plugin);
+        this.sidebar = new Sidebar(plugin);
     }
 
     // ================== 加载 ==================
@@ -266,7 +265,7 @@ public final class DontDoItManager {
         return library;
     }
 
-    public LiveSidebar sidebar() {
+    public Sidebar sidebar() {
         return sidebar;
     }
 

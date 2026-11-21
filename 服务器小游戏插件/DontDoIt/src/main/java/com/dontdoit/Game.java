@@ -7,7 +7,6 @@ import com.dontdoit.criteria.PlayerState;
 import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.util.Chat;
-import com.hub.util.LiveSidebar;
 import com.hub.util.WaitCountdown;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
@@ -935,6 +934,11 @@ public final class Game {
             return;
         }
         lastSidebar = tick;
+        // 固定排序：按队伍在 teams 里的位置决定分数，倒计时只作为右侧显示文本，顺序不会跳
+        java.util.Map<Team, Integer> order = new java.util.HashMap<>();
+        for (int i = 0; i < teams.size(); i++) {
+            order.put(teams.get(i), 900 - i);
+        }
         for (Team viewerTeam : teams) {
             String key = sidebarKey(viewerTeam);
             if (viewerTeam.isEmpty()) {
@@ -945,12 +949,16 @@ public final class Game {
             for (Player p : viewerTeam.members()) {
                 viewers.add(p.getUniqueId());
             }
+            try {
+                viewers.addAll(HubAPI.spectatorsNear(viewers, 96.0));
+            } catch (Throwable ignored) {
+                // 没有主城/旧版主城时忽略
+            }
             if (viewers.isEmpty()) {
                 mgr.sidebar().hide(key);
                 continue;
             }
-            List<LiveSidebar.Line> lines = new ArrayList<>();
-            int score = 100;
+            List<Sidebar.Line> lines = new ArrayList<>();
             int eliminated = 0;
             for (Team t : teams) {
                 if (t.isEmpty()) {
@@ -961,20 +969,23 @@ public final class Game {
                     continue;
                 }
                 if (t == viewerTeam && !viewerTeam.isEliminated()) {
-                    continue; // 自己的词条不显示（这是游戏规则）
+                    continue; // 自己的词条不显示
                 }
                 String criterion = t.getCriterion() == null ? "—" : t.getCriterion().name;
-                lines.add(new LiveSidebar.Line(
+                long seconds = Math.max(0,
+                        mgr.criteriaChangeSeconds() - (tick - t.getCriterionSince()) / 20);
+                lines.add(new Sidebar.Line(
                         "§" + t.getColor().legacy + sidebarName(t)
                                 + " §7❤" + t.getLives()
                                 + " §" + t.getColor().legacy + criterion,
-                        score--));
+                        order.getOrDefault(t, 0),
+                        Chat.color("&e" + seconds + "s")));
             }
             if (eliminated > 0) {
-                lines.add(new LiveSidebar.Line("§8已淘汰 §7" + eliminated + " 队", 0));
+                lines.add(new Sidebar.Line("§8已淘汰 §7" + eliminated + " 队", 0, null));
             }
             if (lines.isEmpty()) {
-                lines.add(new LiveSidebar.Line("§7等待其他队伍…", 0));
+                lines.add(new Sidebar.Line("§7等待其他队伍…", 0, null));
             }
             mgr.sidebar().update(key, "§d§l※ 禁止事项 ※", viewers, lines);
         }
