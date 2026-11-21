@@ -197,6 +197,21 @@ public final class DontDoItListener implements Listener {
         }
     }
 
+    /** 对局中按配置强制死亡掉落（防止其它插件把 keepInventory 设成 true）。 */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onDeathDrops(PlayerDeathEvent event) {
+        Game game = manager.gameOf(event.getEntity());
+        if (game == null || game.state() != Game.State.RUNNING) {
+            return;
+        }
+        if (manager.keepInventoryOnDeath()) {
+            event.setKeepInventory(true);
+        } else {
+            event.setKeepInventory(false);
+            event.setKeepLevel(false);
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onOpenInventory(InventoryOpenEvent event) {
         if (event.getPlayer() instanceof Player player) {

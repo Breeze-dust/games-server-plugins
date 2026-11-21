@@ -49,6 +49,13 @@
   在地表随机位置主动生成动物（牛/猪/羊/鸡/兔）和怪物（僵尸/骷髅/蜘蛛），
   `mob-spawn-min-distance` 控制离玩家至少多少格。它们会被标记为持久实体，
   结算/重置时统一移除，不会污染下一局；白天怪物可能被晒伤，需要它们更持久可以调高数量或把场地放在暗处。
+  对局中还会按 `periodic-monster-spawn-seconds`（默认 30 秒）再刷 `periodic-monster-spawn-count`（默认 2 只），
+  场上插件刷出的怪物超过 `periodic-monster-spawn-max`（默认 12）时暂停周期刷新。
+- **发光 / 夜视**：`glowing: true` 给对局玩家加发光效果（隔墙能看到彼此），`night-vision` 控制夜视；
+  两者都在结算时清除。
+- **触发反馈**：触发词条时的音效和灰烬粒子**只发给触发者本人**；播报和屏幕标题仍发给本局玩家与附近观战者。
+- **死亡掉落**：对局中在 HIGHEST 优先级强制按 `keep-inventory-on-death` 设置死亡保留/掉落，
+  即使别的插件把世界的 keepInventory 设成开启也不会影响本局。
 - **世界规则**：对局开始时按配置把场地所在世界设为 `pvp-enabled`、`mob-spawning-enabled`、
   `keep-inventory-on-death`（false = 死亡掉落），结束时还原世界原来的值。注意这些是世界级设置，
   同一世界的其他区域在对局期间也会受影响；建议把场地放在单独世界。原值会写进

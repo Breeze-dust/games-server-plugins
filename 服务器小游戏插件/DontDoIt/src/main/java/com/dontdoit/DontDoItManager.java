@@ -69,6 +69,7 @@ public final class DontDoItManager {
     private boolean guessCriteriaEnabled = true;
     private boolean diamondBehaviorEnabled = true;
     private boolean nightVision = true;
+    private boolean glowing = true;
     private boolean useWorldBorder = true;
     private boolean yLevelCriteriaEnabled = true;
     private boolean restoreMap = true;
@@ -79,6 +80,9 @@ public final class DontDoItManager {
     private int spawnAnimals = 8;
     private int spawnMonsters = 8;
     private int mobSpawnMinDistance = 8;
+    private int periodicMonsterSeconds = 30;
+    private int periodicMonsterCount = 2;
+    private int periodicMonsterMax = 12;
     private int restoreTopOffset = 16;
     private boolean restoreToMaxHeight = true;
     private String diamondBehavior = "reduce_others_life";
@@ -170,6 +174,7 @@ public final class DontDoItManager {
         diamondBehavior = c.getString("diamond-behavior", "reduce_others_life");
         diamondThreshold = Math.max(1, c.getInt("diamond-behavior-disabled-threshold", 10));
         nightVision = c.getBoolean("night-vision", true);
+        glowing = c.getBoolean("glowing", true);
         useWorldBorder = c.getBoolean("use-world-border", true);
         worldBorderPadding = Math.max(0, c.getInt("world-border-padding", 4));
         yLevelCriteriaEnabled = c.getBoolean("enable-y-level-criteria", true);
@@ -181,6 +186,9 @@ public final class DontDoItManager {
         spawnAnimals = Math.max(0, c.getInt("spawn-animals", 8));
         spawnMonsters = Math.max(0, c.getInt("spawn-monsters", 8));
         mobSpawnMinDistance = Math.max(1, c.getInt("mob-spawn-min-distance", 8));
+        periodicMonsterSeconds = Math.max(0, c.getInt("periodic-monster-spawn-seconds", 30));
+        periodicMonsterCount = Math.max(0, c.getInt("periodic-monster-spawn-count", 2));
+        periodicMonsterMax = Math.max(0, c.getInt("periodic-monster-spawn-max", 12));
         restoreTopOffset = Math.max(0, c.getInt("restore-top-offset", 16));
         restoreToMaxHeight = c.getBoolean("restore-to-max-height", true);
         yLevelOffsetGround = c.getInt("y-level-offset-ground", 1);
@@ -376,6 +384,10 @@ public final class DontDoItManager {
         return nightVision;
     }
 
+    public boolean glowing() {
+        return glowing;
+    }
+
     public void setNightVision(boolean value) {
         nightVision = value;
         saveSettings();
@@ -425,6 +437,18 @@ public final class DontDoItManager {
 
     public int mobSpawnMinDistance() {
         return mobSpawnMinDistance;
+    }
+
+    public int periodicMonsterSeconds() {
+        return periodicMonsterSeconds;
+    }
+
+    public int periodicMonsterCount() {
+        return periodicMonsterCount;
+    }
+
+    public int periodicMonsterMax() {
+        return periodicMonsterMax;
     }
 
     public boolean restoreMap() {

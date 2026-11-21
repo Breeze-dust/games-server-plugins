@@ -48,6 +48,7 @@ public final class Game {
     private static final CriterionMatcher MATCHER = new CriterionMatcher();
     private final Random random = new Random();
     private final List<UUID> spawnedMobs = new ArrayList<>();
+    private long lastPeriodicMobSpawn;
 
     private static final org.bukkit.entity.EntityType[] ANIMAL_TYPES = {
             org.bukkit.entity.EntityType.COW, org.bukkit.entity.EntityType.PIG,
@@ -471,6 +472,7 @@ public final class Game {
         countdown.cancel();
         state = State.RUNNING;
         tick = 0;
+        lastPeriodicMobSpawn = 0;
         states.clear();
         grounded.clear();
         for (Team t : playing) {
@@ -492,6 +494,11 @@ public final class Game {
                 if (mgr.nightVision()) {
                     p.addPotionEffect(new org.bukkit.potion.PotionEffect(
                             org.bukkit.potion.PotionEffectType.NIGHT_VISION,
+                            Integer.MAX_VALUE, 0, false, false, false));
+                }
+                if (mgr.glowing()) {
+                    p.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                            org.bukkit.potion.PotionEffectType.GLOWING,
                             Integer.MAX_VALUE, 0, false, false, false));
                 }
                 HubAPI.setPlaying(p.getUniqueId(), mgr.gameName());
@@ -651,9 +658,9 @@ public final class Game {
         for (Player p : team.members()) {
             Chat.title(p, "&c" + criterion.name, whoName + " &6触发了规则", 2);
         }
-        for (Player p : recipients()) {
-            p.playSound(p.getLocation(), Sound.ENTITY_ENDER_EYE_DEATH, 1f, 1f);
-            p.getWorld().spawnParticle(Particle.ASH, p.getLocation().add(0, 1, 0),
+        if (who != null) {
+            who.playSound(who.getLocation(), Sound.ENTITY_ENDER_EYE_DEATH, 1f, 1f);
+            who.getWorld().spawnParticle(Particle.ASH, who.getLocation().add(0, 1, 0),
                     200, 0.5, 0.5, 0.5, 0.0);
         }
         team.setLives(team.getLives() - 1);
@@ -768,10 +775,40 @@ public final class Game {
                 changeCriterion(team, true);
             }
         }
+        if (mgr.periodicMonsterSeconds() > 0 && mgr.periodicMonsterCount() > 0
+                && tick - lastPeriodicMobSpawn >= mgr.periodicMonsterSeconds() * 20L) {
+            lastPeriodicMobSpawn = tick;
+            World world = arena.world();
+            Location center = arena.center();
+            if (world != null && center != null
+                    && aliveSpawnedMonsters() < mgr.periodicMonsterMax()) {
+                spawnMobGroup(world, center, Math.max(1, arena.radius() - 1),
+                        mgr.periodicMonsterCount(), MONSTER_TYPES);
+            }
+        }
         if (tick - lastSidebar >= 20) {
             updateSidebar(false);
         }
         checkEnd();
+    }
+
+    private int aliveSpawnedMonsters() {
+        int alive = 0;
+        java.util.Iterator<UUID> it = spawnedMobs.iterator();
+        while (it.hasNext()) {
+            org.bukkit.entity.Entity entity = Bukkit.getEntity(it.next());
+            if (entity == null || entity.isDead()) {
+                it.remove();
+                continue;
+            }
+            for (org.bukkit.entity.EntityType type : MONSTER_TYPES) {
+                if (entity.getType() == type) {
+                    alive++;
+                    break;
+                }
+            }
+        }
+        return alive;
     }
 
     private void actionTask() {

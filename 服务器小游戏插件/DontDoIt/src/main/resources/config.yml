@@ -41,6 +41,8 @@ diamond-behavior-disabled-threshold: 10
 game-difficulty: NORMAL
 # 是否给对局玩家无限夜视
 night-vision: true
+# 是否给对局玩家发光（隔墙能看到彼此）
+glowing: true
 # 对局期间是否允许 PvP（结束后还原世界原来的设置）
 pvp-enabled: true
 # 对局期间是否允许自然刷怪（僵尸等；铁傀儡不受此影响）
@@ -50,6 +52,12 @@ spawn-animals: 8
 spawn-monsters: 8
 # 主动刷怪时离玩家至少多少格
 mob-spawn-min-distance: 8
+# 对局中每隔多少秒再刷一批怪物（0 = 不周期刷）
+periodic-monster-spawn-seconds: 30
+# 每次周期刷新几只怪物
+periodic-monster-spawn-count: 2
+# 场上由插件刷出的怪物最多保留几只（超过就暂停周期刷新）
+periodic-monster-spawn-max: 12
 # 对局期间是否保留死亡背包（false = 死亡掉落物品）
 keep-inventory-on-death: false
 # 对局消息是否全服广播（false = 只发给本局玩家和附近的观战者）
