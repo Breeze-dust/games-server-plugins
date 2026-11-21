@@ -1032,8 +1032,8 @@ public class HubManager implements HubService {
         if (title != null && !title.isEmpty()) {
             hb.append(title).append('\n');
         }
-        // 头部里的「大厅 / 游戏分区 + 玩家名」整块开关（tab.show-player-sections）
-        if (plugin.getConfig().getBoolean("tab.show-player-sections", true)) {
+        // 头部里的「大厅 / 游戏分区 + 玩家名」整块开关（tab.show-player-sections，默认关）
+        if (plugin.getConfig().getBoolean("tab.show-player-sections", false)) {
             if (!lobby.isEmpty()) {
                 hb.append("&7&l■ 大厅 &7(").append(lobby.size()).append(")\n");
                 hb.append("&7").append(lobby.stream().map(Player::getName).collect(Collectors.joining("&7, "))).append("\n");
