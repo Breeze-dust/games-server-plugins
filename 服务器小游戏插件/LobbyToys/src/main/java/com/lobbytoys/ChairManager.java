@@ -79,13 +79,15 @@ public final class ChairManager {
         if (player.isInsideVehicle() || isSitting(player) || player.isSneaking()) {
             return false;
         }
-        Location loc = block.getLocation().add(0.5,
-                plugin.settings().chairSeatHeight + plugin.settings().chairSeatOffset, 0.5);
+        // 座位放在方块顶面略下方（骗子酒馆同款 0.45），起身直接下车就能站回方块上
+        Location loc = block.getLocation().add(0.5, plugin.settings().chairSeatHeight, 0.5);
         loc.setYaw(player.getLocation().getYaw());
         loc.setPitch(0.0f);
+        player.teleport(loc);
         ArmorStand stand = block.getWorld().spawn(loc, ArmorStand.class, as -> {
             as.setInvisible(true);
             as.setMarker(true);
+            as.setSmall(true);
             as.setGravity(false);
             as.setBasePlate(false);
             as.setArms(false);
@@ -107,31 +109,20 @@ public final class ChairManager {
         return true;
     }
 
-    /** 起身：把玩家放回座位方块上方（座位实体可能埋在方块里，直接下车会卡住）。 */
+    /** 起身：下车、删掉座位实体。座位就在方块上方，玩家会直接站回椅子上。 */
     public void stand(Player player) {
-        Seat seat = seats.remove(player.getUniqueId());
-        if (seat == null) {
-            return;
-        }
-        Location out = seat.block.getLocation().add(0.5, 1.0, 0.5);
-        out.setYaw(player.getLocation().getYaw());
-        out.setPitch(player.getLocation().getPitch());
-        if (seat.stand.getPassengers().contains(player)) {
-            seat.stand.eject();
-        }
-        seat.stand.remove();
-        player.teleport(out);
+        dismiss(player.getUniqueId());
     }
 
-    /** 玩家只是离开座位（下线/换世界/死亡），不用再传送他。 */
+    /** 玩家离开座位（起身 / 下线 / 换世界 / 死亡），不做额外传送。 */
     public void dismiss(UUID playerId) {
         Seat seat = seats.remove(playerId);
         if (seat == null) {
             return;
         }
         Player player = Bukkit.getPlayer(playerId);
-        if (player != null && seat.stand.getPassengers().contains(player)) {
-            seat.stand.eject();
+        if (player != null && player.getVehicle() == seat.stand) {
+            player.leaveVehicle();
         }
         seat.stand.remove();
     }

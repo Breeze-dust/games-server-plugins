@@ -6,6 +6,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -23,7 +24,7 @@ public final class ChairListener implements Listener {
         this.chairs = chairs;
     }
 
-    /** 空手右键可坐的方块 → 坐下（Shift 右键是放方块/交互，不抢）。 */
+    /** 空手右键可坐的方块 → 坐下；坐着时空手再右键 → 起身（骗子酒馆同款操作）。 */
     @EventHandler(ignoreCancelled = true)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) {
@@ -37,10 +38,22 @@ public final class ChairListener implements Listener {
             return;
         }
         Player player = event.getPlayer();
+        if (chairs.isSitting(player)) {
+            chairs.stand(player);
+            return;
+        }
         if (player.isSneaking()) {
             return;
         }
         chairs.sit(player, event.getClickedBlock());
+    }
+
+    /** 客户端按 Shift 会让原版直接下车：跟着把座位实体收掉。 */
+    @EventHandler
+    public void onDismount(EntityDismountEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            chairs.dismiss(player.getUniqueId());
+        }
     }
 
     @EventHandler(ignoreCancelled = true)

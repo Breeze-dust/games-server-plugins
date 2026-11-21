@@ -32,7 +32,6 @@ public final class Settings {
     public final boolean chairsEnabled;
     public final Set<Material> chairBlocks;
     public final double chairSeatHeight;
-    public final double chairSeatOffset;
     public final String chairMessage;
 
     private Settings(FileConfiguration config) {
@@ -49,9 +48,8 @@ public final class Settings {
 
         this.chairsEnabled = config.getBoolean("chairs.enabled", true);
         this.chairBlocks = resolveChairs(config);
-        this.chairSeatHeight = config.getDouble("chairs.seat-height", 0.5);
-        this.chairSeatOffset = config.getDouble("chairs.seat-offset", -0.75);
-        String msg = config.getString("chairs.message", "&7已坐下 &8· &7按 &fShift &7起身");
+        this.chairSeatHeight = config.getDouble("chairs.seat-height", 0.45);
+        String msg = config.getString("chairs.message", "&7已坐下 &8· &7再右键或按 &fShift &7起身");
         this.chairMessage = msg == null ? "" : msg;
     }
 
