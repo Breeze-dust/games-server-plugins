@@ -1,8 +1,16 @@
 package com.lobbytoys;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Tag;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /** 一份启动/重载时读好的配置快照。 */
 public final class Settings {
@@ -20,6 +28,13 @@ public final class Settings {
     public final long cooldownMillis;
     public final boolean hideFromOwner;
 
+    /** 可坐方块功能与参数。 */
+    public final boolean chairsEnabled;
+    public final Set<Material> chairBlocks;
+    public final double chairSeatHeight;
+    public final double chairSeatOffset;
+    public final String chairMessage;
+
     private Settings(FileConfiguration config) {
         List<String> configured = config.getStringList("worlds");
         this.worlds = configured.isEmpty() ? List.of("world") : List.copyOf(configured);
@@ -31,6 +46,39 @@ public final class Settings {
         this.shrinkScale = Math.max(0.2, Math.min(1.0, config.getDouble("shrink-scale", 0.5)));
         this.cooldownMillis = Math.max(0L, config.getLong("cooldown-millis", 1500L));
         this.hideFromOwner = config.getBoolean("hide-from-owner", false);
+
+        this.chairsEnabled = config.getBoolean("chairs.enabled", true);
+        this.chairBlocks = resolveChairs(config);
+        this.chairSeatHeight = config.getDouble("chairs.seat-height", 0.5);
+        this.chairSeatOffset = config.getDouble("chairs.seat-offset", -0.75);
+        String msg = config.getString("chairs.message", "&7已坐下 &8· &7按 &fShift &7起身");
+        this.chairMessage = msg == null ? "" : msg;
+    }
+
+    /** chairs.blocks 里每一项可以是材质名，也可以是原版方块标签名（如 STAIRS / SLABS / WOODEN_STAIRS）。 */
+    private static Set<Material> resolveChairs(FileConfiguration config) {
+        Set<Material> out = EnumSet.noneOf(Material.class);
+        for (String raw : config.getStringList("chairs.blocks")) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            String name = raw.trim();
+            Material material = Material.matchMaterial(name);
+            if (material != null && material.isBlock()) {
+                out.add(material);
+                continue;
+            }
+            Tag<Material> tag = Bukkit.getTag("blocks",
+                    NamespacedKey.minecraft(name.toLowerCase(Locale.ROOT)), Material.class);
+            if (tag != null) {
+                out.addAll(tag.getValues());
+            }
+        }
+        if (out.isEmpty()) {
+            out.addAll(Tag.STAIRS.getValues());
+            out.addAll(Tag.SLABS.getValues());
+        }
+        return Collections.unmodifiableSet(out);
     }
 
     public static Settings load(FileConfiguration config) {

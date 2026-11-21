@@ -13,6 +13,7 @@ public final class LobbyToysPlugin extends JavaPlugin {
     private CloneManager clones;
     private ShrinkManager shrinks;
     private ScratchManager scratch;
+    private ChairManager chairs;
 
     @Override
     public void onEnable() {
@@ -31,6 +32,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
         scratch = new ScratchManager(this);
         getServer().getPluginManager().registerEvents(new ScratchListener(scratch), this);
         scratch.start();
+
+        chairs = new ChairManager(this);
+        getServer().getPluginManager().registerEvents(new ChairListener(chairs), this);
 
         ToyCommand command = new ToyCommand(this, clones, items, menu, scratch);
         PluginCommand pluginCommand = getCommand("lobbytoys");
@@ -57,6 +61,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
         }
         if (scratch != null) {
             scratch.shutdown();
+        }
+        if (chairs != null) {
+            chairs.shutdown();
         }
     }
 
@@ -86,6 +93,9 @@ public final class LobbyToysPlugin extends JavaPlugin {
         }
         if (scratch != null) {
             scratch.reload();
+        }
+        if (chairs != null && !settings.chairsEnabled) {
+            chairs.shutdown();
         }
     }
 }

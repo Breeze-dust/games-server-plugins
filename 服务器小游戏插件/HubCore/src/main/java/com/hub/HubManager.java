@@ -1032,26 +1032,29 @@ public class HubManager implements HubService {
         if (title != null && !title.isEmpty()) {
             hb.append(title).append('\n');
         }
-        if (!lobby.isEmpty()) {
-            hb.append("&7&l■ 大厅 &7(").append(lobby.size()).append(")\n");
-            hb.append("&7").append(lobby.stream().map(Player::getName).collect(Collectors.joining("&7, "))).append("\n");
-        }
-        // 默认始终显示所有已登记游戏分区（每个游戏一个分区），空分区也显示（0）
-        boolean showEmpty = plugin.getConfig().getBoolean("tab.show-empty-games", true);
-        for (String game : keys) {
-            List<Player> ws = waiting.get(game);
-            List<Player> ps = playing.get(game);
-            int count = (ws == null ? 0 : ws.size()) + (ps == null ? 0 : ps.size());
-            if (count == 0 && !showEmpty) {
-                continue;
+        // 头部里的「大厅 / 游戏分区 + 玩家名」整块开关（tab.show-player-sections）
+        if (plugin.getConfig().getBoolean("tab.show-player-sections", true)) {
+            if (!lobby.isEmpty()) {
+                hb.append("&7&l■ 大厅 &7(").append(lobby.size()).append(")\n");
+                hb.append("&7").append(lobby.stream().map(Player::getName).collect(Collectors.joining("&7, "))).append("\n");
             }
-            char color = colorFor(game);
-            hb.append("&").append(color).append("&l■ ").append(game).append(" &7(").append(count).append(")\n");
-            if (ws != null && !ws.isEmpty()) {
-                hb.append("  &e[等待中] ").append(ws.stream().map(p -> nameIn(p, 'e')).collect(Collectors.joining("&7, "))).append("\n");
-            }
-            if (ps != null && !ps.isEmpty()) {
-                hb.append("  &a[已加入] ").append(ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.joining("&7, "))).append("\n");
+            // 默认始终显示所有已登记游戏分区（每个游戏一个分区），空分区也显示（0）
+            boolean showEmpty = plugin.getConfig().getBoolean("tab.show-empty-games", true);
+            for (String game : keys) {
+                List<Player> ws = waiting.get(game);
+                List<Player> ps = playing.get(game);
+                int count = (ws == null ? 0 : ws.size()) + (ps == null ? 0 : ps.size());
+                if (count == 0 && !showEmpty) {
+                    continue;
+                }
+                char color = colorFor(game);
+                hb.append("&").append(color).append("&l■ ").append(game).append(" &7(").append(count).append(")\n");
+                if (ws != null && !ws.isEmpty()) {
+                    hb.append("  &e[等待中] ").append(ws.stream().map(p -> nameIn(p, 'e')).collect(Collectors.joining("&7, "))).append("\n");
+                }
+                if (ps != null && !ps.isEmpty()) {
+                    hb.append("  &a[已加入] ").append(ps.stream().map(p -> nameIn(p, 'a')).collect(Collectors.joining("&7, "))).append("\n");
+                }
             }
         }
         // 头部文字先缓存下来：动画任务只重发头部/底部，不重建整份名单
