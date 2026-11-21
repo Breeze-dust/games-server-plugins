@@ -87,6 +87,8 @@ public final class GameRoom {
     private final Map<UUID, Scoreboard> savedBoards = new HashMap<>();
     private final Map<UUID, Integer> dropCounts = new HashMap<>();
     private final Map<UUID, Long> lastDropMillis = new HashMap<>();
+    /** 对局中途回大厅的玩家：保留原 Participant，重新进房时沿用队伍、分数和机关选择。 */
+    private final Map<UUID, Participant> awayParticipants = new HashMap<>();
 
     private Scoreboard scoreboard;
     private Team noCollision;
@@ -262,9 +264,15 @@ public final class GameRoom {
         if (existing != null) {
             return rejoin(player, existing);
         }
-        Participant participant = new Participant(player.getUniqueId(), player.getName());
-        participant.setTeamId(assignTeam());
-        participants.add(participant);
+        Participant participant = awayParticipants.remove(player.getUniqueId());
+        if (participant != null) {
+            // 中途回大厅后重新进房：沿用原来的队伍和累计分数。
+            participants.add(participant);
+        } else {
+            participant = new Participant(player.getUniqueId(), player.getName());
+            participant.setTeamId(assignTeam());
+            participants.add(participant);
+        }
         if (mode == GameMode.TEAM) {
             TeamState team = teams.get(participant.teamId());
             if (team != null) {
@@ -347,8 +355,15 @@ public final class GameRoom {
                             new PlacementSession(player, participant.choice(), startDistance));
                 }
             }
-            case STARTING -> enterRun(player);
+            case STARTING -> {
+                restoreRoundResult(player, participant);
+                enterRun(player);
+                if (participant.failed()) {
+                    player.setGameMode(org.bukkit.GameMode.SPECTATOR);
+                }
+            }
             case RUNNING -> {
+                restoreRoundResult(player, participant);
                 enterRun(player);
                 if (participant.finished() || participant.failed()) {
                     player.setGameMode(org.bukkit.GameMode.SPECTATOR);
@@ -362,6 +377,24 @@ public final class GameRoom {
             }
             default -> {
             }
+        }
+    }
+
+    /**
+     * 重新进入本回合时按回合记录恢复已过关/已失败状态，
+     * 避免失败的人回大厅再进图重新跑一遍、过关的人重复计入名次。
+     */
+    private void restoreRoundResult(Player player, Participant participant) {
+        UUID uuid = player.getUniqueId();
+        if (roundData.finishOrder().contains(uuid)) {
+            participant.setFinished(true);
+            participant.setFinishOrder(roundData.finishOrder().indexOf(uuid) + 1);
+            Long finishTime = roundData.finishTimes().get(uuid);
+            participant.setFinishTime(finishTime != null ? finishTime : System.currentTimeMillis());
+            Msg.send(player, "&e本回合你已经到达终点，重新进入只能观战。");
+        } else if (roundData.failed().contains(uuid)) {
+            participant.setFailed(true);
+            Msg.send(player, "&c本回合你已经结束，重新进入只能观战。");
         }
     }
 
@@ -469,6 +502,10 @@ public final class GameRoom {
         Participant participant = participant(player);
         if (participant == null) {
             return;
+        }
+        if (phase != Phase.WAITING && phase != Phase.ENDED) {
+            // 对局中回大厅：先留着这名玩家的 Participant，重新进房时接着算分。
+            awayParticipants.put(participant.uuid(), participant);
         }
         participants.remove(participant);
         if (bossBar != null) {
@@ -584,6 +621,10 @@ public final class GameRoom {
         selectionSlots.clear();
         sessions.clear();
         for (Participant participant : participants) {
+            participant.resetRound();
+        }
+        // 中途回大厅的人也要清掉上一回合的临时数据，只保留分数和队伍。
+        for (Participant participant : awayParticipants.values()) {
             participant.resetRound();
         }
         // 上一回合被吃掉的金币重新出现；易碎/间歇机关恢复回合状态。
@@ -1460,6 +1501,7 @@ public final class GameRoom {
         sessions.clear();
         plugin.mechanismManager().removeAll(this);
         mechanisms.clear();
+        awayParticipants.clear();
         for (Participant participant : new ArrayList<>(participants)) {
             Player player = Bukkit.getPlayer(participant.uuid());
             if (player != null) {
