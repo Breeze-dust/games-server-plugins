@@ -25,6 +25,9 @@ public final class PlayerState {
     public long fallStart;
     public long onAirStart;
 
+    public double maxFallDistance;
+    public boolean wasAir;
+
     public Location lastLocation;
     public float lastYaw;
     public float lastPitch;

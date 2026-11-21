@@ -767,6 +767,21 @@ public final class Game {
         if (state != State.RUNNING) {
             return;
         }
+        PlayerState st = states.computeIfAbsent(player.getUniqueId(), id -> new PlayerState(player, tick));
+        if (!player.isOnGround()) {
+            st.wasAir = true;
+            st.maxFallDistance = Math.max(st.maxFallDistance, player.getFallDistance());
+        } else if (st.wasAir) {
+            // 刚落地：用这一跳记录到的最大下落距离判定「坠落 X 格」
+            Team team = teamOf.get(player.getUniqueId());
+            if (team != null && !team.isEliminated() && team.getCriterion() != null
+                    && team.getCriterion().type == com.dontdoit.criteria.CritType.FALL_DISTANCE
+                    && st.maxFallDistance >= team.getCriterion().doubleParam("distance", 5)) {
+                trigger(team, player, team.getCriterion());
+            }
+            st.wasAir = false;
+            st.maxFallDistance = 0;
+        }
         boolean now = player.isOnGround();
         Boolean was = grounded.put(player.getUniqueId(), now);
         if (was != null && was && !now && player.getVelocity().getY() > 0) {

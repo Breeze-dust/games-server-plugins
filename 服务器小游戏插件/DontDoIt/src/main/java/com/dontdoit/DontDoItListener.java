@@ -169,24 +169,32 @@ public final class DontDoItListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onDamage(EntityDamageEvent event) {
+        // 攻击者也要参与判定：hurt_entity（造成伤害/空手打人/用镐子攻击）是以攻击者为单位的
+        if (event instanceof EntityDamageByEntityEvent byEntity) {
+            Player attacker = asPlayerDamager(byEntity);
+            if (attacker != null) {
+                managerEvent(attacker, event);
+            }
+        }
         if (event.getEntity() instanceof Player player) {
-            managerEvent(player, event);
-        } else if (event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent byEntity
-                && byEntity.getDamager() instanceof Player player) {
             managerEvent(player, event);
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onDeath(EntityDeathEvent event) {
-        if (event instanceof PlayerDeathEvent death) {
-            Game game = manager.gameOf(death.getEntity());
+        if (event.getEntity() instanceof Player victim) {
+            Game game = manager.gameOf(victim);
             if (game != null) {
-                game.onDeath(death.getEntity());
+                game.onDeath(victim);
             }
-            managerEvent(death.getEntity(), event);
-        } else if (event.getEntity().getKiller() != null) {
-            managerEvent(event.getEntity().getKiller(), event);
+            // 死者侧：killed_by_entity（死亡/摔死/被炸死…）
+            managerEvent(victim, event);
+        }
+        // 凶手侧：kill_entity（杀死生物/杀死玩家…），玩家被杀时同样要判定
+        Player killer = event.getEntity().getKiller();
+        if (killer != null) {
+            managerEvent(killer, event);
         }
     }
 
