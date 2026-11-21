@@ -40,7 +40,6 @@ public final class DontDoItListener implements Listener {
 
     private final DontDoItPlugin plugin;
     private final DontDoItManager manager;
-    private final java.util.Map<UUID, Long> ceilingWarnAt = new java.util.HashMap<>();
 
     public DontDoItListener(DontDoItPlugin plugin, DontDoItManager manager) {
         this.plugin = plugin;
@@ -345,17 +344,6 @@ public final class DontDoItListener implements Listener {
             return;
         }
         if (!game.isInsideArena(event.getBlock().getLocation())) {
-            return;
-        }
-        if (event.getBlock().getY() > game.restoreCeilingY()) {
-            event.setCancelled(true);
-            Player player = event.getPlayer();
-            long now = System.currentTimeMillis();
-            Long last = ceilingWarnAt.get(player.getUniqueId());
-            if (last == null || now - last > 3000) {
-                ceilingWarnAt.put(player.getUniqueId(), now);
-                Chat.send(player, "&c超出可还原高度，不能在这里放方块。");
-            }
             return;
         }
         if (event.isCancelled()) {

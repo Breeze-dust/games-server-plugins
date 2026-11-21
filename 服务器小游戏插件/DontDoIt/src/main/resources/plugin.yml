@@ -1,5 +1,5 @@
 name: DontDoIt
-version: '1.1.4'
+version: '1.1.5'
 main: com.dontdoit.DontDoItPlugin
 api-version: '1.21'
 description: 不要做挑战：每队一条禁止词条，做了就扣命，最后存活获胜

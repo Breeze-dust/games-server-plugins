@@ -397,10 +397,12 @@ public final class Game {
                 baseline = mgr.loadBaseline(arena);
             }
             if (baseline != null) {
-                if (baseline.width() != restoreWidth()) {
+                if (baseline.width() != restoreWidth()
+                        || baseline.maxY() < mgr.restoreTopFor(world, center.getBlockY(),
+                        arena.getStoneY() == Integer.MIN_VALUE ? center.getBlockY() : arena.getStoneY())) {
                     mgr.getLogger().warning("场地 " + arena.getName() + " 的地图基线尺寸与当前场地不一致"
-                            + "（基线 " + baseline.width() + "，当前 " + restoreWidth() + "）："
-                            + "请清理残留方块后执行 /ddi savemap " + arena.getName());
+                            + "（基线 " + baseline.width() + " 宽、顶部 Y=" + baseline.maxY()
+                            + "）：请清理残留方块后执行 /ddi savemap " + arena.getName());
                 }
                 int changed = baseline.restore(world);
                 if (changed > 0) {
@@ -417,7 +419,7 @@ public final class Game {
         }
         if (mgr.restoreMap() && baseline == null) {
             int bottom = ArenaGenerator.bedrockY(stoneY, mgr.bedrockDepth());
-            int top = restoreTopY(world, center, stoneY);
+            int top = mgr.restoreTopFor(world, center.getBlockY(), stoneY);
             int width = restoreWidth();
             if (top > bottom) {
                 int minX = center.getBlockX() - width / 2;
@@ -1078,19 +1080,6 @@ public final class Game {
     private int restoreWidth() {
         int pad = mgr.useWorldBorder() ? mgr.worldBorderPadding() : 0;
         return arena.side() + pad * 2;
-    }
-
-    private int restoreTopY(World world, Location center, int stoneY) {
-        int top = Math.max(center.getBlockY(), stoneY) + mgr.restoreTopOffset();
-        return Math.min(world.getMaxHeight() - 1, top);
-    }
-
-    /** 可还原高度上限；对局中禁止在这个高度以上放方块，避免留下清不掉的方块。 */
-    public int restoreCeilingY() {
-        if (baseline != null) {
-            return baseline.maxY();
-        }
-        return Integer.MAX_VALUE;
     }
 
     /** 可玩范围 = 场地边长 + 世界边界留白，与世界边界、地图基线一致。 */

@@ -55,7 +55,9 @@ use-world-border: true
 # 第一次开局会把当时的场地存成基线（plugins/DontDoIt/arena-<场地>.baseline），
 # 之后改过地图要重新执行 /ddi savemap <场地>
 restore-map: true
-# 基线包含中心/石层上方多少格（地表、树也能还原）
+# 基线一直记录到世界最高处（玩家搭多高都能还原；场地越大，抓取/还原越慢）
+restore-to-max-height: true
+# restore-to-max-height: false 时，基线只记录中心/石层上方这么多格
 restore-top-offset: 16
 # 世界边界比场地半径多留几格
 world-border-padding: 4

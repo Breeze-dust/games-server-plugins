@@ -393,8 +393,7 @@ public final class DontDoItCommand implements CommandExecutor, TabCompleter {
             return;
         }
         int bottom = ArenaGenerator.bedrockY(stoneY, manager.bedrockDepth());
-        int top = Math.min(arena.world().getMaxHeight() - 1,
-                Math.max(arena.center().getBlockY(), stoneY) + manager.restoreTopOffset());
+        int top = manager.restoreTopFor(arena.world(), arena.center().getBlockY(), stoneY);
         if (top <= bottom) {
             Chat.send(sender, "&c基线范围为空（检查 restore-top-offset）。");
             return;

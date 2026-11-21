@@ -78,6 +78,7 @@ public final class DontDoItManager {
     private boolean keepInventoryOnDeath = false;
     private boolean broadcastServerWide = false;
     private int restoreTopOffset = 16;
+    private boolean restoreToMaxHeight = true;
     private String diamondBehavior = "reduce_others_life";
     private Difficulty gameDifficulty = Difficulty.NORMAL;
     private List<ArenaGenerator.OreRule> oreRules = List.of();
@@ -176,6 +177,7 @@ public final class DontDoItManager {
         keepInventoryOnDeath = c.getBoolean("keep-inventory-on-death", false);
         broadcastServerWide = c.getBoolean("broadcast-server-wide", false);
         restoreTopOffset = Math.max(0, c.getInt("restore-top-offset", 16));
+        restoreToMaxHeight = c.getBoolean("restore-to-max-height", true);
         yLevelOffsetGround = c.getInt("y-level-offset-ground", 1);
         yLevelOffsetOnAir = c.getInt("y-level-offset-on-air", 14);
         bedrockDepth = Math.max(2, c.getInt("bedrock-depth", 11));
@@ -419,6 +421,19 @@ public final class DontDoItManager {
 
     public int restoreTopOffset() {
         return restoreTopOffset;
+    }
+
+    public boolean restoreToMaxHeight() {
+        return restoreToMaxHeight;
+    }
+
+    /** 地图基线的顶部 Y：默认一直记录到世界最高处。 */
+    public int restoreTopFor(org.bukkit.World world, int centerY, int stoneY) {
+        if (restoreToMaxHeight) {
+            return world.getMaxHeight() - 1;
+        }
+        return Math.min(world.getMaxHeight() - 1,
+                Math.max(centerY, stoneY) + restoreTopOffset);
     }
 
     public java.io.File baselineFile(DontDoItArena arena) {
