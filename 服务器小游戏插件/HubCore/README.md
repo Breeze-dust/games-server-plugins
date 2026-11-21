@@ -16,8 +16,8 @@
   头部/底部都支持占位符：`{time}` `{date}` `{online}` `{max}` `{mem-used}` `{mem-max}` `{tps}` `{ping}` `{anim:名字}`
   （`{ping}` 是**每个玩家自己**的延迟，底部按玩家逐个生成）；`tab.header-extra` 是在分区名单上方追加的行，
   `tab.header-title` 是头部第一行（默认引用 `{anim:title}`）。
-  `tab.show-player-sections`（默认 `true`）是头部里「■ 大厅 (人数) + 玩家名 / ■ 游戏 (人数) + 名单」这一整块的开关，
-  设成 `false` 就只留标题 + `header-extra`，玩家名只在下面的玩家列表里出现。
+  `tab.show-player-sections`（默认 `false`）是头部里「■ 大厅 (人数) + 玩家名 / ■ 游戏 (人数) + 名单」这一整块的开关，
+  设成 `true` 就显示；`false` 时只留标题 + `header-extra`，玩家名只在下面的玩家列表里出现。
   `tab.show-ping`（默认开）会在每个玩家的条目名字后面加 `[23ms]`（绿<100 / 黄<200 / 金<400 / 红）。
   条目前缀：等待室里未准备 `&e[未准备·游戏]`、点了准备 `&b[已准备·游戏]`（青色，数据来自
   `MiniGameLib` 的 `ReadyItems.isReady`）、对局中 `&a[已加入·游戏]`，街机派对对局里的玩家统一显示
