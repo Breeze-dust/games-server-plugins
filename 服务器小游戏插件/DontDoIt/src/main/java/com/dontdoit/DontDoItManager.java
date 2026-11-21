@@ -76,6 +76,9 @@ public final class DontDoItManager {
     private boolean mobSpawningEnabled = true;
     private boolean keepInventoryOnDeath = false;
     private boolean broadcastServerWide = false;
+    private int spawnAnimals = 8;
+    private int spawnMonsters = 8;
+    private int mobSpawnMinDistance = 8;
     private int restoreTopOffset = 16;
     private boolean restoreToMaxHeight = true;
     private String diamondBehavior = "reduce_others_life";
@@ -175,6 +178,9 @@ public final class DontDoItManager {
         mobSpawningEnabled = c.getBoolean("mob-spawning-enabled", true);
         keepInventoryOnDeath = c.getBoolean("keep-inventory-on-death", false);
         broadcastServerWide = c.getBoolean("broadcast-server-wide", false);
+        spawnAnimals = Math.max(0, c.getInt("spawn-animals", 8));
+        spawnMonsters = Math.max(0, c.getInt("spawn-monsters", 8));
+        mobSpawnMinDistance = Math.max(1, c.getInt("mob-spawn-min-distance", 8));
         restoreTopOffset = Math.max(0, c.getInt("restore-top-offset", 16));
         restoreToMaxHeight = c.getBoolean("restore-to-max-height", true);
         yLevelOffsetGround = c.getInt("y-level-offset-ground", 1);
@@ -407,6 +413,18 @@ public final class DontDoItManager {
 
     public boolean broadcastServerWide() {
         return broadcastServerWide;
+    }
+
+    public int spawnAnimals() {
+        return spawnAnimals;
+    }
+
+    public int spawnMonsters() {
+        return spawnMonsters;
+    }
+
+    public int mobSpawnMinDistance() {
+        return mobSpawnMinDistance;
     }
 
     public boolean restoreMap() {

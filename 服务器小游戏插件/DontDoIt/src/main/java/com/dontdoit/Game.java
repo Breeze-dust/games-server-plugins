@@ -47,6 +47,15 @@ public final class Game {
     private final WaitCountdown countdown;
     private static final CriterionMatcher MATCHER = new CriterionMatcher();
     private final Random random = new Random();
+    private final List<UUID> spawnedMobs = new ArrayList<>();
+
+    private static final org.bukkit.entity.EntityType[] ANIMAL_TYPES = {
+            org.bukkit.entity.EntityType.COW, org.bukkit.entity.EntityType.PIG,
+            org.bukkit.entity.EntityType.SHEEP, org.bukkit.entity.EntityType.CHICKEN,
+            org.bukkit.entity.EntityType.RABBIT};
+    private static final org.bukkit.entity.EntityType[] MONSTER_TYPES = {
+            org.bukkit.entity.EntityType.ZOMBIE, org.bukkit.entity.EntityType.SKELETON,
+            org.bukkit.entity.EntityType.SPIDER};
 
     private State state = State.WAITING;
     private long tick;
@@ -469,6 +478,7 @@ public final class Game {
             t.setEliminated(false);
         }
         spawnTeams(playing);
+        spawnInitialMobs();
         for (Team t : playing) {
             for (Player p : t.members()) {
                 states.put(p.getUniqueId(), new PlayerState(p, tick));
@@ -515,6 +525,78 @@ public final class Game {
                 p.setRespawnLocation(spot, true);
             }
         }
+    }
+
+    /** 开局时在场地内主动刷一批动物和怪物（自然刷怪在地下几乎不会发生）。 */
+    private void spawnInitialMobs() {
+        World world = arena.world();
+        Location center = arena.center();
+        if (world == null || center == null) {
+            return;
+        }
+        int radius = Math.max(1, arena.radius() - 1);
+        spawnMobGroup(world, center, radius, mgr.spawnAnimals(), ANIMAL_TYPES);
+        spawnMobGroup(world, center, radius, mgr.spawnMonsters(), MONSTER_TYPES);
+    }
+
+    private void spawnMobGroup(World world, Location center, int radius, int count,
+                               org.bukkit.entity.EntityType[] types) {
+        if (count <= 0) {
+            return;
+        }
+        int spawned = 0;
+        int minDistance = mgr.mobSpawnMinDistance();
+        for (int attempt = 0; attempt < count * 15 && spawned < count; attempt++) {
+            int x = center.getBlockX() + random.nextInt(radius * 2 + 1) - radius;
+            int z = center.getBlockZ() + random.nextInt(radius * 2 + 1) - radius;
+            int y = world.getHighestBlockYAt(x, z) + 1;
+            if (y >= world.getMaxHeight() - 1) {
+                continue;
+            }
+            Location loc = new Location(world, x + 0.5, y, z + 0.5);
+            if (loc.getBlock().getType() != org.bukkit.Material.AIR
+                    || loc.clone().add(0, 1, 0).getBlock().getType() != org.bukkit.Material.AIR) {
+                continue;
+            }
+            boolean tooClose = false;
+            for (Team t : teams) {
+                for (Player p : t.members()) {
+                    if (p.getWorld().equals(world)
+                            && p.getLocation().distanceSquared(loc) < (double) minDistance * minDistance) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (tooClose) {
+                    break;
+                }
+            }
+            if (tooClose) {
+                continue;
+            }
+            try {
+                org.bukkit.entity.Entity entity = world.spawnEntity(loc, types[random.nextInt(types.length)]);
+                entity.setPersistent(true);
+                spawnedMobs.add(entity.getUniqueId());
+                spawned++;
+            } catch (RuntimeException ignored) {
+                // 单个生成失败不影响其它
+            }
+        }
+        if (spawned > 0) {
+            mgr.getLogger().info("场地 " + arena.getName() + " 开局刷新了 " + spawned + " 只"
+                    + (types == ANIMAL_TYPES ? "动物" : "怪物"));
+        }
+    }
+
+    private void removeSpawnedMobs() {
+        for (UUID id : spawnedMobs) {
+            org.bukkit.entity.Entity entity = Bukkit.getEntity(id);
+            if (entity != null) {
+                entity.remove();
+            }
+        }
+        spawnedMobs.clear();
     }
 
     // ================== 词条 ==================
@@ -1059,6 +1141,7 @@ public final class Game {
         }
         teamOf.clear();
         states.clear();
+        removeSpawnedMobs();
         arena.clearBorder();
         if (mgr.restoreMap() && baseline == null) {
             // 插件重载/服务器重启后 Game 是新建的，这里补加载一次基线

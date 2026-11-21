@@ -45,6 +45,11 @@ night-vision: true
 pvp-enabled: true
 # 对局期间是否允许自然刷怪（僵尸等；铁傀儡不受此影响）
 mob-spawning-enabled: true
+# 开局时在场地内主动刷新多少只动物 / 怪物（0 = 不刷）
+spawn-animals: 8
+spawn-monsters: 8
+# 主动刷怪时离玩家至少多少格
+mob-spawn-min-distance: 8
 # 对局期间是否保留死亡背包（false = 死亡掉落物品）
 keep-inventory-on-death: false
 # 对局消息是否全服广播（false = 只发给本局玩家和附近的观战者）
