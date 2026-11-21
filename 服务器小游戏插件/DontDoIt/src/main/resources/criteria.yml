@@ -629,6 +629,8 @@ criteria:
   criteria_hold_time:
     - name: 100秒不换词条
       difficulty: trigger_definitely
+      # 默认禁用：持有同一条词条超过 100 秒会扣命，用户要求移除
+      disabled: true
       # 检查模式，可以是delay或stay，不可以留空
       # 若为delay，则在玩家切换词条时检查距离获得该词条的时间，若时间在time给定的范围内则触发
       # 若为stay，则当玩家持有该词条的持续时间在time给定的范围内时触发
