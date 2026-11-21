@@ -1,6 +1,10 @@
 package com.lobbytoys;
 
+import com.hub.util.Chat;
+import org.bukkit.Sound;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
@@ -24,7 +28,7 @@ public final class ChairListener implements Listener {
         this.chairs = chairs;
     }
 
-    /** 空手右键可坐的方块 → 坐下；坐着时空手再右键 → 起身（骗子酒馆同款操作）。 */
+    /** 椅子设置工具右键方块 = 登记 / 取消；玩家空手右键登记的方块 = 坐下 / 起身。 */
     @EventHandler(ignoreCancelled = true)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) {
@@ -33,11 +37,20 @@ public final class ChairListener implements Listener {
         if (event.getClickedBlock() == null) {
             return;
         }
+        Player player = event.getPlayer();
+
+        if (chairs.isTool(event.getItem())) {
+            event.setCancelled(true);
+            event.setUseInteractedBlock(Event.Result.DENY);
+            event.setUseItemInHand(Event.Result.DENY);
+            toggleChair(player, event.getClickedBlock());
+            return;
+        }
+
         ItemStack item = event.getItem();
         if (item != null && !item.getType().isAir()) {
             return;
         }
-        Player player = event.getPlayer();
         if (chairs.isSitting(player)) {
             chairs.stand(player);
             return;
@@ -45,7 +58,31 @@ public final class ChairListener implements Listener {
         if (player.isSneaking()) {
             return;
         }
-        chairs.sit(player, event.getClickedBlock());
+        if (chairs.sit(player, event.getClickedBlock())) {
+            // 登记过的方块可能带界面（箱子、按钮等），坐下时不要再触发原版用途
+            event.setCancelled(true);
+            event.setUseInteractedBlock(Event.Result.DENY);
+        }
+    }
+
+    private void toggleChair(Player player, Block block) {
+        if (!player.isOp() && !player.hasPermission("lobbytoys.admin")) {
+            Chat.actionBar(player, "&c只有管理员能登记椅子。");
+            return;
+        }
+        if (!chairs.registry().isAllowedWorld(block.getWorld())) {
+            Chat.actionBar(player, "&c只能在主城世界里登记椅子。");
+            return;
+        }
+        boolean added = chairs.registry().toggle(block, player.getLocation().getYaw());
+        if (added) {
+            player.playSound(block.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.6f);
+            Chat.actionBar(player, "&a已把这把方块登记为椅子（共 " + chairs.registry().size() + " 把）");
+        } else {
+            chairs.evict(block);
+            player.playSound(block.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.9f);
+            Chat.actionBar(player, "&7已取消这把椅子（还剩 " + chairs.registry().size() + " 把）");
+        }
     }
 
     /** 客户端按 Shift 会让原版直接下车：跟着把座位实体收掉。 */
@@ -103,14 +140,11 @@ public final class ChairListener implements Listener {
         }
     }
 
-    /** 椅子被拆了：上面的人站起来。 */
+    /** 椅子被拆了：取消登记，并让上面的人站起来。 */
     @EventHandler(ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        for (Player player : event.getBlock().getWorld().getPlayers()) {
-            ChairManager.SeatInfo seat = chairs.seatOf(player);
-            if (seat != null && seat.block().equals(event.getBlock())) {
-                chairs.stand(player);
-            }
+        if (chairs.registry().remove(event.getBlock())) {
+            chairs.evict(event.getBlock());
         }
     }
 }

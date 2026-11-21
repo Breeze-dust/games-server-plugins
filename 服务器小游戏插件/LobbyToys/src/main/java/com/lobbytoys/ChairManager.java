@@ -4,22 +4,27 @@ import com.hub.util.Chat;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * 可坐的方块：右键楼梯/半砖 → 生成一个隐形座位实体（marker 盔甲架）并把玩家放上去。
- * 玩家按 Shift、受伤、下线、换世界、座位被拆时自动起身；座位实体不写盘，关服后不会残留。
+ * 椅子：用「椅子设置工具」右键登记方块，玩家空手右键登记的方块坐下。
+ * 座位是隐形 marker 盔甲架（骗子酒馆同款），不写盘，关服后不会残留。
  */
 public final class ChairManager {
 
-    /** 座位实体都带这个标签，方便关服/启动时清掉上次崩溃留下的。 */
+    /** 座位实体都带这个标签，方便启动时清掉上次崩溃留下的。 */
     private static final String SEAT_TAG = "lobbytoys-seat";
 
     private static final class Seat {
@@ -33,15 +38,41 @@ public final class ChairManager {
     }
 
     private final LobbyToysPlugin plugin;
+    private final NamespacedKey toolKey;
+    private final ChairRegistry registry;
     private final Map<UUID, Seat> seats = new HashMap<>();
 
     public ChairManager(LobbyToysPlugin plugin) {
         this.plugin = plugin;
+        this.toolKey = new NamespacedKey(plugin, "chair-tool");
+        this.registry = new ChairRegistry(plugin);
         cleanupLeftovers();
     }
 
-    public boolean isSittable(Material material) {
-        return plugin.settings().chairBlocks.contains(material);
+    public ChairRegistry registry() {
+        return registry;
+    }
+
+    /** 管理员用的椅子设置工具（右键方块 = 登记 / 取消登记）。 */
+    public ItemStack createTool() {
+        ItemStack stack = new ItemStack(Material.BLAZE_ROD);
+        ItemMeta meta = stack.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color("&6&l椅子设置工具")));
+            meta.lore(List.of(
+                    Chat.noItalic(Chat.color("&7右键方块：登记成椅子 / 取消椅子")),
+                    Chat.noItalic(Chat.color("&7玩家空手右键登记的方块即可坐下")),
+                    Chat.noItalic(Chat.color("&8椅子朝向 = 你登记时面朝的方向"))));
+            meta.getPersistentDataContainer().set(toolKey, PersistentDataType.BYTE, (byte) 1);
+            stack.setItemMeta(meta);
+        }
+        return stack;
+    }
+
+    public boolean isTool(ItemStack stack) {
+        return stack != null && !stack.getType().isAir() && stack.hasItemMeta()
+                && stack.getItemMeta().getPersistentDataContainer()
+                .has(toolKey, PersistentDataType.BYTE);
     }
 
     /** 玩家是否正坐在椅子上（座位被别的插件删掉时顺便清掉记录）。 */
@@ -70,7 +101,7 @@ public final class ChairManager {
 
     /** 坐上去。返回 false 表示这次交互不该被当成“坐下”。 */
     public boolean sit(Player player, Block block) {
-        if (!plugin.settings().chairsEnabled || !isSittable(block.getType())) {
+        if (!plugin.settings().chairsEnabled || !registry.isChair(block)) {
             return false;
         }
         if (!plugin.settings().isAllowedWorld(player.getWorld()) || plugin.isPlaying(player)) {
@@ -81,7 +112,8 @@ public final class ChairManager {
         }
         // 座位放在方块顶面略下方（骗子酒馆同款 0.45），起身直接下车就能站回方块上
         Location loc = block.getLocation().add(0.5, plugin.settings().chairSeatHeight, 0.5);
-        loc.setYaw(player.getLocation().getYaw());
+        Float yaw = registry.yawOf(block);
+        loc.setYaw(yaw == null ? player.getLocation().getYaw() : yaw);
         loc.setPitch(0.0f);
         player.teleport(loc);
         ArmorStand stand = block.getWorld().spawn(loc, ArmorStand.class, as -> {
@@ -125,6 +157,16 @@ public final class ChairManager {
             player.leaveVehicle();
         }
         seat.stand.remove();
+    }
+
+    /** 椅子被拆 / 被取消登记：让坐在这把椅子上的人先起来。 */
+    public void evict(Block block) {
+        for (UUID id : new HashMap<>(seats).keySet()) {
+            Seat seat = seats.get(id);
+            if (seat != null && seat.block.equals(block)) {
+                dismiss(id);
+            }
+        }
     }
 
     /** 关服 / 关掉 chairs 时把所有座位收掉。 */

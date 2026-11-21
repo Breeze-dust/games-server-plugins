@@ -21,14 +21,16 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
     private final ToyItems items;
     private final ToyMenu menu;
     private final ScratchManager scratch;
+    private final ChairManager chairs;
 
     public ToyCommand(LobbyToysPlugin plugin, CloneManager clones, ToyItems items, ToyMenu menu,
-                      ScratchManager scratch) {
+                      ScratchManager scratch, ChairManager chairs) {
         this.plugin = plugin;
         this.clones = clones;
         this.items = items;
         this.menu = menu;
         this.scratch = scratch;
+        this.chairs = chairs;
     }
 
     @Override
@@ -43,6 +45,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
             case "menu" -> openMenu(sender);
             case "give" -> give(sender, args);
             case "off" -> off(sender);
+            case "chair" -> chair(sender);
             case "scratch" -> scratch(sender, args);
             case "debug" -> debug(sender);
             case "reload" -> reload(sender);
@@ -95,6 +98,22 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
             return;
         }
         clones.stop(player.getUniqueId(), true);
+    }
+
+    /** 椅子设置工具：拿在手里右键方块，登记 / 取消椅子。 */
+    private void chair(CommandSender sender) {
+        if (!isAdmin(sender)) {
+            Chat.send(sender, "&c只有管理员能拿椅子设置工具。");
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            Chat.send(sender, "&c只有玩家能拿椅子设置工具。");
+            return;
+        }
+        player.getInventory().addItem(chairs.createTool());
+        Chat.send(player, "&6已获得椅子设置工具：&7右键方块登记 / 取消椅子，当前共 &f"
+                + chairs.registry().size() + " &7把。");
+        Chat.send(player, "&7玩家空手右键登记的方块即可坐下，朝向你登记时面朝的方向。");
     }
 
     /** 刮刮乐：只能命令打开，不进入小玩具菜单，没有权限的玩家看不到入口。 */
@@ -173,6 +192,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&b主城小玩具");
         Chat.send(sender, "&7/" + label + " menu &8- 打开小玩具菜单");
         Chat.send(sender, "&7/" + label + " give [玩家] &8- 发放小玩具");
+        Chat.send(sender, "&7/" + label + " chair &8- 拿椅子设置工具（右键方块登记 / 取消椅子）");
         Chat.send(sender, "&7/" + label + " scratch [行 列] &8- 生成 / 收回刮刮乐（管理员）");
         Chat.send(sender, "&7/" + label + " off &8- 收回自己的分身");
         Chat.send(sender, "&7/" + label + " debug &8- 查看插件版本与手持道具的玩具标记");
@@ -195,7 +215,7 @@ public final class ToyCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("menu", "give", "off", "scratch", "debug", "reload", "help"), args[0]);
+            return filter(List.of("menu", "give", "off", "chair", "scratch", "debug", "reload", "help"), args[0]);
         }
         if (args[0].equalsIgnoreCase("scratch")) {
             if (args.length == 2) {

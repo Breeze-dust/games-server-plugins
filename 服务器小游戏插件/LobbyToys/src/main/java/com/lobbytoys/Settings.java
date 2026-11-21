@@ -1,16 +1,8 @@
 package com.lobbytoys;
 
-import org.bukkit.Bukkit;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Tag;
 import org.bukkit.configuration.file.FileConfiguration;
 
-import java.util.Collections;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 /** 一份启动/重载时读好的配置快照。 */
 public final class Settings {
@@ -28,9 +20,8 @@ public final class Settings {
     public final long cooldownMillis;
     public final boolean hideFromOwner;
 
-    /** 可坐方块功能与参数。 */
+    /** 椅子功能参数（哪些方块能坐由 chairs.yml 登记决定）。 */
     public final boolean chairsEnabled;
-    public final Set<Material> chairBlocks;
     public final double chairSeatHeight;
     public final String chairMessage;
 
@@ -47,36 +38,9 @@ public final class Settings {
         this.hideFromOwner = config.getBoolean("hide-from-owner", false);
 
         this.chairsEnabled = config.getBoolean("chairs.enabled", true);
-        this.chairBlocks = resolveChairs(config);
         this.chairSeatHeight = config.getDouble("chairs.seat-height", 0.45);
         String msg = config.getString("chairs.message", "&7已坐下 &8· &7再右键或按 &fShift &7起身");
         this.chairMessage = msg == null ? "" : msg;
-    }
-
-    /** chairs.blocks 里每一项可以是材质名，也可以是原版方块标签名（如 STAIRS / SLABS / WOODEN_STAIRS）。 */
-    private static Set<Material> resolveChairs(FileConfiguration config) {
-        Set<Material> out = EnumSet.noneOf(Material.class);
-        for (String raw : config.getStringList("chairs.blocks")) {
-            if (raw == null || raw.isBlank()) {
-                continue;
-            }
-            String name = raw.trim();
-            Material material = Material.matchMaterial(name);
-            if (material != null && material.isBlock()) {
-                out.add(material);
-                continue;
-            }
-            Tag<Material> tag = Bukkit.getTag("blocks",
-                    NamespacedKey.minecraft(name.toLowerCase(Locale.ROOT)), Material.class);
-            if (tag != null) {
-                out.addAll(tag.getValues());
-            }
-        }
-        if (out.isEmpty()) {
-            out.addAll(Tag.STAIRS.getValues());
-            out.addAll(Tag.SLABS.getValues());
-        }
-        return Collections.unmodifiableSet(out);
     }
 
     public static Settings load(FileConfiguration config) {

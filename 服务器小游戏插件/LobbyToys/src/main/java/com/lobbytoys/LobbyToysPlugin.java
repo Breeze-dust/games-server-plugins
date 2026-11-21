@@ -36,7 +36,7 @@ public final class LobbyToysPlugin extends JavaPlugin {
         chairs = new ChairManager(this);
         getServer().getPluginManager().registerEvents(new ChairListener(chairs), this);
 
-        ToyCommand command = new ToyCommand(this, clones, items, menu, scratch);
+        ToyCommand command = new ToyCommand(this, clones, items, menu, scratch, chairs);
         PluginCommand pluginCommand = getCommand("lobbytoys");
         if (pluginCommand != null) {
             pluginCommand.setExecutor(command);
