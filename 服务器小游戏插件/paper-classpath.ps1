@@ -36,6 +36,7 @@ $paperCpRel = @(
     'org\jspecify\jspecify\1.0.0\jspecify-1.0.0.jar'
     'org\checkerframework\checker-qual\3.49.2\checker-qual-3.49.2.jar'
     'org\jetbrains\annotations\26.1.0\annotations-26.1.0.jar'
+    'de\maxhenkel\voicechat\voicechat-api\2.6.27\voicechat-api-2.6.27.jar'
 )
 
 $m2 = Join-Path $env:USERPROFILE '.m2\repository'

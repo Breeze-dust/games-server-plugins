@@ -2,7 +2,7 @@
 
 > 速查卡（AI 先读这里，别先读源码）
 
-- **一句话职责**：小游戏公共库——只提供主城对接契约（HubAPI）、消息（Chat）、建场模式（SetupMode）、等待倒计时（WaitCountdown）与全服唯一玩家记录（PlayerStats）；自身不注册命令、不含玩法代码。
+- **一句话职责**：小游戏公共库——只提供主城对接契约（HubAPI）、消息（Chat）、建场模式（SetupMode）、等待倒计时（WaitCountdown）、队伍语音（VoiceChat）与全服唯一玩家记录（PlayerStats）；自身不注册命令、不含玩法代码。
 - **对外 API**：
   - `com.hub.api.HubAPI`（静态门面）：游戏插件向主城上报玩家状态 / 场地状态、公屏"加入"播报、回主城联动时用它；关键方法 `setGame` / `setPlaying` / `setGameState` / `clearGame` / `gameOf`（查玩家当前上报的游戏名，不在游戏中为 null） / `setArena` / `removeArena` / `announceJoin`（两参数版 = 只报游戏名；三参数版多带场地名，播报成 `[游戏][场地] 玩家 加入了游戏`，多场地游戏用） / `registerLobbyHandler`（另有 `register` / `isReady` / `getLobby` 等）；主城缺席时全部空操作。
   - `com.hub.api.HubService`：HubCore 侧实现、在它 `onEnable` 里 `HubAPI.register(...)` 接进来的接口；小游戏只调 HubAPI，不要实现它。
@@ -15,6 +15,7 @@
   - `com.hub.util.LiveSidebar`：游戏内的实时侧边栏（存活名单 / 回合 / 分数）；每秒 `update(key, 标题, 参赛者, 行列表)`。**会自动把「离参赛者 96 格内、正在主城观战」的玩家也切到这块板子上**，观战者因此看到和局内一样的信息；退出观战/离开场地自动还原主计分板。
   - `com.hub.util.SpectatorHud`：自建 HUD（自己的计分板 / BossBar）的游戏用它接观战者——周期性 `viewers(key, 参赛者, 半径)` 拿「参赛者 + 附近观战者」，结束后 `restore(key)` 还原计分板；底层是 `HubAPI.spectatorsNear(参赛者, 半径)` + `HubAPI.isSpectating(id)`。
   - `com.hub.data.PlayerStats`：玩家记录的唯一入口；`load(命名空间, 旧data.yml)` / `save(命名空间, 视图)` / `file()` / `summary()` / `playerCounts()`。
+  - `com.hub.voice.VoiceChat`：Simple Voice Chat 队伍语音门面。`available()` / `createIsolatedGroup(名字)`（互相听不到的隔离组，返回组 id）/ `join(玩家UUID, 组id)` / `leave(玩家UUID)` / `deleteGroup(组id)`。**服务器没装 voicechat 插件时全部是空操作**，小游戏不用判断；没装客户端模组的玩家也不会被踢，只是听不到。SVC 的组可以被玩家自己退出，门面每秒对账一次把玩家拉回原组。
 - **入口**：`MiniGameLib/src/main/java/com/hub/MiniGameLibPlugin.java#onEnable`（只打两行启动日志；`onDisable` 调 `SetupMode.exitAllRegistered()` 还原还停在建场模式里的 OP 背包）
 - **命令**：无
 - **配置**：无 config.yml（`src/main/resources/` 下只有 `plugin.yml`，且它不注册任何命令）
@@ -31,6 +32,7 @@
   | 向主城上报玩家/场地状态、回主城联动 | `MiniGameLib/src/main/java/com/hub/api/HubAPI.java`（实现方 `MiniGameLib/src/main/java/com/hub/api/HubService.java`） |
   | 小游戏满足条件后给玩家发头衔 | `MiniGameLib/src/main/java/com/hub/api/GameTitles.java`（头衔内容在调用方；已接入示例见 `MurderMysteryManager#grantNoKnifeTitle`） |
   | 玩家记录读写与命名空间 | `MiniGameLib/src/main/java/com/hub/data/PlayerStats.java` |
+  | 队伍语音（建组/拉人/对账） | `MiniGameLib/src/main/java/com/hub/voice/VoiceChat.java`（SVC 实现在同目录 `SvcBackend.java`） |
   | 启动日志、关服兜底 | `MiniGameLib/src/main/java/com/hub/MiniGameLibPlugin.java` |
   | 插件元信息（是否注册命令） | `MiniGameLib/src/main/resources/plugin.yml` |
   | 迁移做法与各 API 用法示例 | `MiniGameLib/MIGRATION.md` |
@@ -42,7 +44,7 @@
   - HubAPI 在主城未启用/缺席时全是空操作、不抛异常——"调了没反应"先查 HubCore 有没有在跑。
   - `Chat` 颜色统一用 `&`（`§` 会被换算），不要再自己写 `LegacyComponentSerializer`。
   - `players.yml` 的层级 `games.<命名空间>` 是对外契约：不要手改层级，也不要在 `PlayerStats.save()` 之外直接写这个文件（会覆盖别人那块）。
-- **验证方法**：`powershell -ExecutionPolicy Bypass -File D:\BuildBattle\check-stats.ps1`（玩家记录自检：迁移 / 合并保存 / 未知命名空间；需先跑过一次 `build.ps1` 生成 `.build\out\MiniGameLib.classes`）+ 启动日志里 `[MiniGameLib]` 那几行（"MiniGameLib 已启用…" 与 "玩家记录 <路径> -> duel=…, gtb=…"）
+- **验证方法**：`powershell -ExecutionPolicy Bypass -File D:\BuildBattle\check-stats.ps1`（玩家记录自检：迁移 / 合并保存 / 未知命名空间；需先跑过一次 `build.ps1` 生成 `.build\out\MiniGameLib.classes`）+ 启动日志里 `[MiniGameLib]` 那几行（"MiniGameLib 已启用…" 与 "玩家记录 <路径> -> duel=…, gtb=…" 与 "已接入 Simple Voice Chat…" / "未安装 Simple Voice Chat…"）
 - **未确认 / TODO**：
   - `MIGRATION.md` 第 5 节让自检产物放 `.build\check-<插件名>`，但结尾说删 `build\check-<插件名>`（少一个点），未核实是否笔误。
   - 本卡只覆盖 `MiniGameLib/` 自身；各游戏侧怎么调这些 API 请看对应插件 README 的速查卡。

@@ -3,6 +3,7 @@ package com.hub;
 import com.hub.data.PlayerStats;
 import com.hub.util.ReadyItems;
 import com.hub.util.SetupMode;
+import com.hub.voice.VoiceChat;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -22,7 +23,8 @@ public class MiniGameLibPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         ReadyItems.init(this);
-        getLogger().info("MiniGameLib 已启用（公共库：HubAPI / GameTitles / Chat / SetupMode / WaitCountdown / ReadyItems / PlayerStats）。");
+        VoiceChat.init(this);
+        getLogger().info("MiniGameLib 已启用（公共库：HubAPI / GameTitles / Chat / SetupMode / WaitCountdown / ReadyItems / PlayerStats / VoiceChat）。");
         // 唯一的玩家记录文件（各小游戏共用一个）：启动日志就是“线上有没有带对文件”的证据
         getLogger().info("玩家记录 " + PlayerStats.file().getPath() + " -> " + PlayerStats.summary());
     }
@@ -31,5 +33,6 @@ public class MiniGameLibPlugin extends JavaPlugin {
     public void onDisable() {
         // 关服兜底：把还停在建场模式里的 OP 背包还原回去
         SetupMode.exitAllRegistered();
+        VoiceChat.shutdown();
     }
 }

@@ -7,6 +7,7 @@ import com.hub.util.Chat;
 import com.hub.util.LiveSidebar;
 import com.hub.util.StartCountdown;
 import com.hub.util.WaitCountdown;
+import com.hub.voice.VoiceChat;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Color;
@@ -87,6 +88,10 @@ public final class TNTBattleManager {
     private final Map<UUID, PlayerState> states = new LinkedHashMap<>();
     private final Map<UUID, String> names = new LinkedHashMap<>();
     private final Map<UUID, TNTBattleArena.Team> teams = new HashMap<>();
+    /** 语音：红/蓝队各自的隔离组 id；没装 Simple Voice Chat 时为空。 */
+    private final Map<TNTBattleArena.Team, UUID> voiceGroups = new HashMap<>();
+    /** 语音：已淘汰玩家的旁观组，避免死人跟活人说话。 */
+    private UUID voiceSpectatorGroup;
     private final Set<UUID> eliminated = new HashSet<>();
     private final Set<UUID> spawnedTnt = new HashSet<>();
     private final Map<UUID, Long> tntReadyAt = new HashMap<>();
@@ -451,6 +456,7 @@ public final class TNTBattleManager {
         core.unbind(id);
         names.remove(id);
         teams.remove(id);
+        VoiceChat.leave(id);
         eliminated.remove(id);
         tntReadyAt.remove(id);
         steakReadyAt.remove(id);
@@ -539,6 +545,7 @@ public final class TNTBattleManager {
             TNTBattleArena.Team team = (i % 2 == 0) ? TNTBattleArena.Team.RED : TNTBattleArena.Team.BLUE;
             teams.put(ids.get(i), team);
         }
+        startVoiceGroups();
 
         Map<TNTBattleArena.Team, Integer> spawnCursor = new HashMap<>();
         for (UUID id : ids) {
@@ -550,6 +557,7 @@ public final class TNTBattleManager {
             if (player != null && player.isOnline()) {
                 preparePlaying(player, team, arena.spawn(team, index));
             }
+            VoiceChat.join(id, voiceGroups.get(team));
         }
 
         broadcastGame("&c&l===== TNT 对战 开始 =====");
@@ -582,6 +590,35 @@ public final class TNTBattleManager {
             }
         }
         return sb.length() == 0 ? "&7(无)" : sb.toString();
+    }
+
+    /** 开局：每队一个隔离语音组，外加一个已淘汰玩家的旁观组。 */
+    private void startVoiceGroups() {
+        voiceGroups.clear();
+        voiceSpectatorGroup = null;
+        if (!plugin.getConfig().getBoolean("voice-chat.enabled", true) || !VoiceChat.available()) {
+            return;
+        }
+        for (TNTBattleArena.Team team : TNTBattleArena.Team.values()) {
+            UUID groupId = VoiceChat.createIsolatedGroup("TNT" + team.display() + "-" + arena.name());
+            if (groupId != null) {
+                voiceGroups.put(team, groupId);
+            }
+        }
+        voiceSpectatorGroup = VoiceChat.createIsolatedGroup("TNT观众-" + arena.name());
+    }
+
+    /** 结算：先把人放出组，再删组。 */
+    private void cleanupVoice() {
+        for (UUID id : new ArrayList<>(states.keySet())) {
+            VoiceChat.leave(id);
+        }
+        for (UUID groupId : voiceGroups.values()) {
+            VoiceChat.deleteGroup(groupId);
+        }
+        voiceGroups.clear();
+        VoiceChat.deleteGroup(voiceSpectatorGroup);
+        voiceSpectatorGroup = null;
     }
 
     private void prepareWaiting(Player player) {
@@ -871,6 +908,7 @@ public final class TNTBattleManager {
         changed |= setDefault("music.trigger-team-alive", 1);
         changed |= setDefault("music.tail-ticks", 20);
         changed |= setDefault("music.max-record-seconds", 600);
+        changed |= setDefault("voice-chat.enabled", true);
         if (!plugin.getConfig().isConfigurationSection("wait-items")) {
             plugin.getConfig().set("wait-items.return.material", "CLOCK");
             plugin.getConfig().set("wait-items.return.name", "&a&l回主城 &7(右键)");
@@ -2255,6 +2293,8 @@ public final class TNTBattleManager {
         specialReadyAt.remove(id);
         fallImmune.remove(id);
         clearTeamGlow(player);
+        // 淘汰后转旁观：挪进观众语音组，活人听不到
+        VoiceChat.join(id, voiceSpectatorGroup);
         refreshTitle(player);
         // 旁观期间也保留无粒子夜视
         giveNightVision(player);
@@ -2438,6 +2478,7 @@ public final class TNTBattleManager {
     private void finishEnd() {
         restoring = true;
         music.stopPlayback();
+        cleanupVoice();
         removeTnt();
         restoreChangedBlocks();
         for (UUID id : new ArrayList<>(states.keySet())) {
