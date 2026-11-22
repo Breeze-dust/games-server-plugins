@@ -16,24 +16,33 @@ import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.Skull;
 import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.Rotatable;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.ItemFrame;
-import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Pose;
 import org.bukkit.entity.TextDisplay;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
+import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.joml.AxisAngle4f;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -42,6 +51,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 一张桌子 = 一个独立场次：4 个台阶座椅、自己的倒计时、自己的牌局。
@@ -51,23 +61,116 @@ public final class LiarBarTable {
 
     public enum State {WAITING, STARTING, PLAYING, ENDING}
 
-    /** 槽位约定：0~4 手牌，6 目标牌提示，8 质疑钟；准备道具占槽位 2（与公共库一致）。 */
-    public static final int TABLE_SLOT = 6;
-    public static final int BELL_SLOT = 8;
+    /** 槽位约定：0 出牌道具，1 质疑道具，2 准备道具，4~8 手牌。 */
+    public static final int PLAY_SLOT = 0;
+    public static final int CHALLENGE_SLOT = 1;
     public static final int READY_SLOT = 2;
+    public static final int HAND_FIRST_SLOT = 4;
+    public static final int HAND_LAST_SLOT = 8;
+    public static final int HAND_SLOTS = HAND_LAST_SLOT - HAND_FIRST_SLOT + 1;
+
+    /** 名字标签计数 team 的名字序号，保证每次挂载都有唯一 team。 */
+    private static final AtomicInteger COUNTER_TEAM_SEQ = new AtomicInteger();
+
+    /** 出牌菜单：0~4 对应手牌槽 4~8，6 目标牌，8 确认出牌。 */
+    private static final int MENU_SIZE = 9;
+    private static final int MENU_TARGET_SLOT = 6;
+    private static final int MENU_CONFIRM_SLOT = 8;
 
     private static final class Seat {
         final Location chair;
         final Location sit;
         UUID occupant;
         ArmorStand stand;
-        Mannequin corpse;
+        /** 被岩浆吞没后摆在桌面中间的头颅方块；null 表示没有。 */
+        Location headBlock;
         Location dispenser;
         Location button;
+        /** 这个座位自己的左轮：只有坐在这里的人扣扳机才会转。 */
+        int gunBulletAt;
+        int gunPulls;
+        /** 对局中挂名字标签后缀用的 team；null 表示当前没挂。 */
+        String counterTeam;
+        String counterEntry;
+        /** 玩家原来的 team（如 PlayerTitles 的称号队）及其前缀，离局时还原。 */
+        String prevTeam;
+        Component prevPrefix;
 
         Seat(Location chair, Location sit) {
             this.chair = chair;
             this.sit = sit;
+        }
+    }
+
+    /** 出牌菜单：0~4 对应快捷栏 4~8 的手牌，6 目标牌，8 确认出牌。 */
+    public static final class PlayMenu implements InventoryHolder {
+
+        private final LiarBarTable table;
+        private final UUID owner;
+        private final Inventory inventory;
+
+        PlayMenu(LiarBarTable table, UUID owner) {
+            this.table = table;
+            this.owner = owner;
+            this.inventory = Bukkit.createInventory(this, MENU_SIZE,
+                    Chat.noItalic(Chat.color("&8出牌 &7| &e目标："
+                            + LiarBarCards.NAMES[table.tableRank])));
+        }
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
+
+        /** 按当前手牌与已选状态重画菜单。 */
+        public void render() {
+            Player p = Bukkit.getPlayer(owner);
+            if (p == null) {
+                return;
+            }
+            ItemStack filler = table.manager.items().filler();
+            for (int i = 0; i < MENU_SIZE; i++) {
+                inventory.setItem(i, filler);
+            }
+            Set<Integer> selected = table.selections.getOrDefault(owner, Set.of());
+            List<LiarBarCards.Card> chosen = new ArrayList<>();
+            for (int i = 0; i < HAND_SLOTS; i++) {
+                int slot = HAND_FIRST_SLOT + i;
+                LiarBarCards.Card card = table.manager.items()
+                        .cardOf(p.getInventory().getItem(slot));
+                if (card == null) {
+                    continue;
+                }
+                boolean on = selected.contains(slot);
+                inventory.setItem(i, table.manager.items().card(card, on));
+                if (on) {
+                    chosen.add(card);
+                }
+            }
+            inventory.setItem(MENU_TARGET_SLOT, table.manager.items().tableCard(table.tableRank));
+            inventory.setItem(MENU_CONFIRM_SLOT,
+                    table.manager.items().confirm(chosen, table.settings.maxPlayCards));
+        }
+
+        /** 菜单点击：0~4 切换选中，8 确认出牌。 */
+        public void click(int slot) {
+            Player p = Bukkit.getPlayer(owner);
+            if (p == null) {
+                return;
+            }
+            if (slot >= 0 && slot < HAND_SLOTS) {
+                table.toggleSelect(p, HAND_FIRST_SLOT + slot);
+                render();
+                return;
+            }
+            if (slot == MENU_CONFIRM_SLOT) {
+                table.confirmPlay(p);
+            }
+        }
+
+        /** 菜单关闭时从桌子的记录里移除。 */
+        public void onClose() {
+            table.openMenus.remove(owner, this);
         }
     }
 
@@ -86,6 +189,8 @@ public final class LiarBarTable {
     /** 存活玩家（按座位顺序）。 */
     private final List<UUID> order = new ArrayList<>();
     private final Map<UUID, Set<Integer>> selections = new HashMap<>();
+    /** 打开的出牌菜单（每名玩家最多一个）。 */
+    private final Map<UUID, PlayMenu> openMenus = new HashMap<>();
     private final Map<UUID, String> names = new HashMap<>();
     /** 入座时槽位 2 原来的物品（发准备道具前备份）。 */
     private final Map<UUID, ItemStack> readyBackup = new HashMap<>();
@@ -95,17 +200,18 @@ public final class LiarBarTable {
     private int turnIndex;
     private int secondsLeft;
     private boolean transition;
+    /** 上家刚打光手牌：本轮下家只能质疑，不能出牌。 */
+    private boolean mustChallenge;
     private int pileCount;
     private UUID lastPlayOwner;
     private List<LiarBarCards.Card> lastPlayCards;
-
-    // 左轮（整张桌子共用一把，开局随机起始位置，扣一次转一格）
-    private int cylinderStart;
-    private int bulletAt;
-    private int pulls;
+    /** 当前被高亮的出牌人；切换回合时先清掉他的高亮。 */
+    private UUID highlightedPlayer;
 
     // 揭幕 / 开枪
     private final List<ItemFrame> frames = new ArrayList<>();
+    /** 本次出牌真正放了纸的展示框，按出牌顺序；某个框没放成时为 null。 */
+    private final List<ItemFrame> cardFrames = new ArrayList<>();
     private UUID pendingShooter;
     private int pendingShooterIndex;
     private BukkitTask fireTimeout;
@@ -118,8 +224,14 @@ public final class LiarBarTable {
     /** 流体从按钮位置流出时，暂存按钮方块，结算结束后恢复。 */
     private Block fluidButtonBlock;
     private org.bukkit.block.data.BlockData fluidButtonData;
-    /** 桌子中间显示本轮目标牌的旋转实体。 */
-    private ArmorStand targetStand;
+    /** 正在放水/岩浆的柱体范围：用来拦下原版流体的自行扩散，保证一格一格往下走。 */
+    private World fluidColumnWorld;
+    private int fluidColumnX;
+    private int fluidColumnZ;
+    private int fluidColumnMinY;
+    private int fluidColumnMaxY;
+    /** 桌子中间显示本轮目标牌的旋转掉落物（展示实体，不可拾取）。 */
+    private ItemDisplay targetDisplay;
     private TextDisplay targetText;
     private BukkitTask targetSpinTask;
     private float targetSpinAngle;
@@ -189,6 +301,7 @@ public final class LiarBarTable {
 
     /** 重建座椅（只在没人入座、非牌局中时允许）。 */
     public void setSeats(List<Location> chairs) {
+        removeCounters();
         seats.clear();
         double cx = 0;
         double cy = 0;
@@ -441,12 +554,16 @@ public final class LiarBarTable {
 
     private void clearSeat(Seat seat, Player player) {
         UUID id = seat.occupant;
+        removeCounter(seat);
         seat.occupant = null;
         seat.dispenser = null;
         seat.button = null;
-        if (seat.corpse != null) {
-            seat.corpse.remove();
-            seat.corpse = null;
+        if (seat.headBlock != null) {
+            Block head = seat.headBlock.getBlock();
+            if (head.getType() == Material.PLAYER_HEAD) {
+                head.setType(Material.AIR, false);
+            }
+            seat.headBlock = null;
         }
         if (id != null) {
             countdown.removeReady(id);
@@ -489,6 +606,11 @@ public final class LiarBarTable {
             return;
         }
         broadcastSeated("&7" + nameOf(id) + " 离开了牌桌，视为出局。");
+        if (id.equals(lastPlayOwner)) {
+            mustChallenge = false;
+            lastPlayOwner = null;
+            lastPlayCards = null;
+        }
         if (order.size() <= 1) {
             endGame(order.isEmpty() ? null : order.get(0));
         } else {
@@ -604,15 +726,128 @@ public final class LiarBarTable {
                 p.playSound(p.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 0.8f, 0.7f);
             }
         }
-        reloadCylinder();
+        loadSeatGuns();
         manager.reportArena(this);
         startRound(null);
     }
 
-    private void reloadCylinder() {
-        cylinderStart = ThreadLocalRandom.current().nextInt(settings.chambers);
-        bulletAt = ThreadLocalRandom.current().nextInt(settings.chambers);
-        pulls = 0;
+    /** 每局开始：每个有人的座位重新装一把枪，并把 0/N 挂到玩家名字标签后缀上。 */
+    private void loadSeatGuns() {
+        for (Seat seat : seats) {
+            removeCounter(seat);
+            if (seat.occupant == null) {
+                continue;
+            }
+            seat.gunBulletAt = ThreadLocalRandom.current().nextInt(settings.chambers);
+            seat.gunPulls = 0;
+            showCounter(seat);
+        }
+    }
+
+    /**
+     * 把本座位的计数挂到玩家名字标签后面（team 后缀）。玩家原来若在别的 team
+     * （例如 PlayerTitles 的称号队），先记住并复制它的前缀，离局时再还原。
+     */
+    private void showCounter(Seat seat) {
+        removeCounter(seat);
+        Player player = seat.occupant == null ? null : playerOf(seat.occupant);
+        if (player == null) {
+            return;
+        }
+        Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+        String entry = player.getName();
+        Team old = board.getEntryTeam(entry);
+        seat.prevTeam = old == null ? null : old.getName();
+        seat.prevPrefix = old == null ? null : old.prefix();
+        String teamName = nextCounterTeamName(board);
+        Team team;
+        try {
+            team = board.registerNewTeam(teamName);
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        if (seat.prevPrefix != null) {
+            team.prefix(seat.prevPrefix);
+        }
+        team.suffix(Chat.color(counterText(seat)));
+        team.addEntry(entry);
+        seat.counterTeam = teamName;
+        seat.counterEntry = entry;
+    }
+
+    /** 扣一次扳机后刷新名字标签后缀。 */
+    private void updateCounter(Seat seat) {
+        if (seat == null || seat.counterTeam == null) {
+            return;
+        }
+        Team team = Bukkit.getScoreboardManager().getMainScoreboard().getTeam(seat.counterTeam);
+        if (team != null) {
+            team.suffix(Chat.color(counterText(seat)));
+        }
+    }
+
+    /** 移除计数后缀，并把玩家放回原来的 team（通常是称号队）。 */
+    private void removeCounter(Seat seat) {
+        if (seat == null || seat.counterTeam == null) {
+            return;
+        }
+        Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+        Team team = board.getTeam(seat.counterTeam);
+        if (team != null) {
+            if (seat.counterEntry != null) {
+                team.removeEntry(seat.counterEntry);
+            }
+            team.unregister();
+        }
+        if (seat.counterEntry != null && seat.prevTeam != null) {
+            Team old = board.getTeam(seat.prevTeam);
+            if (old == null && seat.prevPrefix != null) {
+                try {
+                    old = board.registerNewTeam(seat.prevTeam);
+                    old.prefix(seat.prevPrefix);
+                } catch (IllegalArgumentException e) {
+                    // 同名 team 刚好被别的插件重建，直接用现成的
+                    old = board.getTeam(seat.prevTeam);
+                }
+            }
+            if (old != null) {
+                old.addEntry(seat.counterEntry);
+            }
+        }
+        seat.counterTeam = null;
+        seat.counterEntry = null;
+        seat.prevTeam = null;
+        seat.prevPrefix = null;
+    }
+
+    private void removeCounters() {
+        for (Seat seat : seats) {
+            removeCounter(seat);
+        }
+    }
+
+    private static String nextCounterTeamName(Scoreboard board) {
+        for (int i = 0; i < 100; i++) {
+            String name = "lb" + Integer.toHexString(COUNTER_TEAM_SEQ.incrementAndGet());
+            if (board.getTeam(name) == null) {
+                return name;
+            }
+        }
+        return "lb" + Integer.toHexString(COUNTER_TEAM_SEQ.incrementAndGet());
+    }
+
+    /** 清掉上次异常退出遗留的计数 team（只在没有牌局时调用）。 */
+    static void clearCounterTeams() {
+        Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+        for (Team team : new ArrayList<>(board.getTeams())) {
+            if (team.getName().startsWith("lb")) {
+                team.unregister();
+            }
+        }
+    }
+
+    private String counterText(Seat seat) {
+        return " &7(&f" + seat.gunPulls + "&7/&f" + settings.chambers + "&7)";
     }
 
     // ---------- 回合 ----------
@@ -621,8 +856,11 @@ public final class LiarBarTable {
         if (state != State.PLAYING) {
             return;
         }
+        removeFrames();
         clearColumn();
+        closeAllMenus();
         transition = false;
+        mustChallenge = false;
         round++;
         tableRank = ThreadLocalRandom.current().nextInt(LiarBarCards.NORMAL_RANKS);
         lastPlayOwner = null;
@@ -636,7 +874,11 @@ public final class LiarBarTable {
             turnIndex = ThreadLocalRandom.current().nextInt(Math.max(1, order.size()));
         }
         secondsLeft = settings.turnSeconds;
+        UUID turnOwner = currentPlayer();
         for (UUID id : order) {
+            if (id.equals(turnOwner)) {
+                continue; // 出牌人单独弹「轮到你出牌！」
+            }
             Player p = playerOf(id);
             if (p != null) {
                 Chat.title(p, "&e第 " + round + " 回合", "&7目标牌：&f" + LiarBarCards.NAMES[tableRank]
@@ -644,12 +886,14 @@ public final class LiarBarTable {
                 p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 0.8f, 1.2f);
             }
         }
+        announceTurn(turnOwner);
         ensureTickTask();
         updateActionBars();
         manager.reportArena(this);
     }
 
     private void dealRound() {
+        closeAllMenus();
         List<LiarBarCards.Card> deck = LiarBarCards.shuffledDeck();
         int index = 0;
         for (UUID id : order) {
@@ -658,16 +902,18 @@ public final class LiarBarTable {
                 continue;
             }
             p.getInventory().clear();
-            for (int slot = 0; slot < settings.handSize && index < deck.size(); slot++) {
-                p.getInventory().setItem(slot, manager.items().card(deck.get(index++), false));
+            p.getInventory().setItem(PLAY_SLOT, manager.items().playItem(tableRank, 0));
+            p.getInventory().setItem(CHALLENGE_SLOT, manager.items().challenge());
+            for (int i = 0; i < settings.handSize && index < deck.size(); i++) {
+                p.getInventory().setItem(HAND_FIRST_SLOT + i,
+                        manager.items().card(deck.get(index++), false));
             }
-            p.getInventory().setItem(TABLE_SLOT,
-                    manager.items().tableCard(tableRank));
-            p.getInventory().setItem(BELL_SLOT, manager.items().bell());
+            refreshPlayItem(p);
+            p.getInventory().setHeldItemSlot(PLAY_SLOT);
             p.updateInventory();
             selections.computeIfAbsent(id, k -> new HashSet<>()).clear();
+            Chat.send(p, "&8[&e提示&8] &7按 &f1 &7右键出牌；&c第 5~9 格是你的手牌，切过去会被别人看到。");
         }
-        manager.refreshDisguises();
     }
 
     private void ensureTickTask() {
@@ -702,7 +948,9 @@ public final class LiarBarTable {
             }
             Player p = playerOf(current);
             if (p != null) {
-                Chat.actionBar(p, "&c超时，自动打出一张牌。");
+                Chat.actionBar(p, mustChallenge
+                        ? "&c超时，自动质疑。"
+                        : "&c超时，自动打出一张牌。");
             }
             autoPlay(current);
             return;
@@ -716,6 +964,15 @@ public final class LiarBarTable {
             advanceTurn();
             return;
         }
+        if (mustChallenge) {
+            if (lastPlayOwner != null) {
+                challenge(p);
+            } else {
+                mustChallenge = false;
+                advanceTurn();
+            }
+            return;
+        }
         Integer slot = firstCardSlot(p);
         if (slot != null) {
             play(p, List.of(slot), true);
@@ -727,7 +984,7 @@ public final class LiarBarTable {
     }
 
     private Integer firstCardSlot(Player p) {
-        for (int slot = 0; slot < settings.handSize; slot++) {
+        for (int slot = HAND_FIRST_SLOT; slot <= HAND_LAST_SLOT; slot++) {
             if (manager.items().cardOf(p.getInventory().getItem(slot)) != null) {
                 return slot;
             }
@@ -742,33 +999,56 @@ public final class LiarBarTable {
             Chat.actionBar(player, "&7还没轮到你。");
             return;
         }
-        if (slot == null || slot < 0 || slot >= settings.handSize) {
+        if (slot == null || slot < HAND_FIRST_SLOT || slot > HAND_LAST_SLOT) {
             return;
         }
-        ItemStack item = player.getInventory().getItem(slot);
-        LiarBarCards.Card card = manager.items().cardOf(item);
+        LiarBarCards.Card card = manager.items().cardOf(player.getInventory().getItem(slot));
         if (card == null) {
             return;
         }
         Set<Integer> selected = selections.computeIfAbsent(player.getUniqueId(), k -> new HashSet<>());
-        if (selected.contains(slot)) {
-            selected.remove(slot);
-            player.getInventory().setItem(slot, manager.items().card(card, false));
-        } else {
+        if (!selected.remove(slot)) {
             if (selected.size() >= settings.maxPlayCards) {
                 Chat.actionBar(player, "&c最多一次声称 " + settings.maxPlayCards + " 张。");
                 return;
             }
             selected.add(slot);
-            player.getInventory().setItem(slot, manager.items().card(card, true));
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.8f);
         }
-        player.updateInventory();
-        Chat.actionBar(player, "&e已选 &f" + selected.size() + " &e张，右键打出。");
-        manager.refreshDisguise(player);
+        Chat.actionBar(player, "&e已选 &f" + selected.size() + " &e张，点菜单底部绿色按钮出牌。");
+        PlayMenu menu = openMenus.get(player.getUniqueId());
+        if (menu != null) {
+            menu.render();
+        }
     }
 
-    public void playSelected(Player player) {
+    public void openPlayMenu(Player player) {
+        if (!isTurn(player)) {
+            Chat.actionBar(player, "&7还没轮到你。");
+            return;
+        }
+        if (mustChallenge) {
+            Chat.actionBar(player, "&c上家打光了手牌，你必须先质疑！");
+            return;
+        }
+        if (transition) {
+            Chat.actionBar(player, "&e正在结算，稍等。");
+            return;
+        }
+        PlayMenu menu = openMenus.get(player.getUniqueId());
+        if (menu == null) {
+            menu = new PlayMenu(this, player.getUniqueId());
+            openMenus.put(player.getUniqueId(), menu);
+        }
+        if (player.getOpenInventory().getTopInventory().getHolder() == menu) {
+            menu.render();
+            return;
+        }
+        menu.render();
+        player.openInventory(menu.getInventory());
+    }
+
+    public void confirmPlay(Player player) {
         if (!isTurn(player)) {
             Chat.actionBar(player, "&7还没轮到你。");
             return;
@@ -776,10 +1056,56 @@ public final class LiarBarTable {
         Set<Integer> selected = new LinkedHashSet<>(
                 selections.getOrDefault(player.getUniqueId(), Set.of()));
         if (selected.isEmpty()) {
-            Chat.actionBar(player, "&e先左键选中 1~" + settings.maxPlayCards + " 张牌。");
+            Chat.actionBar(player, "&e先在菜单里点选 1~" + settings.maxPlayCards + " 张牌。");
             return;
         }
-        play(player, new ArrayList<>(selected), false);
+        if (!play(player, new ArrayList<>(selected), false)) {
+            PlayMenu menu = openMenus.get(player.getUniqueId());
+            if (menu != null) {
+                menu.render();
+            }
+        }
+    }
+
+    public void closeMenu(Player player) {
+        if (player == null) {
+            return;
+        }
+        PlayMenu menu = openMenus.remove(player.getUniqueId());
+        if (menu != null
+                && player.getOpenInventory().getTopInventory().getHolder() == menu) {
+            player.closeInventory();
+        }
+    }
+
+    public void closeAllMenus() {
+        for (PlayMenu menu : new ArrayList<>(openMenus.values())) {
+            Player p = Bukkit.getPlayer(menu.owner);
+            if (p != null
+                    && p.getOpenInventory().getTopInventory().getHolder() == menu) {
+                p.closeInventory();
+            }
+        }
+        openMenus.clear();
+    }
+
+    private int handCards(Player player) {
+        int count = 0;
+        for (int slot = HAND_FIRST_SLOT; slot <= HAND_LAST_SLOT; slot++) {
+            if (manager.items().cardOf(player.getInventory().getItem(slot)) != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void refreshPlayItem(Player player) {
+        ItemStack item = player.getInventory().getItem(PLAY_SLOT);
+        if (item == null || !manager.items().isPlay(item)) {
+            return;
+        }
+        player.getInventory().setItem(PLAY_SLOT,
+                manager.items().playItem(tableRank, handCards(player)));
     }
 
     private boolean play(Player player, List<Integer> slots, boolean auto) {
@@ -793,6 +1119,10 @@ public final class LiarBarTable {
             Chat.actionBar(player, "&e正在结算，稍等。");
             return false;
         }
+        if (mustChallenge) {
+            Chat.actionBar(player, "&c上家打光了手牌，你必须先质疑！");
+            return false;
+        }
         Set<Integer> unique = new LinkedHashSet<>(slots);
         if (unique.isEmpty() || unique.size() > settings.maxPlayCards) {
             Chat.actionBar(player, "&c一次只能出 1~" + settings.maxPlayCards + " 张牌。");
@@ -800,6 +1130,10 @@ public final class LiarBarTable {
         }
         List<LiarBarCards.Card> cards = new ArrayList<>();
         for (int slot : unique) {
+            if (slot < HAND_FIRST_SLOT || slot > HAND_LAST_SLOT) {
+                Chat.actionBar(player, "&c只能从第 5~9 格选手牌。");
+                return false;
+            }
             LiarBarCards.Card card = manager.items().cardOf(player.getInventory().getItem(slot));
             if (card == null) {
                 Chat.actionBar(player, "&c选中的牌不见了，重新选。");
@@ -811,13 +1145,22 @@ public final class LiarBarTable {
             player.getInventory().setItem(slot, null);
         }
         selections.getOrDefault(player.getUniqueId(), new HashSet<>()).clear();
+        refreshPlayItem(player);
         player.updateInventory();
-        manager.refreshDisguise(player);
         lastPlayOwner = player.getUniqueId();
         lastPlayCards = cards;
         pileCount += cards.size();
+        showPlayCards(seatOf(player), cards);
         broadcastSeated("&e" + player.getName() + " &f打出 &e" + cards.size()
-                + " &f张牌，声称是 &f" + LiarBarCards.NAMES[tableRank]);
+                + " &f张牌，手上剩余 &e" + handCards(player) + " &f张牌");
+        if (handCards(player) == 0 && order.size() > 1) {
+            mustChallenge = true;
+            UUID next = order.get((turnIndex + 1) % order.size());
+            Chat.broadcast("&4[骗子酒馆] &e&l" + player.getName()
+                    + " &r&f在「" + name + "」打光了手牌！&c下家 &e" + nameOf(next)
+                    + " &c必须质疑！");
+            tableSound(Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.6f);
+        }
         tableSound(Sound.BLOCK_WOOD_PLACE, 0.7f, 1.1f);
         advanceTurn();
         return true;
@@ -835,6 +1178,7 @@ public final class LiarBarTable {
             Chat.actionBar(player, "&7本轮还没有人出牌，不能质疑。");
             return;
         }
+        mustChallenge = false;
         UUID challenger = player.getUniqueId();
         UUID accused = lastPlayOwner;
         List<LiarBarCards.Card> cards = lastPlayCards == null
@@ -844,6 +1188,8 @@ public final class LiarBarTable {
         UUID shooter = lie ? accused : challenger;
 
         transition = true;
+        closeAllMenus();
+        clearTurnHighlight();
         pendingShooter = shooter;
         pendingShooterIndex = Math.max(0, order.indexOf(shooter));
         broadcastSeated("&c" + nameOf(challenger) + " &f质疑 &e" + nameOf(accused) + "&f！");
@@ -851,45 +1197,25 @@ public final class LiarBarTable {
         beginReveal(cards, lie, shooter);
     }
 
-    /** 揭幕环节：每名玩家面前出现出牌数量个展示框，问号 → 从左到右翻开。 */
+    /** 质疑后的翻牌：只翻被质疑者出牌时摆下的那排纸，一张一张翻。 */
     private void beginReveal(List<LiarBarCards.Card> cards, boolean lie, UUID shooter) {
-        List<LiarBarCards.Card> sorted = new ArrayList<>(cards);
-        // 目标牌（含万能牌）尽量放前面
-        sorted.sort(Comparator.comparingInt(card -> card.matches(tableRank) ? 0 : 1));
-        int count = Math.max(1, Math.min(settings.maxPlayCards, sorted.size()));
-
-        frames.clear();
-        for (Seat seat : seats) {
-            if (seat.occupant == null) {
-                continue;
-            }
-            List<Location> points = revealPoints(seat, count);
-            for (Location point : points) {
-                try {
-                    ItemFrame frame = seat.sit.getWorld().spawn(point, ItemFrame.class);
-                    frame.setFixed(true);
-                    frame.setVisible(true);
-                    frame.setInvulnerable(true);
-                    frame.setItem(manager.items().question(), false);
-                    frame.setFacingDirection(frameFacing(seat), true);
-                    frames.add(frame);
-                } catch (RuntimeException ignored) {
-                    // 位置不合法时跳过这一格
-                }
-            }
+        int count = Math.min(cards.size(), cardFrames.size());
+        if (count <= 0) {
+            // 展示框意外缺失（例如出牌时区块未加载），直接进入结算
+            finishReveal(lie, shooter);
+            return;
         }
 
-        for (int i = 0; i < sorted.size(); i++) {
+        for (int i = 0; i < count; i++) {
             final int index = i;
+            final LiarBarCards.Card card = cards.get(i);
+            final ItemFrame frame = cardFrames.get(i);
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (state != State.PLAYING) {
                     return;
                 }
-                LiarBarCards.Card card = sorted.get(index);
-                for (ItemFrame frame : frames) {
-                    if (frame.isValid()) {
-                        frame.setItem(manager.items().face(card), false);
-                    }
+                if (frame != null && frame.isValid()) {
+                    frame.setItem(manager.items().face(card), false);
                 }
                 broadcastSeated("&7揭晓第 &f" + (index + 1) + " &7张：&f" + card.display());
                 for (Seat seat : seats) {
@@ -902,51 +1228,94 @@ public final class LiarBarTable {
             }, (long) settings.revealDelayTicks * (i + 1));
         }
 
-        long finish = (long) settings.revealDelayTicks * (sorted.size() + 2);
+        long finish = (long) settings.revealDelayTicks * (count + 2);
         revealTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            removeFrames();
             if (state != State.PLAYING) {
                 return;
             }
-            broadcastSeated(lie ? "&c&l他说谎了！" : "&a&l全是真牌！");
-            broadcastSeated("&e" + nameOf(shooter) + " &f必须按下发射器上的按钮开枪…");
-            promptFire(shooter);
-            scheduleFireTimeout();
+            finishReveal(lie, shooter);
         }, Math.max(20L, finish));
     }
 
-    private List<Location> revealPoints(Seat seat, int count) {
+    /** 翻牌结束：不删展示框，真实牌留到下一回合开始。 */
+    private void finishReveal(boolean lie, UUID shooter) {
+        broadcastSeated(lie ? "&c&l他说谎了！" : "&a&l全是真牌！");
+        broadcastSeated("&e" + nameOf(shooter) + " &f必须按下头顶发射器上的按钮启动机关。");
+        promptFire(shooter);
+        scheduleFireTimeout();
+    }
+
+    /** 出牌时在座位前的桌沿摆 3 个平放展示框，并按张数放纸。 */
+    private void showPlayCards(Seat seat, List<LiarBarCards.Card> cards) {
+        removeFrames();
+        if (seat == null || cards == null || cards.isEmpty()) {
+            return;
+        }
+        List<Location> points = playFramePoints(seat);
+        if (points.size() < 3) {
+            return;
+        }
+        ItemFrame[] slots = new ItemFrame[3];
+        for (int i = 0; i < 3; i++) {
+            try {
+                ItemFrame frame = seat.sit.getWorld().spawn(points.get(i), ItemFrame.class);
+                frame.setFixed(true);
+                frame.setVisible(true);
+                frame.setInvulnerable(true);
+                frame.setPersistent(false);
+                frame.setFacingDirection(BlockFace.UP, false);
+                slots[i] = frame;
+                frames.add(frame);
+            } catch (RuntimeException ignored) {
+                // 位置不合法时跳过这一格
+            }
+        }
+        int count = Math.min(3, cards.size());
+        int[] used = paperSlots(count);
+        for (int i = 0; i < count; i++) {
+            ItemFrame frame = slots[used[i]];
+            cardFrames.add(frame);
+            if (frame != null) {
+                frame.setItem(manager.items().blankPaper(), false);
+            }
+        }
+    }
+
+    /** 三个展示框：椅子朝桌子走一格，再上一层（桌面），沿桌沿横排。 */
+    private List<Location> playFramePoints(Seat seat) {
         List<Location> points = new ArrayList<>();
         if (center == null) {
             return points;
         }
-        Location flat = new Location(seat.sit.getWorld(), seat.sit.getX(), seat.sit.getY(), seat.sit.getZ());
-        Vector dir = new Vector(flat.getX() - center.getX(), 0, flat.getZ() - center.getZ());
-        if (dir.lengthSquared() < 0.0001) {
-            dir = new Vector(0, 0, 1);
+        int dx = Integer.signum(center.getBlockX() - seat.chair.getBlockX());
+        int dz = Integer.signum(center.getBlockZ() - seat.chair.getBlockZ());
+        if (dx == 0 && dz == 0) {
+            return points;
         }
-        dir.normalize();
-        Vector perp = new Vector(-dir.getZ(), 0, dir.getX());
-        Location base = center.clone().add(dir.clone().multiply(2.2));
-        base.setY(seat.sit.getY() + 1.15);
-        double[] offsets = count >= 3 ? new double[]{-0.6, 0, 0.6}
-                : count == 2 ? new double[]{-0.35, 0.35} : new double[]{0};
-        for (double offset : offsets) {
-            points.add(base.clone().add(perp.clone().multiply(offset)));
+        int frontX = seat.chair.getBlockX() + dx;
+        int frontY = seat.chair.getBlockY() + 1;
+        int frontZ = seat.chair.getBlockZ() + dz;
+        // 与椅子朝向垂直的水平方向
+        int px = -dz;
+        int pz = dx;
+        for (int offset = -1; offset <= 1; offset++) {
+            points.add(new Location(seat.chair.getWorld(),
+                    frontX + px * offset + 0.5,
+                    frontY,
+                    frontZ + pz * offset + 0.5));
         }
         return points;
     }
 
-    private BlockFace frameFacing(Seat seat) {
-        if (center == null) {
-            return BlockFace.NORTH;
+    /** 1 张放中间，2 张放左右两边，3 张全放。 */
+    private int[] paperSlots(int count) {
+        if (count <= 1) {
+            return new int[]{1};
         }
-        Vector dir = new Vector(center.getX() - seat.sit.getX(), 0, center.getZ() - seat.sit.getZ());
-        // 展示框的 facing 指向它背靠的方向，所以让它朝玩家
-        if (Math.abs(dir.getX()) > Math.abs(dir.getZ())) {
-            return dir.getX() > 0 ? BlockFace.WEST : BlockFace.EAST;
+        if (count == 2) {
+            return new int[]{0, 2};
         }
-        return dir.getZ() > 0 ? BlockFace.NORTH : BlockFace.SOUTH;
+        return new int[]{0, 1, 2};
     }
 
     private void removeFrames() {
@@ -956,9 +1325,10 @@ public final class LiarBarTable {
             }
         }
         frames.clear();
+        cardFrames.clear();
     }
 
-    /** 桌子中间放一个旋转的目标牌实体 + 文字说明。 */
+    /** 桌子中间放一个旋转的目标牌掉落物（展示实体，不可拾取）+ 文字说明。 */
     private void spawnTargetDisplay() {
         removeTargetDisplay();
         if (center == null) {
@@ -968,22 +1338,25 @@ public final class LiarBarTable {
         if (world == null) {
             return;
         }
-        Location itemLoc = center.clone().add(0, 0.75, 0);
+        // ItemDisplay 才能把掉落物模型放大；底边留在原位置，向上放大，避免压到下面的文字。
+        Location itemLoc = center.clone().add(0, 2.45, 0);
         Location textLoc = center.clone().add(0, 1.55, 0);
-        ArmorStand stand = (ArmorStand) world.spawnEntity(itemLoc, EntityType.ARMOR_STAND);
-        stand.setInvisible(true);
-        stand.setGravity(false);
-        stand.setInvulnerable(true);
-        stand.setSilent(true);
-        stand.setCollidable(false);
-        stand.setPersistent(false);
-        stand.setSmall(false);
-        stand.setBasePlate(false);
-        stand.setArms(false);
-        stand.setCustomNameVisible(false);
-        stand.getEquipment().setHelmet(
-                manager.items().face(new LiarBarCards.Card(tableRank)));
-        targetStand = stand;
+        targetDisplay = world.spawn(itemLoc, ItemDisplay.class, display -> {
+            display.setItemStack(manager.items().face(new LiarBarCards.Card(tableRank)));
+            display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            display.setBillboard(Display.Billboard.FIXED);
+            display.setGravity(false);
+            display.setInvulnerable(true);
+            display.setSilent(true);
+            display.setPersistent(false);
+            display.setDisplayWidth(1.4f);
+            display.setDisplayHeight(1.4f);
+            display.setTransformation(new Transformation(
+                    new Vector3f(0f, 0f, 0f),
+                    new AxisAngle4f(0f, 0f, 1f, 0f),
+                    new Vector3f(1.4f, 1.4f, 1.4f),
+                    new AxisAngle4f(0f, 0f, 1f, 0f)));
+        });
 
         targetText = world.spawn(textLoc, TextDisplay.class, display -> {
             display.text(Chat.color("&e本轮目标：&f" + LiarBarCards.NAMES[tableRank]));
@@ -995,7 +1368,7 @@ public final class LiarBarTable {
 
         targetSpinAngle = 0f;
         targetSpinTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (targetStand == null || !targetStand.isValid()) {
+            if (targetDisplay == null || !targetDisplay.isValid()) {
                 if (targetSpinTask != null) {
                     targetSpinTask.cancel();
                     targetSpinTask = null;
@@ -1003,7 +1376,7 @@ public final class LiarBarTable {
                 return;
             }
             targetSpinAngle = (targetSpinAngle + 5f) % 360f;
-            targetStand.setRotation(targetSpinAngle, 0f);
+            targetDisplay.setRotation(targetSpinAngle, 0f);
         }, 2L, 2L);
     }
 
@@ -1012,11 +1385,11 @@ public final class LiarBarTable {
             targetSpinTask.cancel();
             targetSpinTask = null;
         }
-        if (targetStand != null) {
-            if (targetStand.isValid()) {
-                targetStand.remove();
+        if (targetDisplay != null) {
+            if (targetDisplay.isValid()) {
+                targetDisplay.remove();
             }
-            targetStand = null;
+            targetDisplay = null;
         }
         if (targetText != null) {
             if (targetText.isValid()) {
@@ -1100,21 +1473,28 @@ public final class LiarBarTable {
         }
         UUID shooter = pendingShooter;
         pendingShooter = null;
-        Player p = playerOf(shooter);
-
-        int chamber = Math.floorMod(cylinderStart + pulls, settings.chambers);
-        pulls++;
-        boolean fires = chamber == bulletAt;
 
         Seat seat = seatOf(shooter);
+        boolean fires;
+        if (seat == null) {
+            // 座位已经没了（座位重建等异常情况）：这一枪不再结算
+            fires = false;
+        } else {
+            int chamber = Math.floorMod(seat.gunPulls, settings.chambers);
+            seat.gunPulls++;
+            fires = chamber == seat.gunBulletAt;
+            updateCounter(seat);
+        }
         Location dispenser = seat == null ? null : seat.dispenser;
         if (fires) {
             broadcastSeated("&4&l砰！&f" + nameOf(shooter) + " 的枪响了。");
             tableSound(Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 0.7f);
-            reloadCylinder();
             startBurn(shooter, seat, dispenser);
         } else {
-            broadcastSeated("&a咔哒…&f" + nameOf(shooter) + " 是空枪，活了下来。");
+            // 空枪提示带上「已扣扳机次数/弹巢数」，和名字标签后缀的计数保持一致
+            String pulls = seat == null ? ""
+                    : "&7（&f" + seat.gunPulls + "&7/&f" + settings.chambers + "&7）";
+            broadcastSeated("&a咔哒…&f" + nameOf(shooter) + " 活了下来" + pulls);
             tableSound(Sound.BLOCK_ANVIL_LAND, 0.6f, 1.6f);
             startWater(shooter, seat, dispenser);
         }
@@ -1123,10 +1503,7 @@ public final class LiarBarTable {
     // ---------- 岩浆 / 水 ----------
 
     private void startWater(UUID id, Seat seat, Location dispenser) {
-        Player p = playerOf(id);
-        if (p != null) {
-            Chat.title(p, "&a咔哒…", "&7空枪，你活了下来", 2);
-        }
+        // 空枪结果已经在聊天栏播报过了，这里不再弹屏幕中央的大字
         startFlow(seat, dispenser, Material.WATER, () -> waterTask = Bukkit.getScheduler()
                 .runTaskLater(plugin, () -> {
                     waterTask = null;
@@ -1223,6 +1600,12 @@ public final class LiarBarTable {
         final int x = columnX;
         final int z = columnZ;
         final int[] y = {topY};
+        // 标记柱体范围：原版流体想自己往下/往旁边蔓延时，由事件监听拦掉
+        fluidColumnWorld = world;
+        fluidColumnX = x;
+        fluidColumnZ = z;
+        fluidColumnMinY = floorY - 1;
+        fluidColumnMaxY = topY + 1;
         startFluidGuard();
         if (dispenser != null) {
             world.playSound(dispenser, Sound.BLOCK_DISPENSER_DISPENSE, 1.0f, 1.0f);
@@ -1245,6 +1628,7 @@ public final class LiarBarTable {
                         || block.getType() == Material.WATER || block.getType() == Material.LAVA) {
                     block.setType(material, false);
                     fluidBlocks.add(block);
+                    dripEffect(world, material, x, y[0], z);
                 }
                 clearSides();
                 if (y[0] <= floorY) {
@@ -1255,7 +1639,21 @@ public final class LiarBarTable {
                 }
                 y[0]--;
             }
-        }.runTaskTimer(plugin, interval, interval);
+        }.runTaskTimer(plugin, 2L, interval);
+    }
+
+    /** 每往下走一格时的一点点水花/火星，让“一格一格流”看得更清楚。 */
+    private void dripEffect(World world, Material material, int x, int y, int z) {
+        Location at = new Location(world, x + 0.5, y + 0.5, z + 0.5);
+        if (material == Material.WATER) {
+            world.spawnParticle(Particle.SPLASH, x + 0.5, y + 0.9, z + 0.5,
+                    6, 0.18, 0.05, 0.18, 0.02);
+            world.playSound(at, Sound.BLOCK_WATER_AMBIENT, 0.35f, 1.5f);
+        } else {
+            world.spawnParticle(Particle.LAVA, x + 0.5, y + 0.5, z + 0.5,
+                    3, 0.15, 0.2, 0.15, 0.0);
+            world.playSound(at, Sound.BLOCK_LAVA_POP, 0.35f, 1.2f);
+        }
     }
 
     private void startFluidGuard() {
@@ -1272,11 +1670,11 @@ public final class LiarBarTable {
         }
     }
 
-    /** 清掉水/岩浆的水平邻居，保证只往下流。 */
+    /** 清掉水/岩浆的水平邻居和“抢跑”的下方邻居，保证只能按定时器一格一格往下走。 */
     private void clearSides() {
         for (Block block : fluidBlocks) {
             for (BlockFace face : new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH,
-                    BlockFace.EAST, BlockFace.WEST}) {
+                    BlockFace.EAST, BlockFace.WEST, BlockFace.DOWN}) {
                 Block side = block.getRelative(face);
                 if ((side.getType() == Material.LAVA || side.getType() == Material.WATER)
                         && !fluidBlocks.contains(side)) {
@@ -1286,14 +1684,26 @@ public final class LiarBarTable {
         }
     }
 
+    /** 这格是否落在本桌正在放水/岩浆的柱体范围里。 */
+    public boolean inFluidColumn(Block block) {
+        return fluidColumnWorld != null
+                && block.getWorld().equals(fluidColumnWorld)
+                && Math.abs(block.getX() - fluidColumnX) <= 1
+                && Math.abs(block.getZ() - fluidColumnZ) <= 1
+                && block.getY() >= fluidColumnMinY
+                && block.getY() <= fluidColumnMaxY;
+    }
+
     private void clearColumn() {
         stopFluidGuard();
+        clearSides();
         for (Block block : fluidBlocks) {
             if (block.getType() == Material.LAVA || block.getType() == Material.WATER) {
                 block.setType(Material.AIR, false);
             }
         }
         fluidBlocks.clear();
+        fluidColumnWorld = null;
         // 流体是从按钮位置流出来的：结算结束把按钮装回去
         if (fluidButtonBlock != null && fluidButtonData != null) {
             fluidButtonBlock.setBlockData(fluidButtonData, false);
@@ -1306,11 +1716,21 @@ public final class LiarBarTable {
         if (!order.remove(id)) {
             return;
         }
+        if (id.equals(lastPlayOwner)) {
+            mustChallenge = false;
+            lastPlayOwner = null;
+            lastPlayCards = null;
+        }
+        if (id.equals(highlightedPlayer)) {
+            clearTurnHighlight();
+        }
         Seat seat = seatOf(id);
         Player p = playerOf(id);
+        closeMenu(p);
         manager.clearDamageAllowed(id);
+        // 结果只走聊天栏，不再弹屏幕中央的大字
+        broadcastSeated("&c" + nameOf(id) + " 被岩浆吞没了，转为观战。");
         if (p != null) {
-            Chat.title(p, "&c&l你被岩浆吞没了", "&7留在座位上观战", 3);
             p.setFireTicks(0);
             p.setHealth(p.getMaxHealth());
             if (seat != null) {
@@ -1326,7 +1746,7 @@ public final class LiarBarTable {
                     seat.stand.remove();
                     seat.stand = null;
                 }
-                spawnCorpse(seat, p);
+                spawnHead(seat, p);
                 p.teleport(seat.sit.clone().add(0, 1.4, 0));
             }
             p.setGameMode(GameMode.SPECTATOR);
@@ -1343,26 +1763,71 @@ public final class LiarBarTable {
         }
     }
 
-    /** 死亡尸体：和密室杀手一样用 Mannequin（完整玩家模型 + 死者皮肤）躺在地上。 */
-    private void spawnCorpse(Seat seat, Player player) {
-        World world = seat.sit.getWorld();
+    /**
+     * 被岩浆吞没：不要倒下的尸体，直接把该玩家的头颅摆到桌面
+     * 三个展示框正中间的那一格上，当作留在桌上的“遗物”。
+     */
+    private void spawnHead(Seat seat, Player player) {
+        List<Location> points = playFramePoints(seat);
+        if (points.size() < 3) {
+            return;
+        }
+        Location middle = points.get(1);
+        World world = middle.getWorld();
         if (world == null) {
             return;
         }
-        Location spawnAt = seat.sit.clone().add(0, 0.55, 0);
-        Mannequin corpse = world.spawn(spawnAt, Mannequin.class, mannequin -> {
-            mannequin.setProfile(ResolvableProfile.resolvableProfile(player.getPlayerProfile()));
-            mannequin.setPose(Pose.SLEEPING);
-            mannequin.setImmovable(true);
-            mannequin.setGravity(false);
-            mannequin.setInvulnerable(true);
-            mannequin.setSilent(true);
-            mannequin.setCollidable(false);
-            mannequin.setPersistent(false);
-            mannequin.setDescription(Component.empty());
-            mannequin.setCustomNameVisible(false);
-        });
-        seat.corpse = corpse;
+        Block block = world.getBlockAt(middle.getBlockX(), middle.getBlockY(), middle.getBlockZ());
+        removeFrameAt(block);
+        if (!block.getType().isAir()
+                && block.getType() != Material.WATER && block.getType() != Material.LAVA) {
+            return;
+        }
+        block.setType(Material.PLAYER_HEAD, false);
+        if (block.getState() instanceof Skull skull) {
+            skull.setProfile(ResolvableProfile.resolvableProfile(player.getPlayerProfile()));
+            skull.update(true, false);
+        }
+        if (block.getBlockData() instanceof Rotatable rotatable) {
+            rotatable.setRotation(headFacing(seat, middle));
+            block.setBlockData(rotatable, false);
+        }
+        seat.headBlock = block.getLocation();
+        Location at = middle.clone().add(0, 0.4, 0);
+        world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 24, 0.25, 0.2, 0.25, 0.01);
+        world.playSound(middle, Sound.ENTITY_PLAYER_HURT, 0.9f, 0.6f);
+    }
+
+    /** 桌上的头颅朝向死者自己的座位。 */
+    private BlockFace headFacing(Seat seat, Location at) {
+        int dx = Integer.signum(seat.chair.getBlockX() - at.getBlockX());
+        int dz = Integer.signum(seat.chair.getBlockZ() - at.getBlockZ());
+        if (dx > 0) {
+            return BlockFace.EAST;
+        }
+        if (dx < 0) {
+            return BlockFace.WEST;
+        }
+        if (dz > 0) {
+            return BlockFace.SOUTH;
+        }
+        if (dz < 0) {
+            return BlockFace.NORTH;
+        }
+        return BlockFace.SOUTH;
+    }
+
+    /** 中间那一格如果还留着本轮出牌的展示框，先摘掉，避免和头颅重叠。 */
+    private void removeFrameAt(Block block) {
+        for (ItemFrame frame : new ArrayList<>(frames)) {
+            if (sameBlock(frame.getLocation(), block)) {
+                if (frame.isValid()) {
+                    frame.remove();
+                }
+                frames.remove(frame);
+                cardFrames.remove(frame);
+            }
+        }
     }
 
     /** 一次开枪流程结束：安排下一回合（或本局结束）。 */
@@ -1393,9 +1858,84 @@ public final class LiarBarTable {
         if (order.isEmpty()) {
             return;
         }
+        closeAllMenus();
         turnIndex = (turnIndex + 1) % order.size();
         secondsLeft = settings.turnSeconds;
+        if (mustChallenge) {
+            announceForcedChallenge(currentPlayer());
+        } else {
+            announceTurn(currentPlayer());
+        }
         updateActionBars();
+    }
+
+    /**
+     * 轮到某个玩家出牌：在他的屏幕中央弹出「轮到你出牌！」，
+     * 同时给他加发光效果，让桌边所有人都能一眼看出该谁出牌。
+     */
+    private void announceTurn(UUID id) {
+        clearTurnHighlight();
+        if (id == null || state != State.PLAYING) {
+            return;
+        }
+        Player p = playerOf(id);
+        if (p == null) {
+            return;
+        }
+        Chat.title(p, "&e&l轮到你出牌！",
+                "&7目标牌：&f" + LiarBarCards.NAMES[tableRank]
+                        + " &8| &7第 " + round + " 回合", 2);
+        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 1.6f);
+        // 轮到谁就把谁切回第 1 格，避免他低头翻手牌时被旁边的人看到
+        p.getInventory().setHeldItemSlot(PLAY_SLOT);
+        Chat.send(p, "&7右键 &f1 &7号格的出牌道具，打开菜单选牌。");
+        // 持续到回合结束再留一点余量，防止出牌瞬间高亮先消失
+        int ticks = (Math.max(1, settings.turnSeconds) + 5) * 20;
+        p.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, ticks, 0,
+                false, false, false), true);
+        highlightedPlayer = id;
+    }
+
+    /**
+     * 上家打光手牌后的强制质疑：不给开牌菜单，直接把下家的手持切到质疑道具，
+     * 超时也会由 {@link #autoPlay(UUID)} 自动质疑。
+     */
+    private void announceForcedChallenge(UUID id) {
+        clearTurnHighlight();
+        if (id == null || state != State.PLAYING) {
+            return;
+        }
+        if (lastPlayOwner == null) {
+            mustChallenge = false;
+            announceTurn(id);
+            return;
+        }
+        Player p = playerOf(id);
+        if (p == null) {
+            return;
+        }
+        String accused = nameOf(lastPlayOwner);
+        Chat.title(p, "&c&l必须质疑！", "&e" + accused + " &f已打光手牌", 2);
+        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.6f);
+        p.getInventory().setHeldItemSlot(CHALLENGE_SLOT);
+        Chat.send(p, "&c" + accused + " 已打光手牌，你必须质疑，不能出牌！");
+        Chat.send(p, "&7右键 &f2 &7号格的质疑道具。");
+        int ticks = (Math.max(1, settings.turnSeconds) + 5) * 20;
+        p.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, ticks, 0,
+                false, false, false), true);
+        highlightedPlayer = id;
+    }
+
+    /** 清掉当前出牌人的发光高亮（换人、质疑结算、结束对局时调用）。 */
+    private void clearTurnHighlight() {
+        if (highlightedPlayer == null) {
+            return;
+        }
+        Player p = playerOf(highlightedPlayer);
+        if (p != null) {
+            p.removePotionEffect(PotionEffectType.GLOWING);
+        }
+        highlightedPlayer = null;
     }
 
     private UUID currentPlayer() {
@@ -1418,8 +1958,9 @@ public final class LiarBarTable {
         String currentName = current == null ? "—" : nameOf(current);
         String bar = "&e目标：&f" + LiarBarCards.NAMES[tableRank]
                 + " &7| &e已出：&f" + pileCount
-                + " &7| &e轮到：&f" + currentName
-                + " &7| &f剩余 &e" + Math.max(0, secondsLeft) + "s";
+                + " &7| &e轮到：&a&l" + currentName
+                + " &7| &f剩余 &e" + Math.max(0, secondsLeft) + "s"
+                + (mustChallenge ? " &7| &c&l强制质疑" : "");
         List<UUID> seated = new ArrayList<>();
         for (Seat seat : seats) {
             Player p = playerOf(seat.occupant);
@@ -1433,7 +1974,9 @@ public final class LiarBarTable {
             } else if (transition) {
                 Chat.actionBar(p, "&e结算中…");
             } else if (p.getUniqueId().equals(current)) {
-                Chat.actionBar(p, bar + " &a&l← 你的回合");
+                Chat.actionBar(p, mustChallenge
+                        ? bar + " &c&l← 必须质疑"
+                        : bar + " &a&l← 你的回合");
             } else {
                 Chat.actionBar(p, bar);
             }
@@ -1457,6 +2000,8 @@ public final class LiarBarTable {
         }
         state = State.ENDING;
         transition = true;
+        closeAllMenus();
+        clearTurnHighlight();
         cancelTick();
         cancelPendingTasks();
         if (winner != null) {
@@ -1465,7 +2010,7 @@ public final class LiarBarTable {
             manager.recordWin(winner);
             Player p = playerOf(winner);
             if (p != null) {
-                Chat.title(p, "&6&l胜利", "&f你是最后的幸存者", 4);
+                // 胜利结果已经在聊天栏播报，这里只留音效，不再弹屏幕中央的大字
                 p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
             }
         } else {
@@ -1525,7 +2070,7 @@ public final class LiarBarTable {
                 p.teleport(where);
                 p.updateInventory();
                 HubAPI.setGame(id, LiarBarManager.GAME);
-                Chat.title(p, "&e本局结束", "&7从椅子上下来，想再来一局就重新坐下", 3);
+                Chat.send(p, "&e本局结束：从椅子上下来，想再来一局就重新坐下。");
             }
         }
         clearGameState();
@@ -1533,6 +2078,9 @@ public final class LiarBarTable {
     }
 
     private void clearGameState() {
+        closeAllMenus();
+        clearTurnHighlight();
+        removeCounters();
         order.clear();
         selections.clear();
         names.clear();
@@ -1540,6 +2088,7 @@ public final class LiarBarTable {
         lastPlayCards = null;
         pileCount = 0;
         transition = false;
+        mustChallenge = false;
         round = 0;
         turnIndex = 0;
         secondsLeft = 0;
@@ -1579,15 +2128,20 @@ public final class LiarBarTable {
         if (player == null) {
             return;
         }
+        closeMenu(player);
+        if (player.getUniqueId().equals(highlightedPlayer)) {
+            clearTurnHighlight();
+        }
         Seat seat = seatOf(player);
         if (seat != null) {
+            if (player.getUniqueId().equals(pendingShooter)) {
+                // 先结算这一枪再清座：枪跟着座位走，清座后数据就没了
+                fireRevolver(pendingShooter);
+            }
             clearSeat(seat, player);
         }
         selections.remove(player.getUniqueId());
         names.remove(player.getUniqueId());
-        if (player.getUniqueId().equals(pendingShooter)) {
-            fireRevolver(pendingShooter);
-        }
     }
 
     public void shutdown() {

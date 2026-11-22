@@ -13,7 +13,7 @@ import org.bukkit.plugin.Plugin;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 本插件的自定义物品：手牌、目标牌提示、质疑钟、左轮、问号。 */
+/** 本插件的自定义物品：手牌、出牌/质疑道具、目标牌提示、菜单、问号。 */
 public final class LiarBarItems {
 
     private final NamespacedKey cardKey;
@@ -40,11 +40,18 @@ public final class LiarBarItems {
             return item;
         }
         meta.displayName(Chat.noItalic(Chat.color(card.display())));
+        List<String> lines = new ArrayList<>();
         if (card.rank() == LiarBarCards.WILDCARD) {
-            meta.lore(lore("&7可以当任何牌用", "&8结算时算作目标牌"));
+            lines.add("&7可以当任何牌用");
+            lines.add("&8结算时算作目标牌");
         } else {
-            meta.lore(lore("&7左键选中 / 右键打出"));
+            lines.add("&7在出牌菜单里点击选择 / 取消");
         }
+        if (selected) {
+            lines.add("&a&l已选中");
+            lines.add("&8再点一次取消选择");
+        }
+        meta.lore(lore(lines.toArray(new String[0])));
         meta.getPersistentDataContainer().set(cardKey, PersistentDataType.INTEGER, card.rank());
         if (selected) {
             meta.setEnchantmentGlintOverride(Boolean.TRUE);
@@ -68,7 +75,77 @@ public final class LiarBarItems {
         return new LiarBarCards.Card(rank);
     }
 
-    /** 槽位 6：本回合目标牌提示（就是那张牌本身，带说明）。 */
+    /** 槽位 1（index 0）：出牌道具，右键打开选牌菜单。 */
+    public ItemStack playItem(int rank, int remaining) {
+        ItemStack item = new ItemStack(Material.BOOK);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        meta.displayName(Chat.noItalic(Chat.color("&a&l出牌")));
+        meta.lore(lore(
+                "&7右键打开选牌菜单",
+                "&7本轮目标：&f" + LiarBarCards.NAMES[rank],
+                "&7手中还有 &f" + remaining + " &7张牌",
+                "&8第 5~9 格是手牌，别切过去"));
+        meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "play");
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    public boolean isPlay(ItemStack item) {
+        return "play".equals(uiOf(item));
+    }
+
+    /** 槽位 2（index 1）：质疑道具。 */
+    public ItemStack challenge() {
+        ItemStack item = new ItemStack(Material.BELL);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        meta.displayName(Chat.noItalic(Chat.color("&c质疑")));
+        meta.lore(lore("&7右键质疑上家最后打出的牌", "&8质疑错了，开枪的是你"));
+        meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "challenge");
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    public boolean isChallenge(ItemStack item) {
+        return "challenge".equals(uiOf(item));
+    }
+
+    /** 出牌菜单里的「确认出牌」按钮。 */
+    public ItemStack confirm(List<LiarBarCards.Card> selected, int max) {
+        ItemStack item = new ItemStack(Material.LIME_CONCRETE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        meta.displayName(Chat.noItalic(Chat.color("&a&l确认出牌")));
+        List<String> lines = new ArrayList<>();
+        lines.add("&7已选 &f" + selected.size() + "&7/&f" + max + " &7张");
+        for (LiarBarCards.Card card : selected) {
+            lines.add("&8· &f" + card.display());
+        }
+        lines.add("&7点击打出，并声称是目标牌");
+        meta.lore(lore(lines.toArray(new String[0])));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** 菜单空位的灰色玻璃板。 */
+    public ItemStack filler() {
+        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Component.empty());
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    /** 菜单里的本轮目标牌提示（只展示，不可点击）。 */
     public ItemStack tableCard(int rank) {
         ItemStack item = new ItemStack(LiarBarCards.MATERIALS[rank]);
         ItemMeta meta = item.getItemMeta();
@@ -80,24 +157,6 @@ public final class LiarBarItems {
         meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "table");
         item.setItemMeta(meta);
         return item;
-    }
-
-    /** 槽位 8：质疑钟。 */
-    public ItemStack bell() {
-        ItemStack item = new ItemStack(Material.BELL);
-        ItemMeta meta = item.getItemMeta();
-        if (meta == null) {
-            return item;
-        }
-        meta.displayName(Chat.noItalic(Chat.color("&c质疑")));
-        meta.lore(lore("&7右键质疑上家最后打出的牌", "&8质疑错了，开枪的是你"));
-        meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "bell");
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    public boolean isBell(ItemStack item) {
-        return "bell".equals(uiOf(item));
     }
 
     /** 一瓶随机酒：普通药水外观（不会触发原版药水效果）。 */
@@ -136,7 +195,7 @@ public final class LiarBarItems {
         return "bottle".equals(uiOf(item));
     }
 
-    /** 对局中的牌桌物品（手牌 / 目标牌提示 / 质疑钟 / 左轮）：这类物品禁止在背包里移动。 */
+    /** 对局中的牌桌物品（手牌 / 出牌 / 质疑 / 目标提示）：禁止在背包里移动。 */
     public boolean isGameItem(ItemStack item) {
         if (item == null) {
             return false;
@@ -145,26 +204,7 @@ public final class LiarBarItems {
             return true;
         }
         String ui = uiOf(item);
-        return "table".equals(ui) || "bell".equals(ui);
-    }
-
-    /** 给别人看的伪装手牌：一张普通的纸。 */
-    public ItemStack paperDisguise() {
-        ItemStack item = new ItemStack(Material.PAPER);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.displayName(Chat.noItalic(Chat.color("&7牌")));
-            item.setItemMeta(meta);
-        }
-        return item;
-    }
-
-    /** 这张物品是否需要对手牌做伪装（手牌本身与目标牌提示）。 */
-    public boolean isConcealable(ItemStack item) {
-        if (item == null) {
-            return false;
-        }
-        return cardOf(item) != null || "table".equals(uiOf(item));
+        return "play".equals(ui) || "challenge".equals(ui) || "table".equals(ui);
     }
 
     /** 揭幕时展示框里的问号。 */
@@ -178,6 +218,11 @@ public final class LiarBarItems {
         meta.getPersistentDataContainer().set(uiKey, PersistentDataType.STRING, "question");
         item.setItemMeta(meta);
         return item;
+    }
+
+    /** 桌面盖牌：没有名字的普通纸。 */
+    public ItemStack blankPaper() {
+        return new ItemStack(Material.PAPER);
     }
 
     /** 揭幕时展示框里的牌面（不带交互说明）。 */

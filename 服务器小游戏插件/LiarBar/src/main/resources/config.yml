@@ -32,7 +32,8 @@ settings:
   round-delay-seconds: 4
   # 本局结束后，全员从座椅起身并留在房间里等待下一局（秒）
   end-delay-seconds: 5
-  # 左轮弹巢数：扣一次扳机弹巢转一格，转到子弹就中弹
+  # 左轮弹巢数：每个座位一把独立的枪，每扣一次扳机转一格，转到自己的岩浆弹就中弹；
+  # 对局中玩家名字标签后面会显示这个座位已扣了几次（如 Test1 (0/6)，每局从 0 开始）
   chambers: 6
   # 揭幕时每张牌之间的间隔（tick，20 tick = 1 秒）
   reveal-delay-ticks: 14
@@ -40,16 +41,16 @@ settings:
   fire-wait-seconds: 15
   # 被岩浆浇头后焚烧多少秒（血条降到 burn-stop-health 就转观战）
   burn-seconds: 6
-  # 每次灼烧造成的伤害（半颗心 = 1）
-  burn-damage: 2.0
+  # 每次灼烧造成的伤害（半颗心 = 1）；调高后几下就能把人烫死
+  burn-damage: 8.0
   # 灼烧伤害间隔多少 tick（20 tick = 1 秒）
-  burn-interval-ticks: 10
+  burn-interval-ticks: 5
   # 血条降到这个值就转观战（不会真的死；2.0 = 1 颗心）
-  burn-stop-health: 3.0
+  burn-stop-health: 2.0
   # 空枪放水持续多少秒
   water-seconds: 3
-  # 水/岩浆每次往下流一格间隔多少 tick（20 tick = 1 秒；越大流得越慢）
-  flow-ticks-per-block: 6
+  # 水/岩浆每次往下流一格间隔多少 tick（20 tick = 1 秒；一格一格慢慢流）
+  flow-ticks-per-block: 20
   # 岩浆/水各自的流速覆盖；不写就沿用上面的 flow-ticks-per-block
-  lava-flow-ticks-per-block: 6
-  water-flow-ticks-per-block: 6
+  lava-flow-ticks-per-block: 20
+  water-flow-ticks-per-block: 20

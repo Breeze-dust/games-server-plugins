@@ -262,7 +262,8 @@ public class LiarBarCommand implements CommandExecutor, TabCompleter {
             Chat.send(sender, "&e/liarbar reload &7重载配置");
         }
         Chat.send(sender, "&7玩法：右键楼梯椅子坐下，再右键准备道具；四人坐满自动开局，"
-                + "2~3 人全员准备也能开局。左键选牌、右键出牌、右键钟质疑，揭幕后用铁锄头左轮开枪。");
+                + "2~3 人全员准备也能开局。右键第 1 格出牌道具打开菜单选牌，右键第 2 格质疑；"
+                + "揭幕后按座椅上方的按钮开枪。");
     }
 
     @Override

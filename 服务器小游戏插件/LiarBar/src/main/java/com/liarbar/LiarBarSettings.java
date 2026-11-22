@@ -20,20 +20,20 @@ public final class LiarBarSettings {
     public int fireWaitSeconds = 15;
     /** 岩浆焚烧持续时间（秒）。 */
     public int burnSeconds = 6;
-    /** 每次灼烧伤害（半颗心 = 1）。 */
-    public double burnDamage = 2.0;
+    /** 每次灼烧伤害（半颗心 = 1）；默认拉高，岩浆浇头后很快就会倒下。 */
+    public double burnDamage = 8.0;
     /** 灼烧伤害的间隔（tick）。 */
-    public int burnIntervalTicks = 10;
+    public int burnIntervalTicks = 5;
     /** 血条降到这个值就转观战（不会真的死）。 */
-    public double burnStopHealth = 3.0;
+    public double burnStopHealth = 2.0;
     /** 空枪出水持续时间（秒）。 */
     public int waterSeconds = 3;
-    /** 水/岩浆每往下流一格间隔多少 tick。 */
-    public int flowTicksPerBlock = 6;
+    /** 水/岩浆每往下流一格间隔多少 tick（20 tick = 1 秒，一格一格慢慢流）。 */
+    public int flowTicksPerBlock = 20;
     /** 岩浆单独的流速（tick/格），默认跟 flowTicksPerBlock 一致。 */
-    public int lavaFlowTicksPerBlock = 6;
+    public int lavaFlowTicksPerBlock = 20;
     /** 水单独的流速（tick/格），默认跟 flowTicksPerBlock 一致。 */
-    public int waterFlowTicksPerBlock = 6;
+    public int waterFlowTicksPerBlock = 20;
 
     public void load(FileConfiguration c) {
         playersPerTable = clamp(c.getInt("settings.players-per-table", 4), 2, 4);
@@ -47,16 +47,16 @@ public final class LiarBarSettings {
         revealDelayTicks = clamp(c.getInt("settings.reveal-delay-ticks", 14), 4, 100);
         fireWaitSeconds = clamp(c.getInt("settings.fire-wait-seconds", 15), 5, 120);
         burnSeconds = clamp(c.getInt("settings.burn-seconds", 6), 2, 30);
-        burnDamage = Math.max(0.5, Math.min(20.0, c.getDouble("settings.burn-damage", 2.0)));
-        burnIntervalTicks = clamp(c.getInt("settings.burn-interval-ticks", 10), 2, 100);
+        burnDamage = Math.max(0.5, Math.min(20.0, c.getDouble("settings.burn-damage", 8.0)));
+        burnIntervalTicks = clamp(c.getInt("settings.burn-interval-ticks", 5), 2, 100);
         burnStopHealth = Math.max(2.0, Math.min(18.0,
-                c.getDouble("settings.burn-stop-health", 3.0)));
+                c.getDouble("settings.burn-stop-health", 2.0)));
         waterSeconds = clamp(c.getInt("settings.water-seconds", 3), 1, 20);
-        flowTicksPerBlock = clamp(c.getInt("settings.flow-ticks-per-block", 6), 1, 40);
+        flowTicksPerBlock = clamp(c.getInt("settings.flow-ticks-per-block", 20), 1, 60);
         lavaFlowTicksPerBlock = clamp(
-                c.getInt("settings.lava-flow-ticks-per-block", flowTicksPerBlock), 1, 40);
+                c.getInt("settings.lava-flow-ticks-per-block", flowTicksPerBlock), 1, 60);
         waterFlowTicksPerBlock = clamp(
-                c.getInt("settings.water-flow-ticks-per-block", flowTicksPerBlock), 1, 40);
+                c.getInt("settings.water-flow-ticks-per-block", flowTicksPerBlock), 1, 60);
     }
 
     private static int clamp(int value, int min, int max) {

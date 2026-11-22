@@ -90,6 +90,8 @@ public final class LiarBarManager {
         for (LiarBarTable table : tables.values()) {
             table.shutdown();
         }
+        // 清理上次异常退出残留在主计分板上的计数 team
+        LiarBarTable.clearCounterTeams();
         tables.clear();
         for (Map.Entry<String, List<Location>> entry : room.tables().entrySet()) {
             tables.put(entry.getKey(),
@@ -205,6 +207,19 @@ public final class LiarBarManager {
         return null;
     }
 
+    /** 这格是否落在某张桌子正在放水/岩浆的柱体范围里。 */
+    public boolean inFluidColumn(Block block) {
+        if (block == null) {
+            return false;
+        }
+        for (LiarBarTable table : tables.values()) {
+            if (table.inFluidColumn(block)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 玩家移动时调用：走进 pos1~pos2 区域自动加入，走出去自动退出。 */
     public void checkRegion(Player player) {
         if (player == null || !player.isOnline()) {
@@ -235,7 +250,6 @@ public final class LiarBarManager {
         HubAPI.setGame(id, GAME);
         Chat.send(player, "&a你已进入&6骗子酒馆&a：右键楼梯椅子坐下，再右键准备道具就能开局。");
         Chat.actionBar(player, "&e右键楼梯椅子入座");
-        refreshDisguises();
     }
 
     private void exitRegion(Player player) {
@@ -433,65 +447,6 @@ public final class LiarBarManager {
         if (snapshot != null) {
             snapshot.restore(player);
         }
-        refreshDisguise(player);
-    }
-
-    // ---------- 手牌伪装（别人看你手里只是一张纸） ----------
-
-    /** 把某个玩家当前手持物品按「是否手牌」伪装后发给所有其他玩家。 */
-    public void refreshDisguise(Player target) {
-        if (target == null || !target.isOnline()) {
-            return;
-        }
-        ItemStack held = target.getInventory()
-                .getItem(target.getInventory().getHeldItemSlot());
-        ItemStack shown = items.isConcealable(held) ? items.paperDisguise() : held;
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (!viewer.equals(target)) {
-                viewer.sendEquipmentChange(target, EquipmentSlot.HAND, shown);
-            }
-        }
-    }
-
-    /** 刷新所有入座玩家的伪装（进服、进区域、发牌、出牌后调用）。 */
-    public void refreshDisguises() {
-        for (UUID id : seating.keySet()) {
-            Player player = Bukkit.getPlayer(id);
-            if (player != null) {
-                refreshDisguise(player);
-            }
-        }
-    }
-
-    /**
-     * 每 tick 兜底一次：切换手持物品时原版会先把真实牌面发给附近玩家，
-     * 这里在下一 tick 立刻重发伪装，避免闪出真实道具。
-     */
-    public void tickDisguises() {
-        if (seating.isEmpty()) {
-            return;
-        }
-        ItemStack paper = items.paperDisguise();
-        for (UUID id : seating.keySet()) {
-            Player target = Bukkit.getPlayer(id);
-            if (target == null || !target.isOnline()) {
-                continue;
-            }
-            ItemStack held = target.getInventory()
-                    .getItem(target.getInventory().getHeldItemSlot());
-            if (held == null || held.getType().isAir() || !items.isConcealable(held)) {
-                continue;
-            }
-            for (Player viewer : target.getWorld().getPlayers()) {
-                if (viewer.equals(target)) {
-                    continue;
-                }
-                if (viewer.getLocation().distanceSquared(target.getLocation()) > 64 * 64) {
-                    continue;
-                }
-                viewer.sendEquipmentChange(target, EquipmentSlot.HAND, paper);
-            }
-        }
     }
 
     // ---------- 酒与空瓶 ----------
@@ -582,7 +537,6 @@ public final class LiarBarManager {
         // 刚喝完的 0.7 秒内不响应空瓶右键，避免端着瓶子顺手把它扔出去
         throwLocks.put(player.getUniqueId(), System.currentTimeMillis() + 700L);
         player.updateInventory();
-        refreshDisguise(player);
     }
 
     /** 右键扔空酒瓶。 */
@@ -617,7 +571,6 @@ public final class LiarBarManager {
         Bukkit.getScheduler().runTaskLater(plugin,
                 () -> thrownBottles.remove(snowball.getUniqueId()), 200L);
         player.playSound(player.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 0.8f);
-        refreshDisguise(player);
     }
 
     public UUID takeThrownBottle(UUID projectile) {

@@ -9,11 +9,14 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -91,9 +94,19 @@ public class LiarBarListener implements Listener {
 
     @EventHandler
     public void onItemHeld(org.bukkit.event.player.PlayerItemHeldEvent event) {
-        if (manager.inRoom(event.getPlayer())) {
-            manager.refreshDisguise(event.getPlayer());
+        Player player = event.getPlayer();
+        LiarBarTable table = manager.tableOf(player);
+        if (table == null || table.getState() != LiarBarTable.State.PLAYING) {
+            return;
         }
+        int slot = event.getNewSlot();
+        if (slot < LiarBarTable.HAND_FIRST_SLOT || slot > LiarBarTable.HAND_LAST_SLOT) {
+            return;
+        }
+        if (manager.items().cardOf(player.getInventory().getItem(slot)) == null) {
+            return;
+        }
+        Chat.actionBar(player, "&c第 5~9 格是手牌，切到这里会被别人看到！");
     }
 
     @EventHandler
@@ -171,16 +184,19 @@ public class LiarBarListener implements Listener {
                 return;
             }
             if (left) {
-                LiarBarCards.Card card = manager.items().cardOf(event.getItem());
-                if (card != null) {
-                    table.toggleSelect(player, player.getInventory().getHeldItemSlot());
+                if (manager.items().cardOf(event.getItem()) != null) {
+                    Chat.actionBar(player, "&7请用第 1 格的出牌道具打开菜单选牌。");
                 }
                 return;
             }
-            if (manager.items().isBell(event.getItem())) {
+            if (manager.items().isPlay(event.getItem())) {
+                table.openPlayMenu(player);
+            } else if (manager.items().isChallenge(event.getItem())) {
                 table.challenge(player);
+            } else if (manager.items().cardOf(event.getItem()) != null) {
+                Chat.actionBar(player, "&7按 &f1 &7切到出牌道具，右键打开菜单。");
             } else {
-                table.playSelected(player);
+                Chat.actionBar(player, "&7按 &f1 &7右键打开出牌菜单，按 &f2 &7右键质疑。");
             }
             return;
         }
@@ -230,6 +246,18 @@ public class LiarBarListener implements Listener {
     }
 
     // ---------- 房间保护 ----------
+
+    /**
+     * 放水/放岩浆期间，原版流体会自己往下冲、还会横向蔓延。
+     * 这里把柱体范围内的流体扩散全部拦掉，只让插件定时器一格一格往下放。
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onBlockFromTo(BlockFromToEvent event) {
+        if (manager.inFluidColumn(event.getBlock())
+                || manager.inFluidColumn(event.getToBlock())) {
+            event.setCancelled(true);
+        }
+    }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
@@ -282,7 +310,7 @@ public class LiarBarListener implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (event.getWhoClicked() instanceof Player player && manager.tableOf(player) != null) {
-            // 只锁对局道具（手牌/目标牌/质疑钟/左轮/准备道具），酒、空瓶、菜单道具可以在快捷栏和背包里自由移动。
+            // 只锁对局道具（手牌/出牌道具/质疑道具/准备道具），酒、空瓶、菜单道具可以在快捷栏和背包里自由移动。
             ItemStack hotbar = event.getHotbarButton() >= 0
                     ? player.getInventory().getItem(event.getHotbarButton()) : null;
             if (lockedItem(event.getCurrentItem())
@@ -302,6 +330,39 @@ public class LiarBarListener implements Listener {
                     return;
                 }
             }
+        }
+    }
+
+    @EventHandler
+    public void onMenuClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player)) {
+            return;
+        }
+        if (!(event.getInventory().getHolder() instanceof LiarBarTable.PlayMenu menu)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getClickedInventory() == null
+                || !event.getClickedInventory().equals(event.getView().getTopInventory())) {
+            return;
+        }
+        if (event.getClick() != ClickType.LEFT) {
+            return;
+        }
+        menu.click(event.getSlot());
+    }
+
+    @EventHandler
+    public void onMenuDrag(InventoryDragEvent event) {
+        if (event.getInventory().getHolder() instanceof LiarBarTable.PlayMenu) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onMenuClose(InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof LiarBarTable.PlayMenu menu) {
+            menu.onClose();
         }
     }
 
