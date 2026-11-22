@@ -19,9 +19,9 @@ import java.util.UUID;
 public final class BridgePracticeCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> PLAYER_SUBCOMMANDS = List.of(
-            "join", "leave", "reset", "lock", "list", "top", "stats", "help");
+            "join", "leave", "reset", "lock", "breakblocks", "list", "top", "stats", "help");
     private static final List<String> ADMIN_SUBCOMMANDS = List.of(
-            "create", "setstart", "setend", "delete", "icon", "clear", "reload");
+            "create", "setstart", "setspawn", "setend", "delete", "icon", "clear", "reload");
 
     private final BridgePracticeManager manager;
     private final CourseMenu menu;
@@ -52,12 +52,14 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             case "leave" -> leave(sender);
             case "reset" -> reset(sender);
             case "lock" -> lock(sender);
+            case "breakblocks" -> breakblocks(sender);
             case "list" -> list(sender);
             case "top" -> top(sender, args);
             case "stats" -> stats(sender, args);
             case "help" -> help(sender);
             case "create" -> create(sender, args);
             case "setstart" -> setstart(sender, args);
+            case "setspawn" -> setspawn(sender, args);
             case "setend" -> setend(sender, args);
             case "delete" -> delete(sender, args);
             case "icon" -> icon(sender, args);
@@ -106,7 +108,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             return;
         }
         manager.resetToStart(player);
-        Chat.send(player, "&a已回到起点，本次搭的方块已清掉。");
+        Chat.send(player, "&a已回到出生点，本次搭的方块已清掉。");
     }
 
     private void lock(CommandSender sender) {
@@ -119,6 +121,18 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             return;
         }
         manager.toggleJoin(player);
+    }
+
+    private void breakblocks(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            Chat.send(sender, "&c只有玩家可以切换挖方块设置。");
+            return;
+        }
+        if (!manager.isPracticing(player)) {
+            Chat.send(player, "&7你不在练习中。");
+            return;
+        }
+        manager.toggleBreakOthers(player);
     }
 
     private void list(CommandSender sender) {
@@ -135,7 +149,9 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
                 int players = manager.playerCount(course.name());
                 if (players > 0) {
                     state = "&a" + players + " 人 &8| &7房主 " + manager.ownerName(course.name())
-                            + " &8| " + (manager.allowsJoin(course.name()) ? "&a开放加入" : "&c关闭加入");
+                            + " &8| " + (manager.allowsJoin(course.name()) ? "&a开放加入" : "&c关闭加入")
+                            + " &8| 挖别人方块 " + (manager.allowsBreakOthers(course.name())
+                            ? "&a允许" : "&c禁止");
                 } else {
                     state = "&7空闲";
                 }
@@ -224,13 +240,15 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
         Chat.send(sender, "&f/bridge leave &7- 离开练习");
         Chat.send(sender, "&f/bridge reset &7- 清掉本次方块回到起点");
         Chat.send(sender, "&f/bridge lock &7- 房主切换房间是否允许加入");
+        Chat.send(sender, "&f/bridge breakblocks &7- 房主切换能不能挖别人的方块");
         Chat.send(sender, "&f/bridge list &7- 查看所有房间状态");
         Chat.send(sender, "&f/bridge top [房间] &7- 查看房间最快纪录榜");
         Chat.send(sender, "&f/bridge stats [玩家] &7- 查看个人纪录");
         if (sender.hasPermission("bridgepractice.admin")) {
             Chat.send(sender, "&6-- 管理 --");
             Chat.send(sender, "&f/bridge create <名字> &7- 创建房间");
-            Chat.send(sender, "&f/bridge setstart <名字> &7- 站在起点设置起点");
+            Chat.send(sender, "&f/bridge setstart <名字> [1|2] &7- 设置起点；填 1/2 时设成一条起点线");
+            Chat.send(sender, "&f/bridge setspawn <名字> &7- 设置房间出生点（不设则用起点）");
             Chat.send(sender, "&f/bridge setend <名字> [1|2] &7- 设置终点；填 1/2 时设成一条终点线");
             Chat.send(sender, "&f/bridge icon <名字> <方块> &7- 设置菜单图标");
             Chat.send(sender, "&f/bridge clear <名字> &7- 清掉房间内的残留练习方块");
@@ -254,7 +272,8 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             Chat.send(sender, "&c" + error);
         } else {
             Chat.send(sender, "&a已创建房间 &f" + args[1] + "&a。站在起点执行 &f/bridge setstart "
-                    + args[1] + "&a，再站到终点执行 &f/bridge setend " + args[1] + "&a。");
+                    + args[1] + "&a（可加 1/2 设两条起点线），再站到终点执行 &f/bridge setend "
+                    + args[1] + "&a。");
         }
     }
 
@@ -267,14 +286,47 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             return;
         }
         if (args.length < 2) {
-            Chat.send(sender, "&c用法：/bridge setstart <名字>");
+            Chat.send(sender, "&c用法：/bridge setstart <名字> [1|2]");
             return;
         }
-        String error = manager.setStart(args[1], player.getLocation());
+        int index = 0;
+        if (args.length >= 3) {
+            if (args[2].equals("1")) {
+                index = 1;
+            } else if (args[2].equals("2")) {
+                index = 2;
+            } else {
+                Chat.send(sender, "&c起点序号只能是 1 或 2（不填则设成一个点）。");
+                return;
+            }
+        }
+        String error = manager.setStart(args[1], player.getLocation(), index);
+        if (error != null) {
+            Chat.send(sender, "&c" + error);
+        } else if (index == 0) {
+            Chat.send(sender, "&a已把 &f" + args[1] + " &a的起点设在你脚下（一个点）。");
+        } else {
+            Chat.send(sender, "&a已设置 &f" + args[1] + " &a起点线的第 &f" + index + " &a个端点。");
+        }
+    }
+
+    private void setspawn(CommandSender sender, String[] args) {
+        if (!requireAdmin(sender)) {
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            Chat.send(sender, "&c只有玩家可以设置出生点。");
+            return;
+        }
+        if (args.length < 2) {
+            Chat.send(sender, "&c用法：/bridge setspawn <名字>");
+            return;
+        }
+        String error = manager.setSpawn(args[1], player.getLocation());
         if (error != null) {
             Chat.send(sender, "&c" + error);
         } else {
-            Chat.send(sender, "&a已把 &f" + args[1] + " &a的起点设在你脚下。");
+            Chat.send(sender, "&a已把 &f" + args[1] + " &a的出生点设在你脚下。不设时默认使用起点。");
         }
     }
 
@@ -403,7 +455,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
                 case "join", "top", "delete", "clear" -> {
                     return filter(courseNames(), args[1]);
                 }
-                case "setstart", "setend", "icon" -> {
+                case "setstart", "setspawn", "setend", "icon" -> {
                     return filter(courseNames(), args[1]);
                 }
                 case "stats" -> {
@@ -423,7 +475,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             }
             return filter(materials, args[2]);
         }
-        if (args.length == 3 && sub.equals("setend")) {
+        if (args.length == 3 && (sub.equals("setend") || sub.equals("setstart"))) {
             return filter(List.of("1", "2"), args[2]);
         }
         return List.of();

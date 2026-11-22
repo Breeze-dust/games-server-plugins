@@ -71,6 +71,8 @@ public final class CourseMenu implements InventoryHolder, Listener {
                 lore.add(line("&a" + players + " 人在练 &8| &7房主 " + manager.ownerName(course.name())));
                 lore.add(line(manager.allowsJoin(course.name())
                         ? "&a开放加入" : "&c已关闭加入"));
+                lore.add(line("&7挖别人方块："
+                        + (manager.allowsBreakOthers(course.name()) ? "&a允许" : "&c禁止")));
             } else {
                 lore.add(line("&a空闲，可进入"));
             }

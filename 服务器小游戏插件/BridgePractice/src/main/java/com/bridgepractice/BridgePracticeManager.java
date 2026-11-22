@@ -94,7 +94,7 @@ public final class BridgePracticeManager {
         for (UUID id : new ArrayList<>(sessions.keySet())) {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {
-                leave(player);
+                leave(player, false);
             }
         }
         cancelTasks();
@@ -246,6 +246,15 @@ public final class BridgePracticeManager {
     }
 
     public String setStart(String name, Location location) {
+        return setStart(name, location, 0);
+    }
+
+    /**
+     * 设置起点。
+     *
+     * @param index 0 = 设成一个点（两个端点重合）；1 / 2 = 起点线的两个端点
+     */
+    public String setStart(String name, Location location, int index) {
         PracticeCourse course = course(name);
         if (course == null) {
             return "没有这个房间。";
@@ -253,7 +262,24 @@ public final class BridgePracticeManager {
         if (playerCount(course.name()) > 0) {
             return "这个房间正有人在练习，等他们离开再改起点。";
         }
-        course.setStart(location);
+        if (index == 1 || index == 2) {
+            course.setStartLinePoint(index, location);
+        } else {
+            course.setStartPoint(location);
+        }
+        saveCourses();
+        return null;
+    }
+
+    public String setSpawn(String name, Location location) {
+        PracticeCourse course = course(name);
+        if (course == null) {
+            return "没有这个房间。";
+        }
+        if (playerCount(course.name()) > 0) {
+            return "这个房间正有人在练习，等他们离开再改出生点。";
+        }
+        course.setSpawn(location);
         saveCourses();
         return null;
     }
@@ -367,6 +393,11 @@ public final class BridgePracticeManager {
         return room == null || room.players.isEmpty() || room.allowJoin;
     }
 
+    public boolean allowsBreakOthers(String courseName) {
+        RoomState room = rooms.get(courseName);
+        return room != null && room.allowBreakOthers;
+    }
+
     public boolean isOwner(Player player) {
         BridgeSession session = session(player);
         if (session == null) {
@@ -401,8 +432,50 @@ public final class BridgePracticeManager {
         }
     }
 
-    private void removeFromRoom(BridgeSession session) {
+    public void toggleBreakOthers(Player player) {
+        BridgeSession session = session(player);
+        if (session == null) {
+            Chat.send(player, "&e你不在练习中。");
+            return;
+        }
         RoomState room = rooms.get(session.course.name());
+        if (room == null) {
+            return;
+        }
+        if (!player.getUniqueId().equals(room.owner)) {
+            Chat.send(player, "&c只有房主可以设置能不能挖别人的方块。");
+            return;
+        }
+        room.allowBreakOthers = !room.allowBreakOthers;
+        giveBreakTool(player, room.allowBreakOthers);
+        String state = room.allowBreakOthers ? "&a允许" : "&c禁止";
+        for (UUID id : room.players) {
+            Player member = Bukkit.getPlayer(id);
+            if (member != null) {
+                Chat.send(member, "&e房主 &f" + player.getName()
+                        + " &e把「挖别人方块」设为 " + state + "&e。");
+            }
+        }
+    }
+
+    /** 房主允许时，拆掉房间里其他玩家本次搭的方块。返回是否处理成功。 */
+    public boolean breakOtherPlayerBlock(BridgeSession breaker, Block block) {
+        RoomState room = rooms.get(breaker.course.name());
+        if (room == null || !room.allowBreakOthers || block == null) {
+            return false;
+        }
+        Pos pos = Pos.of(block);
+        for (BridgeSession other : sessions.values()) {
+            if (other != breaker
+                    && other.course.name().equals(breaker.course.name())
+                    && other.placedBlocks.remove(pos)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void removeFromRoom(BridgeSession session) {        RoomState room = rooms.get(session.course.name());
         if (room == null) {
             return;
         }
@@ -425,8 +498,9 @@ public final class BridgePracticeManager {
         }
         RoomState room = rooms.get(course.name());
         giveRoomTool(player, room == null || room.allowJoin);
+        giveBreakTool(player, room != null && room.allowBreakOthers);
         Chat.send(player, "&e你现在是房间「&f" + course.name()
-                + "&e」的房主，右键第 7 格可以设置是否允许加入。");
+                + "&e」的房主，右键第 6、7 格可以设置房间。");
     }
 
     // ---------- 加入 / 离开 ----------
@@ -470,6 +544,7 @@ public final class BridgePracticeManager {
         int fallY = course.fallY(fallDepth);
         PlayerState saved = PlayerState.capture(player);
         BridgeSession session = new BridgeSession(id, course, saved, fallY);
+        session.armed = !needsWalkToStart(course);
         sessions.put(id, session);
         RoomState state = rooms.computeIfAbsent(course.name(), key -> new RoomState());
         boolean firstInRoom = state.players.isEmpty();
@@ -480,11 +555,11 @@ public final class BridgePracticeManager {
         prepare(player, course);
         HubAPI.setPlaying(id, GAME);
         Chat.title(player, "&b&l搭路练习", "&f" + course.name() + " &7· 方块自动补满");
-        Chat.send(player, "&a已进入房间 &f" + course.name() + "&a，向前搭路吧！掉下虚空会自动回到起点。");
+        Chat.send(player, "&a已进入房间 &f" + course.name() + "&a，向前搭路吧！掉下虚空会自动回到出生点。");
         if (firstInRoom) {
-            Chat.send(player, "&e你是这个房间的房主，右键第 7 格可以设置其他人能不能进入。");
+            Chat.send(player, "&e你是这个房间的房主，右键第 6、7 格可以设置挖方块/加入。");
         }
-        Chat.send(player, "&7第 1 格：练习方块（自动补满） &8| &e第 8 格：回起点 &8| &c第 9 格：离开");
+        Chat.send(player, "&7第 1 格：练习方块（自动补满） &8| &e第 8 格：回出生点 &8| &c第 9 格：离开（回主城）");
         return true;
     }
 
@@ -509,10 +584,19 @@ public final class BridgePracticeManager {
         player.setSaturation(20f);
 
         givePracticeTools(player, course);
-        teleportToStart(player, course);
+        teleportToSpawn(player, course);
     }
 
     public boolean leave(Player player) {
+        return leave(player, true);
+    }
+
+    /**
+     * 离开练习。
+     *
+     * @param toLobby true = 恢复背包后回主城出生点；false = 只恢复背包（回主城由主城插件负责）
+     */
+    public boolean leave(Player player, boolean toLobby) {
         if (player == null) {
             return false;
         }
@@ -523,6 +607,9 @@ public final class BridgePracticeManager {
         removeFromRoom(session);
         clearBlocks(session);
         session.savedState.apply(player);
+        if (toLobby) {
+            HubAPI.teleportToLobby(player);
+        }
         HubAPI.clearGame(player.getUniqueId());
         Chat.send(player, "&7已离开搭路练习。");
         return true;
@@ -567,7 +654,7 @@ public final class BridgePracticeManager {
             Location start = session.course.start();
             if (location.getWorld() == null || start == null
                     || !location.getWorld().equals(start.getWorld())) {
-                Chat.actionBar(player, "&e你离开了练习房间，正在送回起点…");
+                Chat.actionBar(player, "&e你离开了练习房间，正在送回出生点…");
                 resetRun(session);
                 continue;
             }
@@ -580,17 +667,17 @@ public final class BridgePracticeManager {
                 onFinish(session, player, now);
                 continue;
             }
-            if (!session.started()) {
-                double dx = location.getX() - start.getX();
-                double dz = location.getZ() - start.getZ();
-                if (dx * dx + dz * dz >= startLine * startLine) {
-                    startRun(session, player, now);
+            if (!session.armed) {
+                if (session.course.distanceToStart(location) <= startLine) {
+                    session.armed = true;
                 }
             }
+            if (session.armed && !session.started()
+                    && session.course.distanceToStart(location) >= startLine) {
+                startRun(session, player, now);
+            }
             if (session.started()) {
-                double dx = location.getX() - start.getX();
-                double dz = location.getZ() - start.getZ();
-                double moved = Math.sqrt(dx * dx + dz * dz);
+                double moved = session.course.distanceToStart(location);
                 if (moved > session.maxDisplacement) {
                     session.maxDisplacement = moved;
                 }
@@ -686,14 +773,15 @@ public final class BridgePracticeManager {
         Chat.send(player, "&7房间最快：&f" + best.name() + " &a" + formatTime(best.millis()));
     }
 
-    /** 回到起点、清掉本次搭的方块，开始下一轮。 */
+    /** 回到出生点、清掉本次搭的方块，开始下一轮。 */
     private void resetRun(BridgeSession session) {
         clearBlocks(session);
         session.runBlocks = 0;
         session.maxDisplacement = 0;
+        session.armed = !needsWalkToStart(session.course);
         Player player = Bukkit.getPlayer(session.playerId);
         if (player != null && player.isOnline()) {
-            teleportToStart(player, session.course);
+            teleportToSpawn(player, session.course);
             setFullHealth(player);
             player.setFoodLevel(20);
             player.setSaturation(20f);
@@ -701,19 +789,35 @@ public final class BridgePracticeManager {
             player.setFallDistance(0);
             givePracticeTools(player, session.course);
             ensureBlocks(player);
-            Chat.actionBar(player, "&e向前搭路，离开起点开始计时");
+            Chat.actionBar(player, session.armed
+                    ? "&e向前搭路，离开起点开始计时"
+                    : "&e走到起点，离开起点后开始计时");
         }
         session.startedAt = 0;
         session.pending = false;
     }
 
-    private void teleportToStart(Player player, PracticeCourse course) {
-        Location start = course.start();
-        if (start == null) {
+    /** 出生点离起点线超过 start-line 时，玩家要先走到起点线，计时才生效。 */
+    private boolean needsWalkToStart(PracticeCourse course) {
+        Location spawn = course.spawnPoint();
+        if (spawn == null) {
+            return false;
+        }
+        double distance = course.distanceToStart(spawn);
+        return distance > startLine;
+    }
+
+    private void teleportToSpawn(Player player, PracticeCourse course) {
+        Location spawn = course.spawnPoint();
+        if (spawn == null) {
             return;
         }
-        PracticeCourse.faceEnd(start, course.facingTarget());
-        player.teleport(start);
+        Location face = course.endCenter();
+        if (face == null) {
+            face = course.start();
+        }
+        PracticeCourse.faceEnd(spawn, face);
+        player.teleport(spawn);
         player.setVelocity(new Vector());
         player.setFallDistance(0);
     }
@@ -722,7 +826,8 @@ public final class BridgePracticeManager {
         if (!session.started()) {
             double distance = session.course.horizontalDistanceToEnd(player.getLocation());
             String away = distance >= 0 ? String.format(Locale.ROOT, "%.1f", distance) : "--";
-            Chat.actionBar(player, "&e向前搭路开始计时 &7| &f距终点 " + away + " 格");
+            Chat.actionBar(player, (session.armed ? "&e离开起点开始计时" : "&e走到起点再离开开始计时")
+                    + " &7| &f距终点 " + away + " 格");
             return;
         }
         long best = bestOf(session.course.name(), session.playerId);
@@ -749,7 +854,7 @@ public final class BridgePracticeManager {
         }
         trackPlacement(session, block);
         session.runBlocks++;
-        if (!session.pending && !session.started()) {
+        if (!session.pending && !session.started() && session.armed) {
             startRun(session, player, System.currentTimeMillis());
         }
         Bukkit.getScheduler().runTask(plugin, () -> {
@@ -847,6 +952,7 @@ public final class BridgePracticeManager {
         RoomState room = rooms.get(course.name());
         if (room != null && player.getUniqueId().equals(room.owner)) {
             giveRoomTool(player, room.allowJoin);
+            giveBreakTool(player, room.allowBreakOthers);
         }
     }
 
@@ -857,7 +963,7 @@ public final class BridgePracticeManager {
     // ---------- 练习道具 ----------
 
     public enum PracticeItem {
-        RESET, LEAVE, ROOM
+        RESET, LEAVE, ROOM, ROOM_BREAK
     }
 
     private void giveTool(Player player, PracticeItem item) {
@@ -885,15 +991,33 @@ public final class BridgePracticeManager {
         player.getInventory().setItem(slot >= 0 ? slot : 6, stack);
     }
 
+    private void giveBreakTool(Player player, boolean allow) {
+        ItemStack stack = new ItemStack(Material.GOLDEN_PICKAXE);
+        ItemMeta meta = stack.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color(allow
+                    ? "&e挖别人方块：&a允许 &7(右键切换)"
+                    : "&e挖别人方块：&c禁止 &7(右键切换)")));
+            meta.lore(List.of(Chat.noItalic(Chat.color(allow
+                    ? "&7房内玩家可以拆别人本次搭的方块"
+                    : "&7只能拆自己本次搭的方块"))));
+            meta.getPersistentDataContainer().set(itemKey, PersistentDataType.STRING,
+                    PracticeItem.ROOM_BREAK.name());
+            stack.setItemMeta(meta);
+        }
+        int slot = findToolSlot(player, PracticeItem.ROOM_BREAK);
+        player.getInventory().setItem(slot >= 0 ? slot : 5, stack);
+    }
+
     private ItemStack tool(PracticeItem item) {
         Material material = item == PracticeItem.RESET ? Material.NETHER_STAR : Material.BARRIER;
-        String name = item == PracticeItem.RESET ? "&e回到起点 &7(右键)" : "&c离开练习 &7(右键)";
+        String name = item == PracticeItem.RESET ? "&e回到出生点 &7(右键)" : "&c离开练习 &7(右键)";
         ItemStack stack = new ItemStack(material);
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
             meta.displayName(Chat.noItalic(Chat.color(name)));
             meta.lore(List.of(Chat.noItalic(Chat.color(item == PracticeItem.RESET
-                    ? "&7清掉本次搭的方块，回到起点"
+                    ? "&7清掉本次搭的方块，回到出生点"
                     : "&7恢复背包并离开练习"))));
             meta.getPersistentDataContainer().set(itemKey, PersistentDataType.STRING, item.name());
             stack.setItemMeta(meta);
@@ -1056,6 +1180,7 @@ public final class BridgePracticeManager {
     private static final class RoomState {
         UUID owner;
         boolean allowJoin = true;
+        boolean allowBreakOthers;
         final java.util.LinkedHashSet<UUID> players = new java.util.LinkedHashSet<>();
     }
 }

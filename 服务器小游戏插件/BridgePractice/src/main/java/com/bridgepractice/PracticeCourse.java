@@ -8,11 +8,13 @@ import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.Locale;
 
-/** 一个练习房间：起点、终点（点或一条线）、虚空线、菜单图标。 */
+/** 一个练习房间：起点线、终点线（都可退化成点）、出生点、虚空线、菜单图标。 */
 public final class PracticeCourse {
 
     private final String name;
-    private Location start;
+    private Location startA;
+    private Location startB;
+    private Location spawn;
     private Location endA;
     private Location endB;
     private double endRadius;
@@ -27,24 +29,39 @@ public final class PracticeCourse {
         return name;
     }
 
-    /** 起点和终点都设好了，并且在同一张已加载的世界里。 */
+    /** 起点线和终点线都设好了，并且在同一张已加载的世界里。 */
     public boolean ready() {
-        return start != null && endA != null && endB != null
-                && start.getWorld() != null && endA.getWorld() != null && endB.getWorld() != null
-                && start.getWorld().equals(endA.getWorld())
+        return startA != null && startB != null && endA != null && endB != null
+                && startA.getWorld() != null && startB.getWorld() != null
+                && endA.getWorld() != null && endB.getWorld() != null
+                && startA.getWorld().equals(startB.getWorld())
+                && startA.getWorld().equals(endA.getWorld())
                 && endA.getWorld().equals(endB.getWorld());
     }
 
     public boolean hasStart() {
-        return start != null;
+        return startA != null && startB != null;
     }
 
     public boolean hasEnd() {
         return endA != null && endB != null;
     }
 
+    /** 起点线的中点。 */
     public Location start() {
-        return start == null ? null : start.clone();
+        return midpoint(startA, startB);
+    }
+
+    /** 房间出生点；没单独设置时返回起点线中点。 */
+    public Location spawnPoint() {
+        if (spawn != null) {
+            return spawn.clone();
+        }
+        return start();
+    }
+
+    public boolean hasSpawn() {
+        return spawn != null;
     }
 
     public Location endA() {
@@ -57,28 +74,42 @@ public final class PracticeCourse {
 
     /** 终点线的中点。 */
     public Location endCenter() {
-        if (endA == null || endB == null) {
-            return null;
-        }
-        return new Location(endA.getWorld(),
-                (endA.getX() + endB.getX()) / 2.0,
-                (endA.getY() + endB.getY()) / 2.0,
-                (endA.getZ() + endB.getZ()) / 2.0);
+        return midpoint(endA, endB);
     }
 
     /** 从起点看过去、终点线上最近的点（用来朝向和清理走廊）。 */
     public Location facingTarget() {
-        if (start != null) {
-            Nearest nearest = nearest(start);
+        Location from = start();
+        if (from != null) {
+            Nearest nearest = nearestOnEnd(from);
             if (nearest != null && nearest.distance > 0.01) {
-                return new Location(start.getWorld(), nearest.x, nearest.y, nearest.z);
+                return new Location(from.getWorld(), nearest.x, nearest.y, nearest.z);
             }
         }
         return endCenter();
     }
 
-    public void setStart(Location location) {
-        this.start = location.clone();
+    public void setStartPoint(Location location) {
+        this.startA = location.clone();
+        this.startB = location.clone();
+    }
+
+    public void setStartLinePoint(int index, Location location) {
+        if (index == 1) {
+            this.startA = location.clone();
+            if (startB == null) {
+                startB = location.clone();
+            }
+        } else {
+            this.startB = location.clone();
+            if (startA == null) {
+                startA = location.clone();
+            }
+        }
+    }
+
+    public void setSpawn(Location location) {
+        this.spawn = location == null ? null : location.clone();
     }
 
     /** 不区分 1/2 时设成一个点（两个端点重合）。 */
@@ -120,34 +151,53 @@ public final class PracticeCourse {
         if (fallY > 0) {
             return fallY;
         }
-        int base = start == null ? 0 : start.getBlockY();
-        if (endA != null) {
-            base = Math.min(base, endA.getBlockY());
-        }
-        if (endB != null) {
-            base = Math.min(base, endB.getBlockY());
+        int base = startA == null ? 0 : startA.getBlockY();
+        for (Location point : new Location[]{startB, endA, endB}) {
+            if (point != null) {
+                base = Math.min(base, point.getBlockY());
+            }
         }
         return base - Math.max(1, depth);
     }
 
-    /** 到终点线（线段）的水平最近距离；终点没设置时返回 -1。 */
+    /** 到终点线的水平最近距离；终点没设置时返回 -1。 */
     public double horizontalDistanceToEnd(Location location) {
-        Nearest nearest = nearest(location);
+        Nearest nearest = nearestOnEnd(location);
         return nearest == null ? -1 : nearest.distance;
     }
 
-    /** 起点到终点线的水平距离（房间长度）；没设置好时返回 0。 */
+    /** 到起点线的水平最近距离；起点没设置时返回 -1。 */
+    public double distanceToStart(Location location) {
+        if (startA == null || startB == null || location == null || location.getWorld() == null
+                || !location.getWorld().equals(startA.getWorld())) {
+            return -1;
+        }
+        return segmentDistance(location.getX(), location.getZ(),
+                startA.getX(), startA.getZ(), startB.getX(), startB.getZ());
+    }
+
+    /** 起点线到终点线的水平距离（房间长度）；没设置好时返回 0。 */
     public double horizontalLength() {
-        if (start == null) {
+        if (!hasStart() || !hasEnd() || startA.getWorld() == null
+                || !startA.getWorld().equals(endA.getWorld())) {
             return 0;
         }
-        Nearest nearest = nearest(start);
-        return nearest == null ? 0 : nearest.distance;
+        double[] d = {
+                segmentDistance(startA.getX(), startA.getZ(), endA.getX(), endA.getZ(), endB.getX(), endB.getZ()),
+                segmentDistance(startB.getX(), startB.getZ(), endA.getX(), endA.getZ(), endB.getX(), endB.getZ()),
+                segmentDistance(endA.getX(), endA.getZ(), startA.getX(), startA.getZ(), startB.getX(), startB.getZ()),
+                segmentDistance(endB.getX(), endB.getZ(), startA.getX(), startA.getZ(), startB.getX(), startB.getZ())
+        };
+        double min = d[0];
+        for (double value : d) {
+            min = Math.min(min, value);
+        }
+        return min;
     }
 
     /** 玩家是否已经进入终点线判定范围（水平最近距离 + 垂直高度）。 */
     public boolean isAtEnd(Location location, double radius) {
-        Nearest nearest = nearest(location);
+        Nearest nearest = nearestOnEnd(location);
         if (nearest == null) {
             return false;
         }
@@ -156,7 +206,7 @@ public final class PracticeCourse {
     }
 
     /** 位置到终点线段的最近点；世界不同或没设置终点时返回 null。 */
-    private Nearest nearest(Location location) {
+    private Nearest nearestOnEnd(Location location) {
         if (endA == null || endB == null || location == null || location.getWorld() == null
                 || !location.getWorld().equals(endA.getWorld())) {
             return null;
@@ -181,17 +231,46 @@ public final class PracticeCourse {
     private record Nearest(double x, double y, double z, double distance) {
     }
 
+    private static Location midpoint(Location a, Location b) {
+        if (a == null || b == null) {
+            return null;
+        }
+        return new Location(a.getWorld(),
+                (a.getX() + b.getX()) / 2.0,
+                (a.getY() + b.getY()) / 2.0,
+                (a.getZ() + b.getZ()) / 2.0);
+    }
+
+    /** 点到水平线段的距离。 */
+    private static double segmentDistance(double px, double pz,
+                                          double ax, double az, double bx, double bz) {
+        double dx = bx - ax;
+        double dz = bz - az;
+        double lengthSq = dx * dx + dz * dz;
+        double t = lengthSq < 1.0E-9 ? 0.0 : ((px - ax) * dx + (pz - az) * dz) / lengthSq;
+        t = Math.max(0.0, Math.min(1.0, t));
+        double ex = px - (ax + dx * t);
+        double ez = pz - (az + dz * t);
+        return Math.sqrt(ex * ex + ez * ez);
+    }
+
     // ---------- 读写 courses.yml ----------
 
     public void load(ConfigurationSection section) {
         if (section == null) {
             return;
         }
-        start = parse(section.getString("start", null));
+        startA = parse(section.getString("start-1", null));
+        startB = parse(section.getString("start-2", null));
+        if (startA == null && startB == null) {
+            Location legacy = parse(section.getString("start", null));
+            startA = legacy;
+            startB = legacy;
+        }
+        spawn = parse(section.getString("spawn", null));
         endA = parse(section.getString("end-1", null));
         endB = parse(section.getString("end-2", null));
         if (endA == null && endB == null) {
-            // 旧版本只有一个 end 点
             Location legacy = parse(section.getString("end", null));
             endA = legacy;
             endB = legacy;
@@ -207,10 +286,13 @@ public final class PracticeCourse {
         if (section == null) {
             return;
         }
-        section.set("world", start != null && start.getWorld() != null
-                ? start.getWorld().getName()
+        section.set("world", startA != null && startA.getWorld() != null
+                ? startA.getWorld().getName()
                 : (endA != null && endA.getWorld() != null ? endA.getWorld().getName() : null));
-        section.set("start", format(start));
+        section.set("start-1", format(startA));
+        section.set("start-2", format(startB));
+        section.set("start", null);
+        section.set("spawn", format(spawn));
         section.set("end-1", format(endA));
         section.set("end-2", format(endB));
         section.set("end", null);

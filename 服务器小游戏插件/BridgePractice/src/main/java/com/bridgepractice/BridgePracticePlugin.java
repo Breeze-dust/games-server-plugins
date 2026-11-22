@@ -24,7 +24,7 @@ public final class BridgePracticePlugin extends JavaPlugin {
             bridge.setExecutor(command);
             bridge.setTabCompleter(command);
         }
-        HubAPI.registerLobbyHandler(player -> manager.leave(player));
+        HubAPI.registerLobbyHandler(player -> manager.leave(player, false));
 
         getLogger().info("BridgePractice（搭路练习）已启用。");
     }

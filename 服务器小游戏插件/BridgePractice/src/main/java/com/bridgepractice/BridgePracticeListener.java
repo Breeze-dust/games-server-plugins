@@ -47,6 +47,9 @@ public final class BridgePracticeListener implements Listener {
             if (manager.untrackPlacement(session, event.getBlock())) {
                 return;
             }
+            if (manager.breakOtherPlayerBlock(session, event.getBlock())) {
+                return;
+            }
             event.setCancelled(true);
             Chat.send(player, "&c只能拆掉自己这次搭的方块。");
             return;
@@ -83,10 +86,11 @@ public final class BridgePracticeListener implements Listener {
                 switch (item) {
                     case RESET -> {
                         manager.resetToStart(player);
-                        Chat.send(player, "&a已回到起点，本次搭的方块已清掉。");
+                        Chat.send(player, "&a已回到出生点，本次搭的方块已清掉。");
                     }
                     case LEAVE -> manager.leave(player);
                     case ROOM -> manager.toggleJoin(player);
+                    case ROOM_BREAK -> manager.toggleBreakOthers(player);
                 }
             }
             default -> {
@@ -121,9 +125,9 @@ public final class BridgePracticeListener implements Listener {
         if (session == null) {
             return;
         }
-        Location start = session.course.start();
-        if (start != null) {
-            event.setRespawnLocation(start);
+        Location spawn = session.course.spawnPoint();
+        if (spawn != null) {
+            event.setRespawnLocation(spawn);
         }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (manager.isPracticing(player)) {
