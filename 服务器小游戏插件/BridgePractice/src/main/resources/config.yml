@@ -8,7 +8,7 @@ fall-depth: 25
 respawn-delay-ticks: 10
 # 到达终点后回起点、准备下一轮的延迟（tick）
 success-delay-ticks: 60
-# 终点判定半径（格，水平与垂直分别判断）
+# 终点判定半径（格，水平与垂直分别判断；终点是一条线时，离线段最近距离小于它即算到达）
 end-radius: 2.5
 # 离开起点多少格后开始计时
 start-line: 1.5

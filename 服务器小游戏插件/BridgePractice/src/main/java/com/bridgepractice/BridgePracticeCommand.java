@@ -231,7 +231,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             Chat.send(sender, "&6-- 管理 --");
             Chat.send(sender, "&f/bridge create <名字> &7- 创建房间");
             Chat.send(sender, "&f/bridge setstart <名字> &7- 站在起点设置起点");
-            Chat.send(sender, "&f/bridge setend <名字> &7- 站在终点设置终点");
+            Chat.send(sender, "&f/bridge setend <名字> [1|2] &7- 设置终点；填 1/2 时设成一条终点线");
             Chat.send(sender, "&f/bridge icon <名字> <方块> &7- 设置菜单图标");
             Chat.send(sender, "&f/bridge clear <名字> &7- 清掉房间内的残留练习方块");
             Chat.send(sender, "&f/bridge delete <名字> &7- 删除房间");
@@ -287,14 +287,27 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             return;
         }
         if (args.length < 2) {
-            Chat.send(sender, "&c用法：/bridge setend <名字>");
+            Chat.send(sender, "&c用法：/bridge setend <名字> [1|2]");
             return;
         }
-        String error = manager.setEnd(args[1], player.getLocation());
+        int index = 0;
+        if (args.length >= 3) {
+            if (args[2].equals("1")) {
+                index = 1;
+            } else if (args[2].equals("2")) {
+                index = 2;
+            } else {
+                Chat.send(sender, "&c终点序号只能是 1 或 2（不填则设成一个点）。");
+                return;
+            }
+        }
+        String error = manager.setEnd(args[1], player.getLocation(), index);
         if (error != null) {
             Chat.send(sender, "&c" + error);
+        } else if (index == 0) {
+            Chat.send(sender, "&a已把 &f" + args[1] + " &a的终点设在你脚下（一个点）。");
         } else {
-            Chat.send(sender, "&a已把 &f" + args[1] + " &a的终点设在你脚下。");
+            Chat.send(sender, "&a已设置 &f" + args[1] + " &a终点线的第 &f" + index + " &a个端点。");
         }
     }
 
@@ -409,6 +422,9 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
                 }
             }
             return filter(materials, args[2]);
+        }
+        if (args.length == 3 && sub.equals("setend")) {
+            return filter(List.of("1", "2"), args[2]);
         }
         return List.of();
     }

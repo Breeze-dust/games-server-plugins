@@ -259,6 +259,15 @@ public final class BridgePracticeManager {
     }
 
     public String setEnd(String name, Location location) {
+        return setEnd(name, location, 0);
+    }
+
+    /**
+     * 设置终点。
+     *
+     * @param index 0 = 设成一个点（两个端点重合）；1 / 2 = 终点线的两个端点
+     */
+    public String setEnd(String name, Location location, int index) {
         PracticeCourse course = course(name);
         if (course == null) {
             return "没有这个房间。";
@@ -266,7 +275,11 @@ public final class BridgePracticeManager {
         if (playerCount(course.name()) > 0) {
             return "这个房间正有人在练习，等他们离开再改终点。";
         }
-        course.setEnd(location);
+        if (index == 1 || index == 2) {
+            course.setEndLinePoint(index, location);
+        } else {
+            course.setEndPoint(location);
+        }
         saveCourses();
         return null;
     }
@@ -281,14 +294,15 @@ public final class BridgePracticeManager {
         return null;
     }
 
-    /** 沿「起点→终点」走廊移除练习方块（用于清理崩溃/异常退出留下的方块）。 */
+    /** 沿「起点→终点线最近点」走廊移除练习方块（用于清理崩溃/异常退出留下的方块）。 */
     public int clearCourseArea(PracticeCourse course) {
         if (course == null || !course.ready()) {
             return 0;
         }
         Location start = course.start();
-        Location end = course.end();
-        if (start.getWorld() == null || !start.getWorld().equals(end.getWorld())) {
+        Location end = course.facingTarget();
+        if (start == null || end == null || start.getWorld() == null
+                || !start.getWorld().equals(end.getWorld())) {
             return 0;
         }
         int minY = Math.min(start.getBlockY(), end.getBlockY()) - 4;
@@ -698,7 +712,7 @@ public final class BridgePracticeManager {
         if (start == null) {
             return;
         }
-        PracticeCourse.faceEnd(start, course.end());
+        PracticeCourse.faceEnd(start, course.facingTarget());
         player.teleport(start);
         player.setVelocity(new Vector());
         player.setFallDistance(0);
@@ -790,16 +804,24 @@ public final class BridgePracticeManager {
         for (int slot = 0; slot <= 35; slot++) {
             ItemStack item = inventory.getItem(slot);
             if (item != null && item.getType() == practiceBlock) {
-                if (item.getAmount() < giveAmount) {
-                    item.setAmount(giveAmount);
-                }
                 found = true;
+                if (item.getAmount() < giveAmount) {
+                    ItemStack toppedUp = item.clone();
+                    toppedUp.setAmount(giveAmount);
+                    inventory.setItem(slot, toppedUp);
+                }
             }
         }
         if (found) {
             return;
         }
         ItemStack stack = new ItemStack(practiceBlock, giveAmount);
+        int held = inventory.getHeldItemSlot();
+        ItemStack heldItem = inventory.getItem(held);
+        if (heldItem == null || heldItem.getType().isAir()) {
+            inventory.setItem(held, stack);
+            return;
+        }
         for (int slot = 0; slot <= 6; slot++) {
             ItemStack current = inventory.getItem(slot);
             if (current == null || current.getType().isAir()) {
@@ -811,7 +833,7 @@ public final class BridgePracticeManager {
         if (empty >= 0) {
             inventory.setItem(empty, stack);
         } else {
-            inventory.setItem(0, stack);
+            inventory.setItem(held, stack);
         }
     }
 

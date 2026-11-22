@@ -4,6 +4,7 @@
 
 - **一句话职责**：起床战争搭路练习。用 `/bridge` 打开房间菜单，列出所有练习房间；
   进入房间后物品栏里的练习方块**自动补满**，从起点搭路到终点计时，掉进虚空自动清掉本次方块、送回起点。
+  终点可以是一个点，也可以用两个端点设成**一条终点线**（站到线附近任意位置都算到达）。
   每个房间同一时间可有多名玩家一起练；**第一个进入的人是房主**，可以切换房间是否允许其他人加入。
 - **定位**：主城练习设施（类似 CloudWalk / LobbyToys），**不注册进 HubCore 的小游戏列表**，
   没有等待室。只依赖 `MiniGameLib`（`HubAPI` + `PlayerStats` + `Chat`），可选主城；
@@ -33,8 +34,10 @@
   - 玩家：`/bridge`（菜单）、`/bridge join <房间>`、`/bridge leave`、`/bridge reset`、
     `/bridge lock`、`/bridge list`、`/bridge top [房间]`、`/bridge stats [玩家]`、`/bridge help`
   - 管理（OP 或 `bridgepractice.admin`）：`/bridge create <名字>`、`/bridge setstart <名字>`、
-    `/bridge setend <名字>`、`/bridge icon <名字> <方块>`、`/bridge clear <名字>`、
+    `/bridge setend <名字> [1|2]`、`/bridge icon <名字> <方块>`、`/bridge clear <名字>`、
     `/bridge delete <名字>`、`/bridge reload`
+  - `setend <名字>` 不填序号：终点是一个点；`setend <名字> 1` / `setend <名字> 2`：
+    分别设置终点线的两个端点（两个端点连起来就是终点线）。
 - **房间最快排行榜**：按完成用时从短到长，数据在每个房间（场地名）下：
   - 菜单里每个房间显示前 3 名
   - `/bridge top <房间>` 显示前 `top-size`（默认 10）名
@@ -59,9 +62,12 @@
   | 背包备份与恢复 | `BridgePractice/src/main/java/com/bridgepractice/PlayerState.java` |
   | 房间运行时状态（房主/开放/玩家） | `BridgePracticeManager` 末尾的 `RoomState` |
 - **怎么搭一个房间**：
-  1. 建好起点平台、终点平台（中间留空，下面是虚空或深坑），两平台之间距离就是练习长度。
+  1. 建好起点平台、终点平台/终点线（中间留空，下面是虚空或深坑），两段之间距离就是练习长度。
   2. 站到起点平台：`/bridge create 直线搭路` → `/bridge setstart 直线搭路`。
-  3. 走到终点平台：`/bridge setend 直线搭路`。不需要传送到终点，站在上面设置即可。
+  3. 设置终点（两种任选）：
+     - 点：站到终点平台中心，`/bridge setend 直线搭路`。
+     - 线：站到终点线一端 `/bridge setend 直线搭路 1`，再站到另一端
+       `/bridge setend 直线搭路 2`；玩家从线的任意位置附近经过都算到达。
   4. `/bridge join 直线搭路` 试一次：从起点搭到终点应提示完成并显示用时/速度/位移/方块数；
      掉下去应回起点并显示本次数据。
   5. 更多房间重复以上步骤，玩家用 `/bridge` 菜单选。
@@ -72,7 +78,8 @@
     房间里有人练习时改起点/终点、删除房间会被拒绝。
   - 练习中免伤、免饥饿、不能丢物品；只能拆自己本次搭的方块，别人练习中的方块也拆不掉。
   - 同一房间多人同时练习时，大家共用同一条路线，方块可能重叠；不想被打扰就由房主关闭加入。
-  - 终点判定按水平半径（`end-radius`，默认 2.5）+ 垂直 ±(radius+1)，接到终点平台即可。
+  - 终点判定：点到点模式按水平半径（`end-radius`，默认 2.5）+ 垂直 ±(radius+1)；
+    终点线模式按「离线段的水平最近距离 ≤ `end-radius`」+ 垂直高度判断，走到线上任意位置都算到达。
   - 房间被删除/修改后，旧纪录仍留在 `players.yml`（按房间名索引）。
 - **验证方法**：
   1. 部署 `BridgePractice.jar` + `MiniGameLib.jar` 后启动，控制台应出现

@@ -8,12 +8,13 @@ import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.Locale;
 
-/** 一个练习场地：起点、终点、虚空线、菜单图标。 */
+/** 一个练习房间：起点、终点（点或一条线）、虚空线、菜单图标。 */
 public final class PracticeCourse {
 
     private final String name;
     private Location start;
-    private Location end;
+    private Location endA;
+    private Location endB;
     private double endRadius;
     private int fallY;
     private Material icon = Material.WHITE_WOOL;
@@ -26,10 +27,12 @@ public final class PracticeCourse {
         return name;
     }
 
-    /** 起点终点都设好了，并且在同一张已加载的世界里。 */
+    /** 起点和终点都设好了，并且在同一张已加载的世界里。 */
     public boolean ready() {
-        return start != null && end != null && start.getWorld() != null && end.getWorld() != null
-                && start.getWorld().equals(end.getWorld());
+        return start != null && endA != null && endB != null
+                && start.getWorld() != null && endA.getWorld() != null && endB.getWorld() != null
+                && start.getWorld().equals(endA.getWorld())
+                && endA.getWorld().equals(endB.getWorld());
     }
 
     public boolean hasStart() {
@@ -37,23 +40,66 @@ public final class PracticeCourse {
     }
 
     public boolean hasEnd() {
-        return end != null;
+        return endA != null && endB != null;
     }
 
     public Location start() {
         return start == null ? null : start.clone();
     }
 
-    public Location end() {
-        return end == null ? null : end.clone();
+    public Location endA() {
+        return endA == null ? null : endA.clone();
+    }
+
+    public Location endB() {
+        return endB == null ? null : endB.clone();
+    }
+
+    /** 终点线的中点。 */
+    public Location endCenter() {
+        if (endA == null || endB == null) {
+            return null;
+        }
+        return new Location(endA.getWorld(),
+                (endA.getX() + endB.getX()) / 2.0,
+                (endA.getY() + endB.getY()) / 2.0,
+                (endA.getZ() + endB.getZ()) / 2.0);
+    }
+
+    /** 从起点看过去、终点线上最近的点（用来朝向和清理走廊）。 */
+    public Location facingTarget() {
+        if (start != null) {
+            Nearest nearest = nearest(start);
+            if (nearest != null && nearest.distance > 0.01) {
+                return new Location(start.getWorld(), nearest.x, nearest.y, nearest.z);
+            }
+        }
+        return endCenter();
     }
 
     public void setStart(Location location) {
         this.start = location.clone();
     }
 
-    public void setEnd(Location location) {
-        this.end = location.clone();
+    /** 不区分 1/2 时设成一个点（两个端点重合）。 */
+    public void setEndPoint(Location location) {
+        this.endA = location.clone();
+        this.endB = location.clone();
+    }
+
+    /** 设置终点线的第 1 或第 2 个端点。 */
+    public void setEndLinePoint(int index, Location location) {
+        if (index == 1) {
+            this.endA = location.clone();
+            if (endB == null) {
+                endB = location.clone();
+            }
+        } else {
+            this.endB = location.clone();
+            if (endA == null) {
+                endA = location.clone();
+            }
+        }
     }
 
     public Material icon() {
@@ -64,52 +110,75 @@ public final class PracticeCourse {
         this.icon = icon == null ? Material.WHITE_WOOL : icon;
     }
 
-    /** 场地自己配了 end-radius 就用它，否则用配置里的默认值。 */
+    /** 房间自己配了 end-radius 就用它，否则用配置里的默认值。 */
     public double endRadius(double fallback) {
         return endRadius > 0 ? endRadius : fallback;
     }
 
-    /** 场地自己配了 fall-y（>0）就用它，否则按起点/终点较低者减指定深度计算。 */
+    /** 房间自己配了 fall-y（>0）就用它，否则按起点/终点较低者减指定深度计算。 */
     public int fallY(int depth) {
         if (fallY > 0) {
             return fallY;
         }
         int base = start == null ? 0 : start.getBlockY();
-        if (end != null) {
-            base = Math.min(base, end.getBlockY());
+        if (endA != null) {
+            base = Math.min(base, endA.getBlockY());
+        }
+        if (endB != null) {
+            base = Math.min(base, endB.getBlockY());
         }
         return base - Math.max(1, depth);
     }
 
-    /** 到终点的水平距离；终点没设置时返回 -1。 */
+    /** 到终点线（线段）的水平最近距离；终点没设置时返回 -1。 */
     public double horizontalDistanceToEnd(Location location) {
-        if (end == null || location.getWorld() == null || !location.getWorld().equals(end.getWorld())) {
-            return -1;
-        }
-        double dx = location.getX() - end.getX();
-        double dz = location.getZ() - end.getZ();
-        return Math.sqrt(dx * dx + dz * dz);
+        Nearest nearest = nearest(location);
+        return nearest == null ? -1 : nearest.distance;
     }
 
-    /** 起点到终点的水平距离（房间长度）；没设置好时返回 0。 */
+    /** 起点到终点线的水平距离（房间长度）；没设置好时返回 0。 */
     public double horizontalLength() {
-        if (start == null || end == null || start.getWorld() == null || end.getWorld() == null
-                || !start.getWorld().equals(end.getWorld())) {
+        if (start == null) {
             return 0;
         }
-        double dx = end.getX() - start.getX();
-        double dz = end.getZ() - start.getZ();
-        return Math.sqrt(dx * dx + dz * dz);
+        Nearest nearest = nearest(start);
+        return nearest == null ? 0 : nearest.distance;
     }
 
-    /** 玩家是否已经站进终点判定范围（水平、垂直分别判断）。 */
+    /** 玩家是否已经进入终点线判定范围（水平最近距离 + 垂直高度）。 */
     public boolean isAtEnd(Location location, double radius) {
-        if (end == null || location.getWorld() == null || !location.getWorld().equals(end.getWorld())) {
+        Nearest nearest = nearest(location);
+        if (nearest == null) {
             return false;
         }
         double r = Math.max(0.5, radius);
-        return horizontalDistanceToEnd(location) <= r
-                && Math.abs(location.getY() - end.getY()) <= r + 1.0;
+        return nearest.distance <= r && Math.abs(location.getY() - nearest.y) <= r + 1.0;
+    }
+
+    /** 位置到终点线段的最近点；世界不同或没设置终点时返回 null。 */
+    private Nearest nearest(Location location) {
+        if (endA == null || endB == null || location == null || location.getWorld() == null
+                || !location.getWorld().equals(endA.getWorld())) {
+            return null;
+        }
+        double ax = endA.getX();
+        double az = endA.getZ();
+        double dx = endB.getX() - ax;
+        double dz = endB.getZ() - az;
+        double lengthSq = dx * dx + dz * dz;
+        double t = lengthSq < 1.0E-9
+                ? 0.0
+                : ((location.getX() - ax) * dx + (location.getZ() - az) * dz) / lengthSq;
+        t = Math.max(0.0, Math.min(1.0, t));
+        double x = ax + dx * t;
+        double z = az + dz * t;
+        double y = endA.getY() + (endB.getY() - endA.getY()) * t;
+        double ex = location.getX() - x;
+        double ez = location.getZ() - z;
+        return new Nearest(x, y, z, Math.sqrt(ex * ex + ez * ez));
+    }
+
+    private record Nearest(double x, double y, double z, double distance) {
     }
 
     // ---------- 读写 courses.yml ----------
@@ -119,7 +188,14 @@ public final class PracticeCourse {
             return;
         }
         start = parse(section.getString("start", null));
-        end = parse(section.getString("end", null));
+        endA = parse(section.getString("end-1", null));
+        endB = parse(section.getString("end-2", null));
+        if (endA == null && endB == null) {
+            // 旧版本只有一个 end 点
+            Location legacy = parse(section.getString("end", null));
+            endA = legacy;
+            endB = legacy;
+        }
         endRadius = section.getDouble("end-radius", 0.0);
         fallY = section.getInt("fall-y", 0);
         Material parsed = section.getString("icon", null) == null
@@ -133,9 +209,11 @@ public final class PracticeCourse {
         }
         section.set("world", start != null && start.getWorld() != null
                 ? start.getWorld().getName()
-                : (end != null && end.getWorld() != null ? end.getWorld().getName() : null));
+                : (endA != null && endA.getWorld() != null ? endA.getWorld().getName() : null));
         section.set("start", format(start));
-        section.set("end", format(end));
+        section.set("end-1", format(endA));
+        section.set("end-2", format(endB));
+        section.set("end", null);
         section.set("end-radius", endRadius > 0 ? endRadius : null);
         section.set("fall-y", fallY > 0 ? fallY : null);
         section.set("icon", icon.name());
