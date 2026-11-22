@@ -1,0 +1,25 @@
+# 每次自动补方块后，物品栏里的练习方块补满到这个数量
+give-amount: 64
+# 自动补方块的检查间隔（tick）。20 = 每秒一次，另有放方块后立刻补一次
+refill-interval-ticks: 20
+# 掉到「起点和终点中较低的一个」以下多少格，算掉进虚空
+fall-depth: 25
+# 掉进虚空后回起点的延迟（tick）
+respawn-delay-ticks: 10
+# 到达终点后回起点、准备下一轮的延迟（tick）
+success-delay-ticks: 60
+# 终点判定半径（格，水平与垂直分别判断）
+end-radius: 2.5
+# 离开起点多少格后开始计时
+start-line: 1.5
+# 榜单显示人数
+top-size: 10
+# 练习用方块（自动补满到物品栏的就是它）
+practice-block: WHITE_WOOL
+# 清理残留方块时，向起点-终点连线两侧扩展的格数（/bridge clear 与开服清理用）
+clear-margin: 8
+# 开服时是否自动清理场地内残留的练习方块（上次崩溃/异常退出留下的）
+cleanup-on-startup: true
+
+# 房间保存在同目录的 courses.yml 里，用 /bridge create、setstart、setend 设置，
+# 不要手改 config.yml 的房间信息。

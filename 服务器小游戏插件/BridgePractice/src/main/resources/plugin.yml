@@ -1,0 +1,22 @@
+name: BridgePractice
+version: '1.0.0'
+main: com.bridgepractice.BridgePracticePlugin
+api-version: '26.2'
+description: 起床战争搭路练习：多房间、方块自动补满、掉虚空回起点、房间最快纪录
+author: example
+
+depend: [MiniGameLib]
+
+commands:
+  bridge:
+    description: 起床战争搭路练习
+    usage: /bridge help
+    aliases: [bp, 搭路]
+
+permissions:
+  bridgepractice.play:
+    description: 参与搭路练习
+    default: true
+  bridgepractice.admin:
+    description: 创建与管理练习场地
+    default: op
