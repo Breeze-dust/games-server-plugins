@@ -431,12 +431,17 @@ public final class KnockbackManager {
         clearWindCharges();
         secondsLeft = gameSeconds();
         lastAmmoRefill = System.currentTimeMillis();
+        List<Location> spawnPool = arena.spawnPool();
+        int spawnIndex = 0;
         for (UUID id : playing) {
             Player p = Bukkit.getPlayer(id);
             if (p == null) {
                 continue;
             }
-            preparePlayer(p);
+            Location spawn = spawnPool.isEmpty()
+                    ? null
+                    : spawnPool.get(spawnIndex++ % spawnPool.size());
+            preparePlayer(p, spawn);
             HubAPI.setPlaying(id, GAME_NAME);
             HubAPI.setArenaSpectator(GAME_NAME, "", arena().center());
             Chat.title(p, "&b&l" + GAME_NAME, "&f把别人打下去，活到最后！", 2);
@@ -814,11 +819,10 @@ public final class KnockbackManager {
         }
     }
 
-    private void preparePlayer(Player player) {
+    private void preparePlayer(Player player, Location spawn) {
         player.getInventory().clear();
         player.setGameMode(GameMode.SURVIVAL);
         resetPlayer(player);
-        Location spawn = arena.randomSpawn();
         if (spawn != null) {
             player.teleport(spawn);
         }

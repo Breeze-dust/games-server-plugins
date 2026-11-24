@@ -7,6 +7,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
@@ -77,11 +78,36 @@ public final class KnockbackArena {
         return missing.isEmpty() ? "无" : String.join("、", missing);
     }
 
-    public Location randomSpawn() {
-        if (spawns.isEmpty()) {
-            return lobby == null ? null : lobby.clone();
+    /** 开局分配用：去掉坐标重复的出生点并打乱顺序，保证同批玩家不撞点。 */
+    public List<Location> spawnPool() {
+        List<Location> unique = new ArrayList<>();
+        for (Location spawn : spawns) {
+            boolean duplicated = false;
+            for (Location kept : unique) {
+                if (sameSpot(kept, spawn)) {
+                    duplicated = true;
+                    break;
+                }
+            }
+            if (!duplicated) {
+                unique.add(spawn.clone());
+            }
         }
-        return spawns.get(ThreadLocalRandom.current().nextInt(spawns.size())).clone();
+        Collections.shuffle(unique, ThreadLocalRandom.current());
+        if (unique.isEmpty() && lobby != null) {
+            unique.add(lobby.clone());
+        }
+        return unique;
+    }
+
+    private static boolean sameSpot(Location a, Location b) {
+        if (a.getWorld() == null || b.getWorld() == null
+                || !a.getWorld().getName().equals(b.getWorld().getName())) {
+            return false;
+        }
+        return Math.round(a.getX() * 100) == Math.round(b.getX() * 100)
+                && Math.round(a.getY() * 100) == Math.round(b.getY() * 100)
+                && Math.round(a.getZ() * 100) == Math.round(b.getZ() * 100);
     }
 
     /** 旁观者用的场地中心（取两个对角的 X/Z 中点，Y 取较高角上方 3 格）。 */

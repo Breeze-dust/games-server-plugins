@@ -3,7 +3,7 @@
 > 速查卡（AI 先读这里，别先读源码）
 
 - **一句话职责**：自由混战击退游戏。开局每人一把**击退镐**（默认铁镐，左键敲人）和**风弹**（右键发射，风弹会同时推动自己）；把别人打下平台，**低于 `arena.void-y` 淘汰为旁观者**；最后一人获胜；**时间到时仍存活的玩家全部获胜**。对局中所有伤害取消，只保留击退。开局还会按配置给全体**速度**与**跳跃提升**。
-- **入口 / 主流程**：`KnockbackBattle/src/main/java/com/knockback/KnockbackPlugin.java#onEnable` → `KnockbackManager#load`（读 config 与场地）→ `/kb join` 进等待队列（`KnockbackManager#join`）→ 公共库 `WaitCountdown` 自动倒计时 → `KnockbackManager#startGame` 清背包、发棒/风弹、随机出生点、`HubAPI.setPlaying` → 每秒 `tickGame`（计时 + 补风弹 + 动作栏）→ 风弹命中 `detonateWindCharge` / 棒击 `stickHit` → 掉出 `void-y` 时 `eliminate` 变旁观 → 只剩 1 人 `endGame`；时间到则所有存活者共同获胜。
+- **入口 / 主流程**：`KnockbackBattle/src/main/java/com/knockback/KnockbackPlugin.java#onEnable` → `KnockbackManager#load`（读 config 与场地）→ `/kb join` 进等待队列（`KnockbackManager#join`）→ 公共库 `WaitCountdown` 自动倒计时 → `KnockbackManager#startGame` 清背包、发棒/风弹、逐个分配不重复出生点、`HubAPI.setPlaying` → 每秒 `tickGame`（计时 + 补风弹 + 动作栏）→ 风弹命中 `detonateWindCharge` / 棒击 `stickHit` → 掉出 `void-y` 时 `eliminate` 变旁观 → 只剩 1 人 `endGame`；时间到则所有存活者共同获胜。
 - **关键文件**：
   | 需求 | 文件 |
   | --- | --- |
@@ -19,7 +19,7 @@
 - **建场步骤**：
   1. 站到场地一个角：`/kb setpos1`；站到对角：`/kb setpos2`（只取 X/Z；旁观的观看点取两角中点，Y 取较高角 +3）。
   2. `/kb setlobby` 设置等待点。
-  3. 站到出生点：`/kb addspawn`（可多次；开局随机挑）。
+  3. 站到出生点：`/kb addspawn`（可多次；开局打乱后按顺序发给各玩家，同批不撞点，只有人多于出生点数时才复用）。
   4. 站在淘汰高度（平台下方）执行 `/kb setvoid`，或 `/kb setvoid <Y>` 直接写 Y。
   5. `/kb save` → `/kb list` 检查。
   6. 可选主城菜单入口（选空槽，例如 36）：
