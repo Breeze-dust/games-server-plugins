@@ -21,7 +21,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
     private static final List<String> PLAYER_SUBCOMMANDS = List.of(
             "join", "leave", "reset", "lock", "breakblocks", "list", "top", "stats", "help");
     private static final List<String> ADMIN_SUBCOMMANDS = List.of(
-            "create", "setstart", "setspawn", "setend", "delete", "icon", "clear", "reload");
+            "create", "setstart", "setspawn", "setend", "setvoid", "delete", "icon", "clear", "reload");
 
     private final BridgePracticeManager manager;
     private final CourseMenu menu;
@@ -61,6 +61,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             case "setstart" -> setstart(sender, args);
             case "setspawn" -> setspawn(sender, args);
             case "setend" -> setend(sender, args);
+            case "setvoid" -> setvoid(sender, args);
             case "delete" -> delete(sender, args);
             case "icon" -> icon(sender, args);
             case "clear" -> clear(sender, args);
@@ -250,6 +251,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
             Chat.send(sender, "&f/bridge setstart <名字> [1|2] &7- 设置起点；填 1/2 时设成一条起点线");
             Chat.send(sender, "&f/bridge setspawn <名字> &7- 设置房间出生点（不设则用起点）");
             Chat.send(sender, "&f/bridge setend <名字> [1|2] &7- 设置终点；填 1/2 时设成一条终点线");
+            Chat.send(sender, "&f/bridge setvoid <名字> [Y] &7- 设置虚空高度（不填用你当前高度）");
             Chat.send(sender, "&f/bridge icon <名字> <方块> &7- 设置菜单图标");
             Chat.send(sender, "&f/bridge clear <名字> &7- 清掉房间内的残留练习方块");
             Chat.send(sender, "&f/bridge delete <名字> &7- 删除房间");
@@ -363,6 +365,37 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
         }
     }
 
+    private void setvoid(CommandSender sender, String[] args) {
+        if (!requireAdmin(sender)) {
+            return;
+        }
+        if (args.length < 2) {
+            Chat.send(sender, "&c用法：/bridge setvoid <名字> [Y]（不填 Y 就用你当前的方块高度）");
+            return;
+        }
+        int y;
+        if (args.length >= 3) {
+            try {
+                y = Integer.parseInt(args[2]);
+            } catch (NumberFormatException exception) {
+                Chat.send(sender, "&cY 必须是整数高度。");
+                return;
+            }
+        } else if (sender instanceof Player player) {
+            y = player.getLocation().getBlockY();
+        } else {
+            Chat.send(sender, "&c控制台必须写高度：/bridge setvoid <名字> <Y>");
+            return;
+        }
+        String error = manager.setVoid(args[1], y);
+        if (error != null) {
+            Chat.send(sender, "&c" + error);
+        } else {
+            Chat.send(sender, "&a已把 &f" + args[1] + " &a的虚空高度设为 &fY=" + y
+                    + "&a（低于这个高度算掉落）。");
+        }
+    }
+
     private void delete(CommandSender sender, String[] args) {
         if (!requireAdmin(sender)) {
             return;
@@ -455,7 +488,7 @@ public final class BridgePracticeCommand implements CommandExecutor, TabComplete
                 case "join", "top", "delete", "clear" -> {
                     return filter(courseNames(), args[1]);
                 }
-                case "setstart", "setspawn", "setend", "icon" -> {
+                case "setstart", "setspawn", "setend", "setvoid", "icon" -> {
                     return filter(courseNames(), args[1]);
                 }
                 case "stats" -> {

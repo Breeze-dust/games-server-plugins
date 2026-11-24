@@ -20,7 +20,6 @@ final class BridgeSession {
     long startedAt;
     long lastHud;
     boolean pending;
-    boolean armed;
     int runBlocks;
     double maxDisplacement;
 

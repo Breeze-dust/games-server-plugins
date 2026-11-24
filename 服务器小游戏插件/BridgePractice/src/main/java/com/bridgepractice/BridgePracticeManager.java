@@ -60,7 +60,6 @@ public final class BridgePracticeManager {
     private int respawnDelay;
     private int successDelay;
     private double endRadius;
-    private double startLine;
     private int topSize;
     private Material practiceBlock;
     private int clearMargin;
@@ -116,7 +115,6 @@ public final class BridgePracticeManager {
         respawnDelay = Math.max(1, plugin.getConfig().getInt("respawn-delay-ticks", 10));
         successDelay = Math.max(1, plugin.getConfig().getInt("success-delay-ticks", 60));
         endRadius = Math.max(0.5, plugin.getConfig().getDouble("end-radius", 2.5));
-        startLine = Math.max(0.5, plugin.getConfig().getDouble("start-line", 1.5));
         topSize = Math.max(1, plugin.getConfig().getInt("top-size", 10));
         clearMargin = Math.max(0, plugin.getConfig().getInt("clear-margin", 8));
         cleanupOnStartup = plugin.getConfig().getBoolean("cleanup-on-startup", true);
@@ -280,6 +278,20 @@ public final class BridgePracticeManager {
             return "这个房间正有人在练习，等他们离开再改出生点。";
         }
         course.setSpawn(location);
+        saveCourses();
+        return null;
+    }
+
+    /** 设置房间虚空高度：玩家 Y 低于它就算掉进虚空。 */
+    public String setVoid(String name, int y) {
+        PracticeCourse course = course(name);
+        if (course == null) {
+            return "没有这个房间。";
+        }
+        if (playerCount(course.name()) > 0) {
+            return "这个房间正有人在练习，等他们离开再改虚空高度。";
+        }
+        course.setFallY(y);
         saveCourses();
         return null;
     }
@@ -544,7 +556,6 @@ public final class BridgePracticeManager {
         int fallY = course.fallY(fallDepth);
         PlayerState saved = PlayerState.capture(player);
         BridgeSession session = new BridgeSession(id, course, saved, fallY);
-        session.armed = !needsWalkToStart(course);
         sessions.put(id, session);
         RoomState state = rooms.computeIfAbsent(course.name(), key -> new RoomState());
         boolean firstInRoom = state.players.isEmpty();
@@ -667,15 +678,6 @@ public final class BridgePracticeManager {
                 onFinish(session, player, now);
                 continue;
             }
-            if (!session.armed) {
-                if (session.course.distanceToStart(location) <= startLine) {
-                    session.armed = true;
-                }
-            }
-            if (session.armed && !session.started()
-                    && session.course.distanceToStart(location) >= startLine) {
-                startRun(session, player, now);
-            }
             if (session.started()) {
                 double moved = session.course.distanceToStart(location);
                 if (moved > session.maxDisplacement) {
@@ -706,9 +708,6 @@ public final class BridgePracticeManager {
         long elapsed = session.started() ? session.elapsed(now) : 0;
         reportRun(player, false, elapsed, session.maxDisplacement, session.runBlocks);
         sendRoomBest(player, session.course.name());
-        Chat.title(player, "&c掉进虚空",
-                "&7用时 " + (elapsed > 0 ? formatTime(elapsed) : "--")
-                        + " &8· &f" + String.format(Locale.ROOT, "%.1f", session.maxDisplacement) + " 格");
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.6f, 0.9f);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (sessions.get(session.playerId) != session) {
@@ -778,7 +777,6 @@ public final class BridgePracticeManager {
         clearBlocks(session);
         session.runBlocks = 0;
         session.maxDisplacement = 0;
-        session.armed = !needsWalkToStart(session.course);
         Player player = Bukkit.getPlayer(session.playerId);
         if (player != null && player.isOnline()) {
             teleportToSpawn(player, session.course);
@@ -789,22 +787,10 @@ public final class BridgePracticeManager {
             player.setFallDistance(0);
             givePracticeTools(player, session.course);
             ensureBlocks(player);
-            Chat.actionBar(player, session.armed
-                    ? "&e向前搭路，离开起点开始计时"
-                    : "&e走到起点，离开起点后开始计时");
+            Chat.actionBar(player, "&e放下第一个方块开始计时");
         }
         session.startedAt = 0;
         session.pending = false;
-    }
-
-    /** 出生点离起点线超过 start-line 时，玩家要先走到起点线，计时才生效。 */
-    private boolean needsWalkToStart(PracticeCourse course) {
-        Location spawn = course.spawnPoint();
-        if (spawn == null) {
-            return false;
-        }
-        double distance = course.distanceToStart(spawn);
-        return distance > startLine;
     }
 
     private void teleportToSpawn(Player player, PracticeCourse course) {
@@ -826,8 +812,7 @@ public final class BridgePracticeManager {
         if (!session.started()) {
             double distance = session.course.horizontalDistanceToEnd(player.getLocation());
             String away = distance >= 0 ? String.format(Locale.ROOT, "%.1f", distance) : "--";
-            Chat.actionBar(player, (session.armed ? "&e离开起点开始计时" : "&e走到起点再离开开始计时")
-                    + " &7| &f距终点 " + away + " 格");
+            Chat.actionBar(player, "&e放下第一个方块开始计时 &7| &f距终点 " + away + " 格");
             return;
         }
         long best = bestOf(session.course.name(), session.playerId);
@@ -854,7 +839,7 @@ public final class BridgePracticeManager {
         }
         trackPlacement(session, block);
         session.runBlocks++;
-        if (!session.pending && !session.started() && session.armed) {
+        if (!session.pending && !session.started()) {
             startRun(session, player, System.currentTimeMillis());
         }
         Bukkit.getScheduler().runTask(plugin, () -> {

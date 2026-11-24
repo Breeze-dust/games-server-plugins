@@ -10,8 +10,6 @@ respawn-delay-ticks: 10
 success-delay-ticks: 60
 # 终点判定半径（格，水平与垂直分别判断；终点是一条线时，离线段最近距离小于它即算到达）
 end-radius: 2.5
-# 离开起点多少格后开始计时
-start-line: 1.5
 # 榜单显示人数
 top-size: 10
 # 练习用方块（自动补满到物品栏的就是它）

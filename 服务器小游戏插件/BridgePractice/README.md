@@ -14,8 +14,7 @@
   `/bridge` 打开房间菜单（或 `/bridge join <房间>`）→ `#join`（保存背包、清空、发练习方块和道具、
   传送到出生点（没设置则用起点）并朝向终点；记录房主）→ 每 2 tick `#tick`：掉到虚空线以下 → 0.5 秒后回出生点；
   进入终点半径 → 记录用时、刷新个人最佳和房间最快榜，3 秒后回出生点继续下一轮。
-- **计时**：走到起点后，第一次放方块或离开起点 1.5 格时开始；动作栏实时显示「用时 / 距终点 / 个人最佳」。
-  出生点离起点较远时，进房/掉落回出生点不会立刻计时，要先走到起点。
+- **计时**：**放下第一个方块时**开始计时；走路、跳下去都不会计时。动作栏实时显示「用时 / 距终点 / 个人最佳」。
 - **每次掉落/到达终点后的成绩**（聊天栏 + 标题）：
   - 搭路时间
   - 水平位移（到达终点时 = 起点到终点的水平距离；掉落时 = 本次最远水平位移）
@@ -24,7 +23,7 @@
   - 以及房间当前最快纪录
 - **房间 / 房主**：房间 = `courses.yml` 里配置的一条练习路线。
   - **出生点**：`/bridge setspawn <房间>` 单独设置，进入房间、掉落、到达终点后都回到这里；
-    不设置时默认用起点线中点。出生点离起点线超过 `start-line` 时，玩家要先走到起点再出发才会计时。
+    不设置时默认用起点线中点。计时只由放下第一个方块触发，出生点远近都不影响。
   - 第一个进入的玩家成为房主；房主离开时，房主自动转给房间里下一个玩家。
   - 房主右键第 6 格金镐（或 `/bridge breakblocks`）切换房内玩家**能不能拆别人搭的方块**，默认禁止。
   - 房主右键第 7 格比较器（或 `/bridge lock`）切换开放/关闭；关闭后其他人无法进入该房间。
@@ -39,8 +38,8 @@
     `/bridge lock`、`/bridge breakblocks`、`/bridge list`、`/bridge top [房间]`、
     `/bridge stats [玩家]`、`/bridge help`
   - 管理（OP 或 `bridgepractice.admin`）：`/bridge create <名字>`、`/bridge setstart <名字> [1|2]`、
-    `/bridge setspawn <名字>`、`/bridge setend <名字> [1|2]`、`/bridge icon <名字> <方块>`、
-    `/bridge clear <名字>`、`/bridge delete <名字>`、`/bridge reload`
+    `/bridge setspawn <名字>`、`/bridge setend <名字> [1|2]`、`/bridge setvoid <名字> [Y]`、
+    `/bridge icon <名字> <方块>`、`/bridge clear <名字>`、`/bridge delete <名字>`、`/bridge reload`
   - `setstart` / `setend` 不填序号：设成一个点；填 `1` / `2`：分别设置起点线 / 终点线的两个端点
     （两个端点连起来就是线）。
 - **房间最快排行榜**：按完成用时从短到长，数据在每个房间（场地名）下：
@@ -48,9 +47,11 @@
   - `/bridge top <房间>` 显示前 `top-size`（默认 10）名
   - 刷新房间第一时全服播报
 - **配置**：`server/plugins/BridgePractice/config.yml`
-  - `give-amount`、`refill-interval-ticks`、`fall-depth`（虚空线 = 起点/终点较低者往下多少格）、
-    `respawn-delay-ticks`、`success-delay-ticks`、`end-radius`、`start-line`、`top-size`、
+  - `give-amount`、`refill-interval-ticks`、`fall-depth`（未单独设置虚空高度时的默认深度）、
+    `respawn-delay-ticks`、`success-delay-ticks`、`end-radius`、`top-size`、
     `practice-block`（练习方块材质）、`clear-margin`、`cleanup-on-startup`
+  - **虚空高度**：每个房间可以单独设置 `fall-y`（低于它算掉落），用 `/bridge setvoid <房间> [Y]`；
+    不设置时按起点/终点较低者减 `fall-depth`。
 - **房间数据**：`server/plugins/BridgePractice/courses.yml`，由命令写入，不要手改。
   每个房间：`world`、`start`、`spawn`、`end-1`、`end-2`、`end-radius`、`fall-y`、`icon`。
 - **玩家记录**：命名空间 `bridgepractice`，写在唯一的 `server/plugins/MiniGameLib/players.yml`：
@@ -75,9 +76,11 @@
      - 点：站到终点平台中心，`/bridge setend 直线搭路`。
      - 线：站到终点线一端 `/bridge setend 直线搭路 1`，再站到另一端
        `/bridge setend 直线搭路 2`；玩家从线的任意位置附近经过都算到达。
-  4. `/bridge join 直线搭路` 试一次：从起点搭到终点应提示完成并显示用时/速度/位移/方块数；
+  4. 设置虚空高度：站到希望判定的高度 `/bridge setvoid 直线搭路`（也可以直接写 Y：
+     `/bridge setvoid 直线搭路 -20`）；不设置就按起点/终点往下 `fall-depth` 自动算。
+  5. `/bridge join 直线搭路` 试一次：从起点搭到终点应提示完成并显示用时/速度/位移/方块数；
      掉下去应回起点并显示本次数据。
-  5. 更多房间重复以上步骤，玩家用 `/bridge` 菜单选。
+  6. 更多房间重复以上步骤，玩家用 `/bridge` 菜单选。
 - **注意**：
   - 起点/终点平台**不要用练习方块（默认白色羊毛）搭**：开服清理和 `/bridge clear` 会沿
     起点→终点走廊删掉该材质的方块。用石头、木板等其它材质做平台最安全。
@@ -88,7 +91,7 @@
   - 同一房间多人同时练习时，大家共用同一条路线，方块可能重叠；不想被打扰就由房主关闭加入。
   - 终点判定：点模式按水平半径（`end-radius`，默认 2.5）+ 垂直 ±(radius+1)；
     线模式按「离线段的水平最近距离 ≤ `end-radius`」+ 垂直高度判断，走到线上任意位置都算到达。
-    起点线同理：离开起点线 `start-line` 格后开始计时，水平位移也按离起点线的距离计算。
+    起点线同理：水平位移按离起点线的距离计算；计时只看第一个方块。
   - 房间被删除/修改后，旧纪录仍留在 `players.yml`（按房间名索引）。
 - **验证方法**：
   1. 部署 `BridgePractice.jar` + `MiniGameLib.jar` 后启动，控制台应出现

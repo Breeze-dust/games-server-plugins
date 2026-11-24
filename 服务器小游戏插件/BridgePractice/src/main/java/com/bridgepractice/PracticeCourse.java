@@ -19,6 +19,7 @@ public final class PracticeCourse {
     private Location endB;
     private double endRadius;
     private int fallY;
+    private boolean fallYSet;
     private Material icon = Material.WHITE_WOOL;
 
     public PracticeCourse(String name) {
@@ -146,9 +147,9 @@ public final class PracticeCourse {
         return endRadius > 0 ? endRadius : fallback;
     }
 
-    /** 房间自己配了 fall-y（>0）就用它，否则按起点/终点较低者减指定深度计算。 */
+    /** 房间单独设置过虚空高度就用它，否则按起点/终点较低者减指定深度计算。 */
     public int fallY(int depth) {
-        if (fallY > 0) {
+        if (fallYSet) {
             return fallY;
         }
         int base = startA == null ? 0 : startA.getBlockY();
@@ -158,6 +159,16 @@ public final class PracticeCourse {
             }
         }
         return base - Math.max(1, depth);
+    }
+
+    public boolean hasCustomFallY() {
+        return fallYSet;
+    }
+
+    /** 设置房间虚空高度（玩家 Y 低于它就算掉进虚空），负数也可以。 */
+    public void setFallY(int y) {
+        this.fallY = y;
+        this.fallYSet = true;
     }
 
     /** 到终点线的水平最近距离；终点没设置时返回 -1。 */
@@ -276,7 +287,12 @@ public final class PracticeCourse {
             endB = legacy;
         }
         endRadius = section.getDouble("end-radius", 0.0);
-        fallY = section.getInt("fall-y", 0);
+        if (section.contains("fall-y")) {
+            fallY = section.getInt("fall-y");
+            fallYSet = true;
+        } else {
+            fallYSet = false;
+        }
         Material parsed = section.getString("icon", null) == null
                 ? null : Material.matchMaterial(section.getString("icon"));
         icon = parsed == null ? Material.WHITE_WOOL : parsed;
@@ -297,7 +313,7 @@ public final class PracticeCourse {
         section.set("end-2", format(endB));
         section.set("end", null);
         section.set("end-radius", endRadius > 0 ? endRadius : null);
-        section.set("fall-y", fallY > 0 ? fallY : null);
+        section.set("fall-y", fallYSet ? fallY : null);
         section.set("icon", icon.name());
     }
 
