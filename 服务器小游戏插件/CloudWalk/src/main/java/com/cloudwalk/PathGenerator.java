@@ -9,7 +9,8 @@ import java.util.Set;
  * 路径生成：从路径末端向前 / 左 / 右试探，水平 3~4（可选 5）格、高度 -2~+1。
  *
  * <p>两类「特殊跳」：三远一高（水平 4 + 上升）和四格跳（水平 5）。
- * 它们都受 `allowSpecial` 控制（开局前几块、以及不能连续出现时传 false）。
+ * 四格跳只走直行；三远一高也只走直行，拐弯处一律不出现。
+ * 两者都受 `allowSpecial` 控制（开局前几块、以及不能连续出现时传 false）。
  */
 public final class PathGenerator {
 
@@ -81,6 +82,10 @@ public final class PathGenerator {
                 for (int dy : heights) {
                     if (far && dy > 0) {
                         // 四格跳只出平跳 / 下降，不做「四远一高」
+                        continue;
+                    }
+                    if (distance == 4 && dy > 0 && !straight) {
+                        // 「三远一高」只走直行，拐弯处一律不出现（不受难度/allowSpecial 影响）
                         continue;
                     }
                     if (!allow4JumpUp && distance == 4 && dy > 0) {

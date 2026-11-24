@@ -87,7 +87,7 @@ path:
 # hard  = 暂未开放
 # allow-4-far: true 时额外加入距离 5（空 4 格）；原版跳不到，留给跳跃提升，默认关闭
 # four-far-chance: 每次生成时尝试四格跳的概率（0~1）
-# 三远一高和四格跳都不会连续出现，也不会出现在开局前 special-first-blocks 块里
+# 三远一高（只出现在直行、拐弯处不会出）和四格跳都不会连续出现，也不会出现在开局前 special-first-blocks 块里
 difficulties:
   easy:
     name: 简单
