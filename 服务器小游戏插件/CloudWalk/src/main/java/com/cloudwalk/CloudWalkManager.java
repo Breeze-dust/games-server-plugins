@@ -257,7 +257,8 @@ public class CloudWalkManager {
         for (int i = 0; i < settings.queueLength; i++) {
             BlockPos tail = path.get(path.size() - 1);
             boolean allowSpecial = generated >= settings.specialFirstBlocks && !isSpecialJump(path);
-            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box, allowSpecial);
+            BlockPos next = generator.next(tail, cursor, new HashSet<>(path), box, allowSpecial,
+                    previousDrop(path));
             if (next == null) {
                 return null;
             }
@@ -688,7 +689,8 @@ public class CloudWalkManager {
         PathGenerator generator = generators.get(s.difficulty.id);
         boolean allowSpecial = s.generated >= settings.specialFirstBlocks && !isSpecialJump(s.path);
         BlockPos next = generator == null ? null
-                : generator.next(tail, s.heading, new HashSet<>(s.path), s.box, allowSpecial);
+                : generator.next(tail, s.heading, new HashSet<>(s.path), s.box, allowSpecial,
+                        previousDrop(s.path));
         if (next == null) {
             finish(p, s, "路径到达区域边界", true, true);
             return;
@@ -785,6 +787,14 @@ public class CloudWalkManager {
         BlockPos tail = path.get(path.size() - 1);
         int distance = Math.abs(tail.x() - previous.x()) + Math.abs(tail.z() - previous.z());
         return distance >= 5 || (distance == 4 && tail.y() > previous.y());
+    }
+
+    /** 上一跳是否下降了 1~2 格（下降后的下一跳不生成四格跳）。 */
+    private static boolean previousDrop(List<BlockPos> path) {
+        if (path.size() < 2) {
+            return false;
+        }
+        return path.get(path.size() - 1).y() - path.get(path.size() - 2).y() <= -1;
     }
 
     // ---------- 通道 ----------

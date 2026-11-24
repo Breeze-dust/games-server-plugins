@@ -39,12 +39,14 @@ public final class PathGenerator {
      * @param heading      进入 tail 的方向（tail 的「前方」）
      * @param occupied     当前路径上已有方块（当前 + 队列）
      * @param allowSpecial 是否允许生成特殊跳（三远一高 / 四格跳）
+     * @param afterDrop    上一跳是否下降了 1~2 格；是则这一跳不生成四格跳
      * @return 合法的新方块位置；没有可用位置时返回 null
      */
     public BlockPos next(BlockPos tail, Direction heading, Set<BlockPos> occupied, LaneBox box,
-                         boolean allowSpecial) {
+                         boolean allowSpecial, boolean afterDrop) {
         // 先按概率决定这一跳要不要尝试四格跳；没有可用位置就退回普通候选
-        if (allowSpecial && allow4Far && farChance > 0 && random.nextDouble() < farChance) {
+        if (allowSpecial && allow4Far && farChance > 0 && !afterDrop
+                && random.nextDouble() < farChance) {
             BlockPos far = pick(tail, heading, occupied, box, allowSpecial, true);
             if (far != null) {
                 return far;
@@ -55,7 +57,7 @@ public final class PathGenerator {
         if (chosen == null && !allowSpecial) {
             // 除了特殊跳已经没有别的落点：宁可破一次例，也不要让玩家卡死
             chosen = pick(tail, heading, occupied, box, true, false);
-            if (chosen == null) {
+            if (chosen == null && !afterDrop) {
                 chosen = pick(tail, heading, occupied, box, true, true);
             }
         }
