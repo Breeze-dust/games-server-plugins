@@ -10,11 +10,14 @@ import com.hub.util.StartCountdown;
 import com.hub.util.Top3;
 import com.hub.util.WaitCountdown;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Input;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
@@ -84,6 +87,10 @@ public final class SnakePartyManager {
     private BukkitTask moveTask;
     private BukkitTask plateTask;
     private BukkitTask gameTask;
+    /** 缩圈：当前允许的半边长（开场 = arena.radius，按配置收缩到 shrink.min-radius）。 */
+    private double shrinkHalf;
+    private boolean shrinkStarted;
+    private BukkitTask borderTask;
     private int secondsLeft;
     private int readySeconds;
     private YamlConfiguration stats;
@@ -308,6 +315,10 @@ public final class SnakePartyManager {
         changed |= setDefault("plate.lifetime-growth-ms-per-second", 150);
         changed |= setDefault("plate.max-lifetime-seconds", 45.0);
         changed |= setDefault("plate.place-distance", 1.2);
+        changed |= setDefault("shrink.enabled", true);
+        changed |= setDefault("shrink.start-seconds", 45);
+        changed |= setDefault("shrink.duration-seconds", 60);
+        changed |= setDefault("shrink.min-radius", 3.0);
         changed |= setDefault("plate.colors", List.of("RED", "ORANGE", "YELLOW", "LIME",
                 "LIGHT_BLUE", "BLUE", "PURPLE", "MAGENTA", "PINK", "CYAN",
                 "WHITE", "GRAY", "BROWN", "GREEN", "BLACK", "LIGHT_GRAY"));
@@ -606,6 +617,12 @@ public final class SnakePartyManager {
             }
         }
         broadcast("&a&l开始！&f时间 &e" + gameSeconds() + " &f秒。");
+        shrinkHalf = arena.getRadius();
+        shrinkStarted = false;
+        if (shrinkEnabled()) {
+            broadcast("&c&l缩圈：&f开局 &e" + shrinkStartSeconds() + " &f秒后场地开始向中心收缩，越过红色边界直接淘汰！");
+            borderTask = Bukkit.getScheduler().runTaskTimer(plugin, this::renderShrinkBorder, 10L, 10L);
+        }
         updateActionBar();
         reportArena();
         moveTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickMovement, 1L, 1L);
@@ -732,8 +749,10 @@ public final class SnakePartyManager {
                 continue;
             }
             Location loc = p.getLocation();
-            if (!arena.containsXZ(loc) || loc.getY() < arena.floorY() - 6) {
-                eliminate(p, "掉出了场地");
+            double half = shrinkEnabled() ? shrinkHalf : arena.getRadius();
+            if (!arena.containsXZ(loc, half) || loc.getY() < arena.floorY() - 6) {
+                eliminate(p, shrinkEnabled() && shrinkStarted && !arena.containsXZ(loc, half)
+                        ? "越过了收缩边界" : "掉出了场地");
                 if (state != State.RUNNING) {
                     return;
                 }
@@ -846,12 +865,94 @@ public final class SnakePartyManager {
             endGame(new LinkedHashSet<>(playing), "&6&l时间到！&f仍存活的玩家共同获胜。");
             return;
         }
+        updateShrink();
+        if (state != State.RUNNING) {
+            return;
+        }
         if (secondsLeft == 30 || secondsLeft == 10) {
             broadcast("&e剩余 &f" + secondsLeft + " &e秒！");
         }
         updateActionBar();
         updateLiveBoard();
         reportArena();
+    }
+
+    // ---------- 缩圈 ----------
+
+    private boolean shrinkEnabled() {
+        return plugin.getConfig().getBoolean("shrink.enabled", true);
+    }
+
+    private int shrinkStartSeconds() {
+        return Math.max(0, plugin.getConfig().getInt("shrink.start-seconds", 45));
+    }
+
+    private int shrinkDurationSeconds() {
+        return Math.max(1, plugin.getConfig().getInt("shrink.duration-seconds", 60));
+    }
+
+    private double shrinkMinRadius() {
+        return Math.max(1.0, plugin.getConfig().getDouble("shrink.min-radius", 3.0));
+    }
+
+    /** 每秒推进一次边界：开局 shrink.start-seconds 秒后开始，用 shrink.duration-seconds 秒线性收到最小半径。 */
+    private void updateShrink() {
+        if (!shrinkEnabled() || state != State.RUNNING) {
+            return;
+        }
+        int elapsed = gameSeconds() - secondsLeft;
+        int start = shrinkStartSeconds();
+        if (elapsed < start) {
+            return;
+        }
+        if (!shrinkStarted) {
+            shrinkStarted = true;
+            broadcast("&c&l场地开始收缩！&7站到红色边界内，越过边界直接淘汰！");
+            for (UUID id : playing) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) {
+                    Chat.title(p, "&c&l缩圈开始", "&f留在红色边界内", 2);
+                    p.playSound(p.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 0.8f, 0.8f);
+                }
+            }
+        }
+        double full = arena.getRadius();
+        double min = Math.min(full, shrinkMinRadius());
+        double progress = Math.min(1.0, (elapsed - start) / (double) shrinkDurationSeconds());
+        double target = full - (full - min) * progress;
+        if (target < shrinkHalf) {
+            shrinkHalf = target;
+        }
+    }
+
+    /** 沿当前边界画一圈红色粉尘（每 10 tick 一次）。 */
+    private void renderShrinkBorder() {
+        if (state != State.RUNNING || !shrinkEnabled() || arena.center() == null) {
+            return;
+        }
+        Location center = arena.center();
+        World world = center.getWorld();
+        if (world == null) {
+            return;
+        }
+        double half = shrinkHalf;
+        double cx = center.getBlockX() + 0.5;
+        double cz = center.getBlockZ() + 0.5;
+        double y = arena.floorY() + 1.1;
+        double step = Math.max(0.5, Math.min(2.0, half / 12.0));
+        Particle.DustOptions red = new Particle.DustOptions(Color.RED, 1.2f);
+        for (UUID id : playing) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline()) {
+                continue;
+            }
+            for (double d = -half; d <= half; d += step) {
+                p.spawnParticle(Particle.DUST, cx + d, y, cz - half, 1, 0.02, 0.02, 0.02, 0, red);
+                p.spawnParticle(Particle.DUST, cx + d, y, cz + half, 1, 0.02, 0.02, 0.02, 0, red);
+                p.spawnParticle(Particle.DUST, cx - half, y, cz + d, 1, 0.02, 0.02, 0.02, 0, red);
+                p.spawnParticle(Particle.DUST, cx + half, y, cz + d, 1, 0.02, 0.02, 0.02, 0, red);
+            }
+        }
     }
 
     private void updateLiveBoard() {
@@ -890,8 +991,17 @@ public final class SnakePartyManager {
         for (UUID id : playing) {
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
+                String shrink = "";
+                if (shrinkEnabled()) {
+                    if (shrinkStarted) {
+                        shrink = " &8| &c边界 &f" + Math.round(shrinkHalf * 2 + 1);
+                    } else {
+                        int left = Math.max(0, shrinkStartSeconds() - (gameSeconds() - secondsLeft));
+                        shrink = " &8| &c缩圈 &f" + left + "s";
+                    }
+                }
                 Chat.actionBar(p, "&7" + GAME + " &8| &f剩余 &e" + secondsLeft + "s"
-                        + " &8| &f存活 &e" + playing.size());
+                        + " &8| &f存活 &e" + playing.size() + shrink);
             }
         }
     }
@@ -1278,6 +1388,10 @@ public final class SnakePartyManager {
         if (plateTask != null) {
             plateTask.cancel();
             plateTask = null;
+        }
+        if (borderTask != null) {
+            borderTask.cancel();
+            borderTask = null;
         }
     }
 

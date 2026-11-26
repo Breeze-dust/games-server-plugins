@@ -522,6 +522,46 @@ public final class OneShotArena {
         return Math.max(0.5, Math.min(64.0, plugin.getConfig().getDouble("arena.fall-kill-below", 1.5)));
     }
 
+    // ---------- 缩圈 ----------
+
+    /** 缩圈圆心：圆形场地 = 台面中心；手动区域 = 区域 XZ 中心（Y 取最低地面）。 */
+    public Location shrinkCenter() {
+        if (hasCircle()) {
+            return center.clone();
+        }
+        if (hasBox()) {
+            World world = pos1.getWorld();
+            return new Location(world,
+                    (minX() + maxX()) / 2.0 + 0.5,
+                    minY(),
+                    (minZ() + maxZ()) / 2.0 + 0.5);
+        }
+        return null;
+    }
+
+    /** 缩圈初始半径：圆形 = 场地半径；手动区域 = 能塞进区域里的最大圆。 */
+    public double shrinkStartRadius() {
+        if (hasCircle()) {
+            return radius;
+        }
+        if (hasBox()) {
+            return Math.max(2.0, Math.min((maxX() - minX()) / 2.0, (maxZ() - minZ()) / 2.0));
+        }
+        return 0;
+    }
+
+    /** 是否在缩圈圆内（水平距离判定）。 */
+    public boolean insideShrink(Location loc, double shrinkRadius) {
+        Location shrinkCenter = shrinkCenter();
+        if (shrinkCenter == null || loc == null || loc.getWorld() == null
+                || !loc.getWorld().equals(shrinkCenter.getWorld())) {
+            return false;
+        }
+        double dx = loc.getX() - shrinkCenter.getX();
+        double dz = loc.getZ() - shrinkCenter.getZ();
+        return dx * dx + dz * dz <= shrinkRadius * shrinkRadius;
+    }
+
     public Material platformMaterial() {
         Material material = Material.matchMaterial(plugin.getConfig().getString("arena.platform-material", "STONE"));
         return material == null || material.isAir() ? Material.STONE : material;

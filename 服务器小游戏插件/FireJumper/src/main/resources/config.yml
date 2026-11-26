@@ -32,15 +32,22 @@ particles:
   # ELECTRIC_SPARK / CRIT / ENCHANTED_HIT / FIREWORK / END_ROD / SMOKE / LAVA
   type: FLAME
   # 火墙层数：1 = 只有一层
-  rows: 1
+  rows: 2
   # 多层时的竖直间距（格）
-  row-gap: 0.6
+  row-gap: 0.5
   # 沿线每隔多少格放一个粒子（越大越稀疏）
   spacing: 1.0
   # 每多少 tick 发一次（越大拖尾越稀疏；默认 3）
   interval-ticks: 3
   # 每个点发几个粒子
   count: 1
+  # ---------- 移动的红线 ----------
+  # 和火线一起前进的红色粉尘线，标出判定高度，比火焰更显眼
+  red-line: true
+  # 红线上的点间距（格），越小越密
+  red-spacing: 0.6
+  # 红线高度（相对地面）；0 = 用 arena.line-height（判定高度）
+  red-line-height: 0.0
 
 # ---------- 轮次 ----------
 # 一轮结束到下一轮开始之间的随机间隔（秒）

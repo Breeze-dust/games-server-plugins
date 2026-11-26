@@ -9,6 +9,7 @@ import com.hub.util.LiveSidebar;
 import com.hub.util.StartCountdown;
 import com.hub.util.WaitCountdown;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -273,6 +274,10 @@ public final class FireJumperManager {
         changed |= setDefault("particles.spacing", 1.0);
         changed |= setDefault("particles.interval-ticks", 3);
         changed |= setDefault("particles.count", 1);
+        // 移动的红线：和火线一起前进，标出判定高度，粒子更密、看得更清楚
+        changed |= setDefault("particles.red-line", true);
+        changed |= setDefault("particles.red-spacing", 0.6);
+        changed |= setDefault("particles.red-line-height", 0.0);
         changed |= setDefault("debug-lines", false);
         if (changed) {
             plugin.saveConfig();
@@ -644,6 +649,15 @@ public final class FireJumperManager {
         double gap = Math.max(0.1, cfgDouble("particles.row-gap", 0.6));
         double spacing = Math.max(0.2, cfgDouble("particles.spacing", 1.0));
         double bottom = arena.groundY() + 0.2;
+
+        // 移动的红线：沿火线铺一条密集红色粉尘，高度 = 判定高度（默认 line-height），
+        // 再往上叠一条做"墙"的观感。比单层火焰粒子显眼得多，也不受 FLAME 拖尾长度影响。
+        boolean redLine = plugin.getConfig().getBoolean("particles.red-line", true);
+        double redSpacing = Math.max(0.3, cfgDouble("particles.red-spacing", 0.6));
+        double redHeight = cfgDouble("particles.red-line-height", 0.0);
+        double redY = arena.groundY() + (redHeight > 0 ? redHeight : arena.lineHeight());
+        Particle.DustOptions redDust = new Particle.DustOptions(Color.RED, 1.3f);
+
         for (Wave wave : waves) {
             double along = wave.position;
             for (double across = wave.spanCenter - wave.spanHalf;
@@ -657,6 +671,26 @@ public final class FireJumperManager {
                     }
                 }
             }
+            if (redLine) {
+                for (double across = wave.spanCenter - wave.spanHalf;
+                     across <= wave.spanCenter + wave.spanHalf; across += redSpacing) {
+                    if (arena.travelX()) {
+                        emitDust(viewers, redDust, along, redY, across);
+                        emitDust(viewers, redDust, along, redY + 0.9, across);
+                    } else {
+                        emitDust(viewers, redDust, across, redY, along);
+                        emitDust(viewers, redDust, across, redY + 0.9, along);
+                    }
+                }
+            }
+        }
+    }
+
+    /** 红色粉尘（需要 DustOptions 作为粒子 data，不能走无参的 emit）。 */
+    private void emitDust(List<Player> viewers, Particle.DustOptions dust,
+                          double x, double y, double z) {
+        for (Player player : viewers) {
+            player.spawnParticle(Particle.DUST, x, y, z, 1, 0.03, 0.03, 0.03, 0, dust);
         }
     }
 

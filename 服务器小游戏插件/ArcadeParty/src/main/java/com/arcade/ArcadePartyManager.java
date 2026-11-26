@@ -36,6 +36,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -104,6 +105,13 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
     private final List<String> podiumLines = new ArrayList<>();
     /** 颁奖台上还没被揭晓的玩家：在揭晓前锁住移动。 */
     private final Set<UUID> podiumFrozen = new LinkedHashSet<>();
+    /**
+     * 冻结期间临时给过飞行权限的玩家（只记录本来不能飞的）：
+     * 冻结是靠取消 PlayerMoveEvent 实现的，玩家站在半空时客户端会一直"下落"，
+     * 服务端会以 "Flying is not enabled on this server" 踢人。临时允许飞行即可避免。
+     */
+    private final Set<UUID> freezeFlight = new HashSet<>();
+    private BukkitTask freezeSweepTask;
 
     public ArcadePartyManager(ArcadePartyPlugin plugin) {
         this.plugin = plugin;
@@ -222,6 +230,10 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         stars.clear();
         selected.clear();
         ArcadeBridge.register(this);
+        if (freezeSweepTask != null) {
+            freezeSweepTask.cancel();
+        }
+        freezeSweepTask = Bukkit.getScheduler().runTaskTimer(plugin, this::sweepFreezeFlight, 40L, 5L);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             HubAPI.registerGame(GAME, GAME, "FIREWORK_ROCKET", "e");
             reportArena();
@@ -1333,6 +1345,45 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
     /** 颁奖台上还没揭晓的玩家不能移动。 */
     public boolean isPodiumFrozen(Player player) {
         return player != null && podiumFrozen.contains(player.getUniqueId());
+    }
+
+    // ---------- 冻结期间的临时飞行权限 ----------
+
+    /** 冻结中的玩家每次移动时调用：站半空时临时允许飞行，避免被服务端当成开挂踢出。 */
+    public void onFrozenMove(Player player) {
+        if (player == null || player.getAllowFlight()) {
+            return;
+        }
+        player.setAllowFlight(true);
+        freezeFlight.add(player.getUniqueId());
+    }
+
+    /** 当前阶段该玩家是否仍被冻结。 */
+    private boolean isCurrentlyFrozen(Player player) {
+        if (player == null || !playing.contains(player.getUniqueId())) {
+            return false;
+        }
+        if (state == State.PODIUM) {
+            return isPodiumFrozen(player);
+        }
+        return state == State.TRANSITION && transitionFreeze();
+    }
+
+    /** 每 5 tick 收回已经不再冻结的玩家的临时飞行权限。 */
+    private void sweepFreezeFlight() {
+        if (freezeFlight.isEmpty()) {
+            return;
+        }
+        for (UUID id : new ArrayList<>(freezeFlight)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline() || !isCurrentlyFrozen(p)) {
+                if (p != null && p.isOnline()) {
+                    p.setFlying(false);
+                    p.setAllowFlight(false);
+                }
+                freezeFlight.remove(id);
+            }
+        }
     }
 
     private void teleportPartyToLobby() {

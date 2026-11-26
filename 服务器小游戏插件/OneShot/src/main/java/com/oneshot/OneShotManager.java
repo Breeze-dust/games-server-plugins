@@ -10,10 +10,12 @@ import com.hub.util.StartCountdown;
 import com.hub.util.Top3;
 import com.hub.util.WaitCountdown;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -69,11 +71,17 @@ public final class OneShotManager {
     private final Set<UUID> eliminated = new LinkedHashSet<>();
     private final List<UUID> elimOrder = new ArrayList<>();
     private final Map<UUID, Hit> lastHit = new HashMap<>();
+    /** 被缩圈淘汰的人：handleDeath 用来说"被收缩圈淘汰"而不是"摔死了"。 */
+    private final Set<UUID> zoneDeaths = java.util.Collections.newSetFromMap(new HashMap<>());
 
     private StartCountdown startCountdown;
     private BukkitTask gameTask;
     private int secondsLeft;
     private boolean glowApplied;
+    /** 缩圈：当前安全半径 / 是否已开始 / 上一次播报时的半径。 */
+    private double shrinkRadius;
+    private boolean shrinkStarted;
+    private double lastShrinkWarn;
     private YamlConfiguration data;
 
     /** 本局临时开启过 PvP 的世界 -> 原始状态。 */
@@ -341,6 +349,7 @@ public final class OneShotManager {
         HubAPI.clearGame(id);
         restorePlayer(player);
         lastHit.remove(id);
+        zoneDeaths.remove(id);
         if (!silent) {
             HubAPI.teleportToLobby(player);
             Chat.send(player, "&e你已离开" + GAME + "。");
@@ -365,6 +374,7 @@ public final class OneShotManager {
         clearGameState(player);
         HubAPI.clearGame(id);
         lastHit.remove(id);
+        zoneDeaths.remove(id);
         if (state == State.RUNNING && wasPlaying) {
             checkWin();
         } else if (state == State.WAITING) {
@@ -429,6 +439,10 @@ public final class OneShotManager {
         elimOrder.clear();
         lastHit.clear();
         glowApplied = false;
+        zoneDeaths.clear();
+        shrinkRadius = arena.shrinkStartRadius();
+        shrinkStarted = false;
+        lastShrinkWarn = shrinkRadius;
         secondsLeft = gameSeconds();
 
         List<Location> spawnOrder = new ArrayList<>(arena.getSpawns());
@@ -464,6 +478,10 @@ public final class OneShotManager {
         broadcast("&6&l========== " + GAME + " 开始 ==========");
         broadcast("&f每人：一把木剑、一把弓、&e一支箭&f。弓箭射中 = 秒杀。");
         broadcast("&7击杀任意玩家（含把对手打下台摔死）会补回一支箭；最后存活者获胜。");
+        if (shrinkEnabled() && shrinkRadius > 0) {
+            broadcast("&c&l缩圈：&f开局 &e" + shrinkStartSeconds() + " &f秒后场地开始向中心收缩，"
+                    + "越过红色边界直接淘汰！");
+        }
         if (glowAtSeconds() > 0 && secondsLeft <= glowAtSeconds()) {
             applyLowTimeGlow();
         }
@@ -490,6 +508,10 @@ public final class OneShotManager {
             endGame(new LinkedHashSet<>(playing), "&6&l时间到！&f仍存活的玩家共同获胜。");
             return;
         }
+        updateShrink();
+        if (state != State.RUNNING) {
+            return;
+        }
         if (!glowApplied && glowAtSeconds() > 0 && secondsLeft <= glowAtSeconds()) {
             applyLowTimeGlow();
         }
@@ -502,9 +524,103 @@ public final class OneShotManager {
         reportArena();
     }
 
+    // ---------- 缩圈 ----------
+
+    private boolean shrinkEnabled() {
+        return plugin.getConfig().getBoolean("shrink.enabled", true);
+    }
+
+    private int shrinkStartSeconds() {
+        return Math.max(0, cfgInt("shrink.start-seconds", 180));
+    }
+
+    private int shrinkDurationSeconds() {
+        return Math.max(1, cfgInt("shrink.duration-seconds", 180));
+    }
+
+    private double shrinkMinRadius() {
+        return Math.max(1.0, plugin.getConfig().getDouble("shrink.min-radius", 3.0));
+    }
+
+    /** 每秒推进安全半径，并把越界的存活玩家淘汰掉。 */
+    private void updateShrink() {
+        if (!shrinkEnabled() || state != State.RUNNING) {
+            return;
+        }
+        int elapsed = gameSeconds() - secondsLeft;
+        int start = shrinkStartSeconds();
+        if (elapsed >= start) {
+            if (!shrinkStarted) {
+                shrinkStarted = true;
+                broadcast("&c&l场地开始收缩！&7留在红色边界内，越过边界直接淘汰！");
+                for (UUID id : playing) {
+                    Player p = Bukkit.getPlayer(id);
+                    if (p != null) {
+                        Chat.title(p, "&c&l缩圈开始", "&f留在红色边界内", 2);
+                    }
+                }
+            }
+            double full = arena.shrinkStartRadius();
+            double min = Math.min(full, shrinkMinRadius());
+            double progress = Math.min(1.0, (elapsed - start) / (double) shrinkDurationSeconds());
+            shrinkRadius = full - (full - min) * progress;
+            if (lastShrinkWarn - shrinkRadius >= 5.0) {
+                lastShrinkWarn = shrinkRadius;
+                broadcast("&c安全区已缩小到半径 &f" + Math.round(shrinkRadius) + " &c格！");
+            }
+        }
+        if (shrinkStarted) {
+            for (UUID id : new ArrayList<>(playing)) {
+                Player p = Bukkit.getPlayer(id);
+                if (p == null || !p.isOnline()) {
+                    continue;
+                }
+                if (!arena.insideShrink(p.getLocation(), shrinkRadius)) {
+                    killForZone(p);
+                }
+            }
+        }
+        renderShrinkBorder();
+    }
+
+    /** 沿安全区边界画一圈红色粉尘（每秒一次，足够看清）。 */
+    private void renderShrinkBorder() {
+        Location shrinkCenter = arena.shrinkCenter();
+        if (shrinkCenter == null || shrinkCenter.getWorld() == null || shrinkRadius <= 0) {
+            return;
+        }
+        World world = shrinkCenter.getWorld();
+        double y = shrinkCenter.getY() + 0.2;
+        double step = Math.max(0.6, Math.min(2.0, shrinkRadius / 16.0));
+        Particle.DustOptions red = new Particle.DustOptions(Color.RED, 1.3f);
+        int points = (int) Math.ceil(2 * Math.PI * shrinkRadius / step);
+        for (UUID id : new ArrayList<>(playing)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline() || !p.getWorld().equals(world)) {
+                continue;
+            }
+            for (int i = 0; i < points; i++) {
+                double angle = 2 * Math.PI * i / points;
+                p.spawnParticle(Particle.DUST,
+                        shrinkCenter.getX() + Math.cos(angle) * shrinkRadius,
+                        y,
+                        shrinkCenter.getZ() + Math.sin(angle) * shrinkRadius,
+                        1, 0.02, 0.02, 0.02, 0, red);
+            }
+        }
+    }
+
+    private void killForZone(Player player) {
+        UUID id = player.getUniqueId();
+        if (!playing.contains(id)) {
+            return;
+        }
+        zoneDeaths.add(id);
+        player.setHealth(0.0);
+    }
+
     /** 剩余时间进入最后阶段：所有存活玩家发光（方便互相找到）。 */
-    private void applyLowTimeGlow() {
-        glowApplied = true;
+    private void applyLowTimeGlow() {        glowApplied = true;
         for (UUID id : playing) {
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
@@ -597,6 +713,8 @@ public final class OneShotManager {
         eliminated.clear();
         elimOrder.clear();
         lastHit.clear();
+        zoneDeaths.clear();
+        shrinkStarted = false;
         waiting.clear();
         updateCountdown();
         reportArena();
@@ -625,6 +743,10 @@ public final class OneShotManager {
             return;
         }
         if (!arena.isFallenOff(to)) {
+            // 越过缩圈边界同样直接淘汰（不一定是掉下台）
+            if (shrinkEnabled() && shrinkStarted && !arena.insideShrink(to, shrinkRadius)) {
+                killForZone(player);
+            }
             return;
         }
         player.setHealth(0.0);
@@ -640,6 +762,7 @@ public final class OneShotManager {
             killer = lastHitWithin(victim);
         }
         UUID id = victim.getUniqueId();
+        boolean zoneDeath = zoneDeaths.remove(id);
         playing.remove(id);
         eliminated.add(id);
         elimOrder.add(id);
@@ -652,7 +775,9 @@ public final class OneShotManager {
             grantArrow(killer);
             Chat.send(killer, "&a击杀 &e" + victim.getName() + " &a，补回 &e1 &a支箭。");
         }
-        String message = killer != null
+        String message = zoneDeath
+                ? "&e" + victim.getName() + " &7被收缩圈淘汰"
+                : killer != null
                 ? "&e" + victim.getName() + " &7被 &e" + killer.getName() + " &7淘汰"
                 : "&e" + victim.getName() + " &7摔死了";
         broadcast(message + " &7（剩余 &e" + playing.size() + "&7 人）");

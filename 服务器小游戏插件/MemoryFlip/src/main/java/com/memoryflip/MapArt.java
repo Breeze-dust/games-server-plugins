@@ -20,10 +20,12 @@ final class MapArt {
     static MapView create(World world, boolean check) {
         MapView view = Bukkit.createMap(world);
         view.getRenderers().forEach(view::removeRenderer);
-        view.addRenderer(new TextRenderer(check));
         view.setScale(MapView.Scale.CLOSEST);
         view.setTrackingPosition(false);
-        view.setLocked(true);
+        // 不能锁定：锁定的地图不允许 renderer 再改像素，画上去的图案会被丢掉，
+        // 客户端看到的就是一张空白地图（多人时尤其容易被误认为"只有个别人不显示"）。
+        view.setLocked(false);
+        view.addRenderer(new TextRenderer(check));
         return view;
     }
 
@@ -42,7 +44,9 @@ final class MapArt {
         private boolean drawn;
 
         TextRenderer(boolean check) {
-            super(false);
+            // contextual=true 才会调用下面的 render(view, canvas, player)；
+            // 之前传 false，服务端走的是两参 render（没重写），地图实际上从来没被画过。
+            super(true);
             this.check = check;
         }
 

@@ -57,6 +57,19 @@ sidebar:
   enabled: true
   title: '&c&lOne Shot · 存活'
 
+# ---------- 缩圈 ----------
+# 开局一段时间后，安全区以场地中心为圆心逐渐收缩；越过红色边界直接淘汰
+shrink:
+  # false = 不缩圈
+  enabled: true
+  # 开局后多少秒开始收缩
+  start-seconds: 180
+  # 从初始半径收缩到 min-radius 用多少秒
+  duration-seconds: 180
+  # 最小半径（格）
+  min-radius: 3.0
+
+
 # ---------- 场地 ----------
 # 用指令设置，不要手写坐标；/oneshot build 会自动建台并生成出生点
 arena:

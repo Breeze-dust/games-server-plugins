@@ -82,6 +82,7 @@ public final class ArcadePartyListener implements Listener {
         }
         if (manager.state() == ArcadePartyManager.State.PODIUM
                 && manager.isPodiumFrozen(event.getPlayer())) {
+            manager.onFrozenMove(event.getPlayer());
             Location from = event.getFrom();
             Location to = event.getTo();
             event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(),
@@ -94,6 +95,7 @@ public final class ArcadePartyListener implements Listener {
         if (!manager.isInParty(event.getPlayer()) || event.getTo() == null) {
             return;
         }
+        manager.onFrozenMove(event.getPlayer());
         Location from = event.getFrom();
         Location to = event.getTo();
         event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(),

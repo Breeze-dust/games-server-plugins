@@ -556,6 +556,7 @@ public class ColorPartyManager {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
                 Chat.title(p, target.tag(), "&f站到对应的混凝土上！", 2);
+                showRoundColor(p, target);
             }
         }
         long[] left = {seconds};
@@ -578,6 +579,18 @@ public class ColorPartyManager {
             updateLiveBoard(a);
         }, 20L, 20L);
         a.setRoundTask(task);
+    }
+
+    /** 在快捷栏最后一格显示本轮指定颜色，低头看背包也能确认。 */
+    private void showRoundColor(Player p, ColorSpec target) {
+        ItemStack item = new ItemStack(target.concrete());
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color("&f&l本轮颜色：" + target.tag())));
+            meta.lore(List.of(Chat.noItalic(Chat.color("&7站到 &f" + target.cn() + "&7 的混凝土上"))));
+            item.setItemMeta(meta);
+        }
+        p.getInventory().setItem(8, item);
     }
 
     /** 地板按「网格色块 + 叠加形状」铺候选池颜色（见 ColorPartyFloor，物理更新关闭），面板整块刷指定颜色。 */
@@ -648,6 +661,7 @@ public class ColorPartyManager {
         a.getPlayers().remove(id);
         a.getEliminated().add(id);
         a.getElimOrder().add(id);
+        p.getInventory().setItem(8, null); // 摘掉本轮颜色道具
         p.setGameMode(GameMode.SPECTATOR);
         // 传到中心出生点上方旁观，别让旁观者卡在地板下面的地里
         Location spawn = a.getSpawn();
@@ -703,6 +717,7 @@ public class ColorPartyManager {
             for (UUID id : new ArrayList<>(group)) {
                 Player pp = Bukkit.getPlayer(id);
                 if (pp != null && pp.isOnline()) {
+                    pp.getInventory().setItem(8, null); // 摘掉本轮颜色道具
                     pp.setGameMode(GameMode.SURVIVAL);
                     HubAPI.teleportToLobby(pp);
                 } else {

@@ -18,6 +18,7 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
+import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -229,8 +230,26 @@ public final class LandClaimManager {
         colors.remove(id);
         spawnIndex.remove(id);
         Set<Long> own = claims.remove(id);
-        if (own != null) {
+        if (own != null && !own.isEmpty()) {
             claimedBlocks.removeAll(own);
+            if (running && !ending) {
+                // 离开者的格子必须恢复成地面、并重新计入剩余格数：
+                // 只从 claimedBlocks 删掉的话，羊毛还留在场上、又已经不算"未占"，
+                // 这些格子永远不能再被占，全场就永远铺不满（表现为所有人铺满了却不结算）。
+                World world = arena.world();
+                if (world != null) {
+                    Material floor = arena.floorMaterial();
+                    int floorY = arena.floorY();
+                    for (long key : own) {
+                        Block block = world.getBlockAt(unpackX(key), floorY, unpackZ(key));
+                        if (arena.isClaimedBlock(block)) {
+                            block.setType(floor, false);
+                        }
+                    }
+                }
+                remaining = Math.max(0, arena.totalBlocks() - claimedBlocks.size());
+                checkArenaFull();
+            }
         }
 
         if (player.isOnline()) {
@@ -337,6 +356,12 @@ public final class LandClaimManager {
         if (secondsLeft <= 0) {
             broadcastGame("&e时间到！按占地格数结算。");
             endGame(true);
+            return;
+        }
+        // 兜底：每秒用实际登记数校准一次剩余格数，避免任何漏算导致"铺满了却不结算"
+        remaining = Math.max(0, arena.totalBlocks() - claimedBlocks.size());
+        checkArenaFull();
+        if (ending) {
             return;
         }
         for (Player player : onlineParticipants()) {
@@ -458,6 +483,10 @@ public final class LandClaimManager {
             timeTask.cancel();
             timeTask = null;
         }
+        if (endTask != null) {
+            endTask.cancel();
+            endTask = null;
+        }
         if (countdown != null) {
             countdown.cancel();
         }
@@ -515,6 +544,7 @@ public final class LandClaimManager {
         ending = false;
         running = false;
         remaining = 0;
+        endTask = null;
         arena.resetFloor();
         reportArena();
         countdown.update();

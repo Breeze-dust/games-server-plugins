@@ -101,6 +101,16 @@ public final class SnakePartyArena {
         return block != null && containsXZ(block.getLocation().add(0.5, 0, 0.5));
     }
 
+    /** 水平方向是否在以场地中心为圆心、halfSize 为半边长的方形内（缩圈时用）。 */
+    public boolean containsXZ(Location loc, double halfSize) {
+        if (!hasArea() || loc == null || loc.getWorld() == null || !loc.getWorld().equals(center.getWorld())) {
+            return false;
+        }
+        double dx = loc.getX() - (center.getBlockX() + 0.5);
+        double dz = loc.getZ() - (center.getBlockZ() + 0.5);
+        return Math.abs(dx) <= halfSize + 0.5 && Math.abs(dz) <= halfSize + 0.5;
+    }
+
     /** 场地内随机一个地面站位（用于出生点）。 */
     public Location groundAt(int x, int z) {
         if (!hasArea() || center.getWorld() == null) {

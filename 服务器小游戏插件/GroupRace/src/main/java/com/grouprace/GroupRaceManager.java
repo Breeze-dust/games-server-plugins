@@ -40,6 +40,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
@@ -93,6 +94,7 @@ public final class GroupRaceManager {
     private int secondsLeft;
     private int finishCounter;
     private boolean shortened;
+    private final Random random = new Random();
 
     private YamlConfiguration data;
 
@@ -170,6 +172,7 @@ public final class GroupRaceManager {
     }
 
     public void reload() {
+        arena.clearRuntime();
         arena.load();
         rebuildRings();
     }
@@ -181,6 +184,8 @@ public final class GroupRaceManager {
             lobbyTask.cancel();
             lobbyTask = null;
         }
+        // 随机生成的赛道不写进配置，关服时把它的方块清掉，避免留在世界里
+        arena.clearRuntime();
         state = State.WAITING;
         removeAllPigs();
         removeAllLobbyPigs();
@@ -275,6 +280,23 @@ public final class GroupRaceManager {
 
     private Material finishMaterial() {
         return material("ring.finish-material", Material.REDSTONE_BLOCK);
+    }
+
+    /** 自动生成赛道：出生点 + 终点环固定，中间环每局随机摆放。 */
+    private boolean autoRings() {
+        return plugin.getConfig().getBoolean("ring.auto.enabled", true);
+    }
+
+    private int autoRingCount() {
+        return Math.max(2, Math.min(64, cfgInt("ring.auto.count", 10)));
+    }
+
+    private double autoRingSpacing() {
+        return Math.max(4.0, Math.min(128.0, cfgDouble("ring.auto.spacing", 15.0)));
+    }
+
+    private double autoRingJitter() {
+        return Math.max(0.0, Math.min(64.0, cfgDouble("ring.auto.jitter", 6.0)));
     }
 
     private boolean invisibleGlowing() {
@@ -470,6 +492,21 @@ public final class GroupRaceManager {
             if (startCountdown().begin("main", new ArrayList<>(ready), () -> startGame(force))) {
                 return;
             }
+        }
+        if (autoRings()) {
+            int generated = arena.generateAutoCourse(autoRingCount(), autoRingSpacing(),
+                    autoRingJitter(), ringRadius(), random);
+            if (generated < 2) {
+                waiting.addAll(ready);
+                for (UUID id : ready) {
+                    Player p = Bukkit.getPlayer(id);
+                    if (p != null) {
+                        Chat.send(p, "&c自动生成赛道失败：请先用 /race addfinish 设好终点环，并确认出生点/场地范围已设置。");
+                    }
+                }
+                return;
+            }
+            rebuildRings();
         }
         waiting.clear();
         if (ready.isEmpty()) {
@@ -1166,29 +1203,33 @@ public final class GroupRaceManager {
             Chat.send(player, "&c比赛中不能修改赛道。");
             return false;
         }
-        if (!finish && !arena.rings().isEmpty() && arena.lastRing() != null && arena.lastRing().finish()) {
+        List<GroupRaceRing> configured = arena.configuredRings();
+        GroupRaceRing lastConfigured = configured.isEmpty() ? null : configured.get(configured.size() - 1);
+        if (!finish && lastConfigured != null && lastConfigured.finish()) {
             Chat.send(player, "&c已经有终点环了，先 /race clearrings 再重新生成。");
             return false;
         }
-        if (finish && arena.lastRing() != null && arena.lastRing().finish()) {
+        if (finish && lastConfigured != null && lastConfigured.finish()) {
             Chat.send(player, "&c终点环已经存在。");
             return false;
         }
+        arena.clearRuntime(); // 手动改配置时丢掉上一局随机生成的环
         Location center = ringCenter(player, ringRadius());
         Vector normal;
-        if (arena.rings().isEmpty()) {
+        if (arena.configuredRings().isEmpty()) {
             normal = player.getLocation().getDirection().setY(0.0);
             if (normal.lengthSquared() < 0.001) {
                 normal = new Vector(0.0, 0.0, 1.0);
             }
         } else {
             // 第一个环决定整条赛道的轴，后面的环全部和它同方向
-            normal = arena.rings().get(0).normal();
+            normal = arena.configuredRings().get(0).normal();
         }
-        GroupRaceRing ring = new GroupRaceRing(arena.rings().size(), center, normal, ringRadius(), finish);
+        GroupRaceRing ring = new GroupRaceRing(arena.configuredRings().size(), center, normal, ringRadius(), finish);
         ring.build(finish ? finishMaterial() : ringMaterial());
-        arena.rings().add(ring);
+        arena.configuredRings().add(ring);
         arena.save();
+        rebuildRings();
         Chat.send(player, "&a已生成" + (finish ? "终点" : "普通") + "圆环 #"
                 + (ring.index() + 1) + "（半径 " + ringRadius() + "），已保存。");
         return true;

@@ -63,6 +63,18 @@ ring:
   material: SEA_LANTERN
   # 终点圆环方块材质
   finish-material: REDSTONE_BLOCK
+  # ---------- 自动生成赛道 ----------
+  # 开启后：出生点（/race setstart）和终点环（/race addfinish）固定，
+  # 中间的普通环每局随机生成，所以每局场地都不一样。
+  auto:
+    # true = 自动生成；false = 使用下面 rings 列表里手摆的环
+    enabled: true
+    # 总环数上限（含终点环）
+    count: 10
+    # 环与环之间的目标距离（格）；实际环数 = 起点到终点距离 / spacing + 1，最多 count 个
+    spacing: 15.0
+    # 随机偏移幅度（格）：0 = 一条直线，越大越绕
+    jitter: 6.0
 
 # ---------- 场地 ----------
 # 用指令设置，不要手写坐标：

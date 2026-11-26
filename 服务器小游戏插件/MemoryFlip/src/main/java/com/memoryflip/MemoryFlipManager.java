@@ -13,6 +13,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Rotation;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.attribute.Attribute;
@@ -509,7 +510,6 @@ public final class MemoryFlipManager {
         Collections.shuffle(boards, gameRandom);
         List<UUID> order = new ArrayList<>(playing);
         Collections.shuffle(order, gameRandom);
-        Set<UUID> claimed = new HashSet<>();
         int index = 0;
         for (UUID id : order) {
             Player p = Bukkit.getPlayer(id);
@@ -517,7 +517,7 @@ public final class MemoryFlipManager {
                 continue;
             }
             MemoryFlipArena.Board board = boards.get(index++);
-            PlayState st = prepareBoard(id, board, index - 1, gameRandom, claimed);
+            PlayState st = prepareBoard(id, board, index - 1, gameRandom);
             if (st == null) {
                 continue;
             }
@@ -541,8 +541,7 @@ public final class MemoryFlipManager {
         gameTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickGame, 20L, 20L);
     }
 
-    private PlayState prepareBoard(UUID id, MemoryFlipArena.Board board, int boardIndex, Random gameRandom,
-                                   Set<UUID> claimed) {
+    private PlayState prepareBoard(UUID id, MemoryFlipArena.Board board, int boardIndex, Random gameRandom) {
         PlayState st = new PlayState();
         st.boardIndex = boardIndex;
         int total = boardRows() * boardCols();
@@ -554,55 +553,35 @@ public final class MemoryFlipManager {
             plugin.getLogger().warning("翻牌墙 " + boardIndex
                     + " 的存档位置有重复，请重新 /memory build 建场。");
         }
-        // 先载入牌位所在区块：区块没加载时 framesAt 找不到展示框，会被误判成"缺框"再补一个，
-        // 同一格于是出现两个框——玩家看到的是那个没人管的空框，点它毫无反应。
+        // 先载入牌位所在区块：区块没加载时 framesAt 找不到展示框
         for (Location loc : board.frames) {
             if (loc.getWorld() != null) {
                 loc.getWorld().getChunkAt(loc);
             }
         }
         int repaired = 0;
-        int duplicates = 0;
         for (Location loc : board.frames) {
-            List<ItemFrame> found = arena.framesAt(loc);
-            ItemFrame frame = null;
-            for (ItemFrame candidate : found) {
-                if (claimed.add(candidate.getUniqueId())) {
-                    frame = candidate;
-                    break;
-                }
+            // 每个牌位开局都重建：先删掉这一格里的所有旧框（历史遗留 / 上次补出来的重复框），
+            // 再按存档位置和站位方向生成唯一的框。这样不会出现"两个框叠在一起、
+            // 玩家点到没被登记的那个"——表现就是地图不显示、点了没反应、贴图还像被拉伸。
+            for (ItemFrame old : arena.framesAt(loc)) {
+                old.setItem(new ItemStack(Material.AIR));
+                old.remove();
             }
-            // 同一格多出来的展示框（旧版本遗留、或以前区块没加载时补出来的）一律清掉，
-            // 否则它会盖住真正在用的那一面，玩家点到它就是"地图消失、点了没反应"。
-            for (ItemFrame candidate : found) {
-                if (candidate == frame || claimed.contains(candidate.getUniqueId())) {
-                    continue;
-                }
-                candidate.setItem(new ItemStack(Material.AIR));
-                candidate.remove();
-                duplicates++;
-            }
-            if (frame == null) {
-                frame = spawnFrame(loc, board.stand);
-                if (frame != null) {
-                    claimed.add(frame.getUniqueId());
-                    repaired++;
-                }
-            }
+            ItemFrame frame = spawnFrame(loc, board.stand);
             if (frame == null) {
                 plugin.getLogger().warning("翻牌墙缺少展示框且无法补齐：" + loc);
                 continue;
             }
-            frame.setFixed(false);
+            frame.setFixed(true);
             frame.setInvulnerable(true);
             frame.setItemDropChance(0f);
+            frame.setRotation(Rotation.NONE);
             st.frames.add(frame);
+            repaired++;
         }
         if (repaired > 0) {
-            plugin.getLogger().info("翻牌墙 " + boardIndex + " 补齐了 " + repaired + " 个展示框。");
-        }
-        if (duplicates > 0) {
-            plugin.getLogger().info("翻牌墙 " + boardIndex + " 清理了 " + duplicates + " 个重复展示框。");
+            plugin.getLogger().info("翻牌墙 " + boardIndex + " 重建了 " + repaired + " 个展示框。");
         }
         if (st.frames.size() < total) {
             plugin.getLogger().warning("翻牌墙牌位不足（" + st.frames.size() + "/" + total
@@ -654,6 +633,10 @@ public final class MemoryFlipManager {
         }
         ItemFrame frame = world.spawn(loc.clone().add(0.5, 0.5, 0.5), ItemFrame.class);
         frame.setFacingDirection(facingToward(loc, stand));
+        // 朝向定完之后把实体对齐回方块中心：没对齐的框在客户端里地图会显示成歪的/被拉伸
+        frame.teleport(loc.clone().add(0.5, 0.5, 0.5));
+        frame.setRotation(Rotation.NONE);
+        frame.setFixed(true);
         frame.setInvulnerable(true);
         frame.setItemDropChance(0f);
         frame.setItem(new ItemStack(Material.AIR));

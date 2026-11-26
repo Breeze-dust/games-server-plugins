@@ -4,13 +4,17 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 /** 群友竞速赛的赛道：等待点、起跑点、出界方框、按顺序排列的圆环。 */
 public final class GroupRaceArena {
@@ -21,12 +25,16 @@ public final class GroupRaceArena {
     private Location pos1;
     private Location pos2;
     private final List<GroupRaceRing> rings = new ArrayList<>();
+    /** 本局自动生成的随机赛道（不写回配置）；为空时用配置里的 rings。 */
+    private final List<GroupRaceRing> runtime = new ArrayList<>();
 
     public GroupRaceArena(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
     public void load() {
+        // 先清掉上一次自动生成的随机环（正常关服会清；这里兜住崩服遗留）
+        clearPersistedRuntime();
         FileConfiguration cfg = plugin.getConfig();
         lobby = readLocation(cfg, "arena.lobby");
         start = readLocation(cfg, "arena.start");
@@ -41,6 +49,7 @@ public final class GroupRaceArena {
                 index++;
             }
         }
+        runtime.clear();
     }
 
     public void save() {
@@ -60,12 +69,16 @@ public final class GroupRaceArena {
     }
 
     public void buildRings(Material normalMaterial, Material finishMaterial) {
-        for (GroupRaceRing ring : rings) {
+        for (GroupRaceRing ring : rings()) {
             ring.build(ring.finish() ? finishMaterial : normalMaterial);
         }
     }
 
     public void clearRings() {
+        for (GroupRaceRing ring : runtime) {
+            ring.clear();
+        }
+        runtime.clear();
         for (GroupRaceRing ring : rings) {
             ring.clear();
         }
@@ -73,9 +86,20 @@ public final class GroupRaceArena {
     }
 
     public boolean isReady() {
-        return lobby != null && start != null && pos1 != null && pos2 != null
-                && rings.size() >= 2 && rings.get(rings.size() - 1).finish()
-                && !rings.get(0).finish();
+        if (lobby == null || start == null || pos1 == null || pos2 == null) {
+            return false;
+        }
+        if (autoCourseEnabled()) {
+            // 自动生成模式下只需要固定终点环，普通环开局随机生成
+            return !rings.isEmpty() && rings.get(rings.size() - 1).finish();
+        }
+        List<GroupRaceRing> course = rings();
+        return course.size() >= 2 && course.get(course.size() - 1).finish()
+                && !course.get(0).finish();
+    }
+
+    private boolean autoCourseEnabled() {
+        return plugin.getConfig().getBoolean("ring.auto.enabled", true);
     }
 
     public String missing() {
@@ -92,9 +116,14 @@ public final class GroupRaceArena {
         if (pos2 == null) {
             missing.add("pos2");
         }
-        if (rings.size() < 2) {
+        List<GroupRaceRing> course = rings();
+        if (autoCourseEnabled()) {
+            if (rings.isEmpty() || !rings.get(rings.size() - 1).finish()) {
+                missing.add("终点环（/race addfinish）");
+            }
+        } else if (course.size() < 2) {
             missing.add("至少 1 个普通环 + 1 个终点环");
-        } else if (!rings.get(rings.size() - 1).finish()) {
+        } else if (!course.get(course.size() - 1).finish()) {
             missing.add("终点环");
         }
         return missing.isEmpty() ? "无" : String.join("、", missing);
@@ -140,26 +169,173 @@ public final class GroupRaceArena {
     }
 
     public GroupRaceRing firstRing() {
-        return rings.isEmpty() ? null : rings.get(0);
+        List<GroupRaceRing> course = rings();
+        return course.isEmpty() ? null : course.get(0);
     }
 
     public GroupRaceRing lastRing() {
-        return rings.isEmpty() ? null : rings.get(rings.size() - 1);
+        List<GroupRaceRing> course = rings();
+        return course.isEmpty() ? null : course.get(course.size() - 1);
     }
 
     public GroupRaceRing ring(int index) {
-        if (index < 0 || index >= rings.size()) {
+        List<GroupRaceRing> course = rings();
+        if (index < 0 || index >= course.size()) {
             return null;
         }
-        return rings.get(index);
+        return course.get(index);
     }
 
     public GroupRaceRing nextRing(int index) {
         return ring(index + 1);
     }
 
+    /** 实际使用的赛道：本局自动生成过就用它，否则用配置里的环列表。 */
     public List<GroupRaceRing> rings() {
+        return runtime.isEmpty() ? rings : runtime;
+    }
+
+    /** 配置里保存的环（自动生成不会写回这里）。 */
+    public List<GroupRaceRing> configuredRings() {
         return rings;
+    }
+
+    /** 丢弃本局自动生成的环（只清它自己，不动配置里保存的环方块）。 */
+    public void clearRuntime() {
+        for (GroupRaceRing ring : runtime) {
+            ring.clear();
+        }
+        runtime.clear();
+        File file = runtimeFile();
+        if (file.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            file.delete();
+        }
+    }
+
+    private File runtimeFile() {
+        return new File(plugin.getDataFolder(), "auto-course.yml");
+    }
+
+    /** 把本局随机赛道写盘：崩服时下次启动能按坐标把方块清掉，不会越积越多。 */
+    private void persistRuntime() {
+        YamlConfiguration yml = new YamlConfiguration();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (GroupRaceRing ring : runtime) {
+            list.add(ring.toMap());
+        }
+        yml.set("rings", list);
+        try {
+            yml.save(runtimeFile());
+        } catch (IOException exception) {
+            plugin.getLogger().warning("保存自动赛道失败：" + exception.getMessage());
+        }
+    }
+
+    private void clearPersistedRuntime() {
+        File file = runtimeFile();
+        if (!file.isFile()) {
+            return;
+        }
+        YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
+        int index = 0;
+        for (Map<?, ?> map : yml.getMapList("rings")) {
+            GroupRaceRing ring = GroupRaceRing.fromMap(index++, map);
+            if (ring != null) {
+                ring.clear();
+            }
+        }
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
+    }
+
+    /**
+     * 随机生成一条赛道：出生点固定、配置里的终点环固定，中间的普通环随机摆放在两者之间。
+     * 生成结果只放进 runtime，不写回配置；下一局重新生成，所以每局场地都不一样。
+     *
+     * @param maxRings  总环数上限（含终点环）
+     * @param spacing   环与环之间的目标距离（格）
+     * @param jitter    随机偏移幅度（格），0 = 一条直线
+     * @param ringRadius 普通环半径
+     * @return 生成的总环数（含终点环）；0 = 条件不足未生成
+     */
+    public int generateAutoCourse(int maxRings, double spacing, double jitter,
+                                  double ringRadius, Random random) {
+        GroupRaceRing finish = null;
+        for (int i = rings.size() - 1; i >= 0; i--) {
+            if (rings.get(i).finish()) {
+                finish = rings.get(i);
+                break;
+            }
+        }
+        if (finish == null || start == null || pos1 == null || pos2 == null) {
+            return 0;
+        }
+        clearRuntime();
+
+        Location from = start.clone().add(0.0, 1.2, 0.0);
+        Location to = finish.center();
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        double distance = Math.hypot(dx, dz);
+        if (distance < 1.0) {
+            return 0;
+        }
+        int total = Math.max(2, maxRings);
+        int ringsTotal = (int) Math.round(distance / Math.max(1.0, spacing)) + 1;
+        ringsTotal = Math.max(2, Math.min(total, ringsTotal));
+
+        double minX = Math.min(pos1.getX(), pos2.getX()) + ringRadius + 1;
+        double maxX = Math.max(pos1.getX(), pos2.getX()) - ringRadius - 1;
+        double minZ = Math.min(pos1.getZ(), pos2.getZ()) + ringRadius + 1;
+        double maxZ = Math.max(pos1.getZ(), pos2.getZ()) - ringRadius - 1;
+        if (minX > maxX) {
+            minX = Math.min(pos1.getX(), pos2.getX());
+            maxX = Math.max(pos1.getX(), pos2.getX());
+        }
+        if (minZ > maxZ) {
+            minZ = Math.min(pos1.getZ(), pos2.getZ());
+            maxZ = Math.max(pos1.getZ(), pos2.getZ());
+        }
+        double minY = Math.min(pos1.getY(), pos2.getY()) + 2;
+        double maxY = Math.max(pos1.getY(), pos2.getY()) - 2;
+        if (minY > maxY) {
+            minY = Math.min(from.getY(), to.getY());
+            maxY = Math.max(from.getY(), to.getY());
+        }
+
+        Vector dir = new Vector(dx, 0.0, dz).normalize();
+        Vector perp = new Vector(-dir.getZ(), 0.0, dir.getX());
+
+        List<Location> points = new ArrayList<>();
+        points.add(from);
+        double amp = Math.max(0.0, jitter);
+        for (int i = 1; i < ringsTotal; i++) {
+            double t = (double) i / ringsTotal;
+            Location p = from.clone().add(dx * t, 0.0, dz * t);
+            if (amp > 0.0) {
+                p.add(perp.clone().multiply((random.nextDouble() * 2 - 1) * amp));
+                p.add(0.0, (random.nextDouble() * 2 - 1) * amp * 0.6, 0.0);
+            }
+            p.setX(clamp(p.getX(), minX, maxX));
+            p.setZ(clamp(p.getZ(), minZ, maxZ));
+            p.setY(clamp(p.getY(), minY, maxY));
+            points.add(p);
+        }
+        points.add(to);
+
+        for (int i = 0; i < points.size() - 1; i++) {
+            Location center = points.get(i);
+            Vector normal = points.get(i + 1).toVector().subtract(center.toVector());
+            boolean isFinish = i == points.size() - 2;
+            runtime.add(new GroupRaceRing(i, center, normal, isFinish ? finish.radius() : ringRadius, isFinish));
+        }
+        persistRuntime();
+        return runtime.size();
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     public Location getLobby() {

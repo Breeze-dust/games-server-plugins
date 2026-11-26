@@ -366,6 +366,7 @@ public class HotPotatoManager {
             a.getEliminated().remove(id);
             a.getBombHolders().remove(id);
             clearBombVisual(p);
+            p.setGlowing(false);
             HubAPI.clearGame(id);
             broadcast(a, "&e" + p.getName() + "&f 离开了（剩 &e" + a.getPlayers().size() + "&f 人）");
             if (a.getState() == HotPotatoArena.State.RUNNING && a.getPlayers().size() <= 1) {
@@ -421,6 +422,7 @@ public class HotPotatoManager {
                 p.getInventory().clear();
                 p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
                 clearTntNameTag(p); // 开局清一下上一局可能残留的红名
+                p.setGlowing(false); // 清掉上一局可能残留的发光
                 p.setGameMode(GameMode.SURVIVAL);
                 p.setHealth(20);
                 p.setFoodLevel(20);
@@ -445,6 +447,7 @@ public class HotPotatoManager {
         for (UUID id : a.getBombHolders()) {
             giveBomb(Bukkit.getPlayer(id), firstRound);
         }
+        updateGlow(a);
         // 回合时长随存活人数动态调整：>=8人 40s，4~7人 30s，<4人 20s
         int seconds = alive >= 8 ? 40 : alive >= 4 ? 30 : 20;
         a.setRoundEndMs(System.currentTimeMillis() + seconds * 1000L);
@@ -464,6 +467,9 @@ public class HotPotatoManager {
         if (names.length() > 0) {
             broadcast(a, "&cTNT 在 " + names + " &c身上！");
         }
+        if (glowAllForRound(a)) {
+            broadcast(a, "&c&l决赛圈！&f剩余所有玩家都会发光（穿墙可见）。");
+        }
         // 倒计时任务
         BukkitTask old = roundTasks.remove(a.getName());
         if (old != null) {
@@ -476,6 +482,34 @@ public class HotPotatoManager {
             oldGlow.cancel();
         }
         glowTasks.put(a.getName(), Bukkit.getScheduler().runTaskTimer(plugin, () -> glowTick(a), 10L, 5L));
+    }
+
+    /** 最后 N 轮全员发光（0 = 关闭；持弹者不受这个值影响，始终发光）。 */
+    private int glowLastRounds() {
+        return Math.max(0, plugin.getConfig().getInt("glow-last-rounds", 2));
+    }
+
+    /** 这回合是否已经进入"全员发光"的决赛阶段（每回合至少淘汰 1 人 → 剩余回合数 = 存活人数 - 1）。 */
+    private boolean glowAllForRound(HotPotatoArena a) {
+        int roundsLeft = Math.max(0, a.getPlayers().size() - 1);
+        return roundsLeft <= glowLastRounds();
+    }
+
+    /** 刷新发光状态：持弹者一直发光；进入最后 N 回合后所有存活玩家发光（隔着墙也能看到轮廓）。 */
+    private void updateGlow(HotPotatoArena a) {
+        boolean glowAll = glowAllForRound(a);
+        for (UUID id : a.getPlayers()) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.setGlowing(glowAll || a.isBombHolder(id));
+            }
+        }
+        for (UUID id : a.getEliminated()) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.setGlowing(false);
+            }
+        }
     }
 
     /** 持弹者红色粒子壳（原版 GLOWING 描边是白色的，红色只能靠粒子）。 */
@@ -570,6 +604,18 @@ public class HotPotatoManager {
         cancelTask(a);
         liveSidebar.hide("hotpotato:" + a.getName());
         a.setState(HotPotatoArena.State.WAITING);
+        for (UUID id : new ArrayList<>(a.getPlayers())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.setGlowing(false);
+            }
+        }
+        for (UUID id : new ArrayList<>(a.getEliminated())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.setGlowing(false);
+            }
+        }
         restoreWorldPvp(a);
         reportArena(a);
         broadcast(a, "&6&l========== 游戏结束 ==========");
@@ -636,6 +682,7 @@ public class HotPotatoManager {
         a.getEliminated().remove(id);
         a.getBombHolders().remove(id);
         clearBombVisual(p); // 拿过 TNT 的人掉线也要清掉发光/速度，否则重连还亮着
+        p.setGlowing(false);
         HubAPI.clearGame(id);
         reportArena(a);
         if (a.getState() == HotPotatoArena.State.RUNNING && a.getPlayers().size() <= 1) {
@@ -891,6 +938,7 @@ public class HotPotatoManager {
         clearBombVisual(damager);
         a.getBombHolders().remove(d);
         a.getBombHolders().add(v);
+        updateGlow(a);
         broadcast(a, "&e" + damager.getName() + "&f 把 TNT 传给了 &e" + victim.getName() + "&f！");
         msg(victim, "&cTNT 传到你身上了！快传给别人！");
     }
@@ -1032,6 +1080,7 @@ public class HotPotatoManager {
         a.getElimOrder().add(id);
         p.playHurtAnimation(0); // 淘汰红屏反馈
         clearBombVisual(p);
+        p.setGlowing(false);
         p.setGameMode(GameMode.SPECTATOR);
         HubAPI.clearGame(id);
         if (arenaMsg != null) {

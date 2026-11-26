@@ -62,6 +62,18 @@ plate:
     - BLACK
     - LIGHT_GRAY
 
+# ---------- 缩圈 ----------
+# 开局一段时间后，场地边界向地图中心收缩；越过红色边界直接淘汰
+shrink:
+  # false = 不缩圈（老玩法）
+  enabled: true
+  # 开局后多少秒开始收缩
+  start-seconds: 45
+  # 从初始半径收缩到 min-radius 用多少秒
+  duration-seconds: 60
+  # 最小半径（半边长，格）：不会缩到比这个更小
+  min-radius: 3.0
+
 # ---------- 场地 ----------
 # 用指令设置，不要手写坐标；设置完成后 /snake save
 arena:
