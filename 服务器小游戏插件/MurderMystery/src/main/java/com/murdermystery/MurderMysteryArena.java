@@ -14,7 +14,7 @@ import java.util.UUID;
 /**
  * 一个密室杀手场地：范围 + 中心点 + 等待点。
  * 运行时数据：存活玩家（含杀手/侦探/猎人/无辜者）、已淘汰者、杀手/侦探/猎人列表、击杀数、
- * 飞剑冷却、近战刀冷却、侦探领石时间。
+ * 侦探领石时间。
  */
 public class MurderMysteryArena {
 
@@ -41,11 +41,12 @@ public class MurderMysteryArena {
     private final List<UUID> detectives = new ArrayList<>();     // 本局侦探（无辜者阵营，定期白得真理之石）
     private final List<UUID> hunters = new ArrayList<>();        // 本局猎人（无辜者阵营，开局 1 把无限箭的弓）
     private final Map<UUID, Integer> kills = new LinkedHashMap<>();   // 杀手击杀数
-    private final Map<UUID, Long> throwCooldown = new LinkedHashMap<>(); // 杀手飞剑冷却（ms 时间戳）
-    private final Map<UUID, Long> knifeCooldown = new LinkedHashMap<>(); // 杀手近战刀冷却（ms 时间戳）
     private final Map<UUID, Long> detectiveStoneAt = new LinkedHashMap<>(); // 侦探上次领真理之石的时间戳
     private final Map<UUID, UUID> compassTargets = new LinkedHashMap<>(); // 杀手 -> 指南针当前锁定的存活无辜者
+    private final Map<UUID, Long> throwCooldown = new LinkedHashMap<>(); // 杀手飞剑（剑气）冷却：UUID -> 可再次投掷的时间戳
     private final Set<UUID> knifeUsers = new LinkedHashSet<>(); // 本局用过刀（近战/飞剑）击杀的杀手
+    private UUID lastKiller;   // 最近一次淘汰的凶手（null = 环境死亡/自杀/同归于尽）
+    private UUID lastVictim;   // 最近一次被淘汰的玩家
     private long gameEndMs;
 
     public MurderMysteryArena(String name) {
@@ -167,7 +168,12 @@ public class MurderMysteryArena {
         return compassTargets;
     }
 
-    /** 本局用过刀（近战铁剑/石剑、飞剑）击杀过人的杀手。 */
+    /** 杀手 -> 飞剑（剑气）可再次投掷的时间戳（ms）。 */
+    public Map<UUID, Long> getThrowCooldown() {
+        return throwCooldown;
+    }
+
+    /** 本局用过刀（近战铁剑、飞剑）击杀过人的杀手。 */
     public Set<UUID> getKnifeUsers() {
         return knifeUsers;
     }
@@ -176,13 +182,31 @@ public class MurderMysteryArena {
         return kills;
     }
 
-    public Map<UUID, Long> getThrowCooldown() {
-        return throwCooldown;
+    /**
+     * 记录最近一次淘汰，用于结算时播报「谁杀了谁」。
+     *
+     * @param killer 凶手；null 表示环境死亡/自杀，与自己相同也按无凶手处理
+     * @param victim 被淘汰的玩家
+     */
+    public void noteKill(UUID killer, UUID victim) {
+        this.lastKiller = killer == null || killer.equals(victim) ? null : killer;
+        this.lastVictim = victim;
     }
 
-    /** 杀手近战刀冷却（UUID -> 可再次出手的时间戳 ms）。 */
-    public Map<UUID, Long> getKnifeCooldown() {
-        return knifeCooldown;
+    /** 最近一次淘汰的凶手；null = 环境死亡/自杀/同归于尽。 */
+    public UUID getLastKiller() {
+        return lastKiller;
+    }
+
+    /** 最近一次被淘汰的玩家。 */
+    public UUID getLastVictim() {
+        return lastVictim;
+    }
+
+    /** 清空击杀记录（局末清场时调用，别带到下一局）。 */
+    public void clearLastKill() {
+        lastKiller = null;
+        lastVictim = null;
     }
 
     public long getGameEndMs() {

@@ -34,3 +34,12 @@ arenas: {}
 active-arena: ''            # 游戏当前使用的生效场地名（由 /gtb arena select 设置）
 
 # 题目词库请改同目录下的 words.yml（/gtb word add|remove 也会写进那里）
+
+# ===== Simple Voice Chat 语音频道（可选；服务器未装 SVC 时自动跳过，其余功能不受影响） =====
+# 开局后全员进入同一个语音频道，频道内说话不受距离限制；游戏结束自动解散。
+voice:
+  enabled: true             # 是否启用语音频道
+  channel-name: '建筑猜猜乐' # 频道名（语音列表里显示的名字）
+  isolated: true            # 隔离频道：只有频道内的人能互相听见，频道外的人听不到
+  lock: true                # 锁死频道：游戏进行中禁止玩家自行退出频道 / 建组 / 加入别的组
+

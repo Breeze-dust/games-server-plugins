@@ -22,6 +22,11 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <!-- Simple Voice Chat 官方仓库（voicechat-api 只用来编译，运行时由 SVC 插件提供） -->
+        <repository>
+            <id>maxhenkel</id>
+            <url>https://maven.maxhenkel.de/repository/public/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -35,6 +40,13 @@
             <groupId>com.hub</groupId>
             <artifactId>minigame-lib</artifactId>
             <version>1.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Simple Voice Chat 的官方 API（可选集成，provided：打包时不带，运行时由 voicechat 插件提供） -->
+        <dependency>
+            <groupId>de.maxhenkel.voicechat</groupId>
+            <artifactId>voicechat-api</artifactId>
+            <version>2.6.27</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>

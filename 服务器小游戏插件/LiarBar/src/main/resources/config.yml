@@ -29,7 +29,7 @@ settings:
   # 每人的思考时间（秒），超时自动打出一张牌
   turn-seconds: 30
   # 质疑结算后到下一回合的间隔（秒）
-  round-delay-seconds: 4
+  round-delay-seconds: 1
   # 本局结束后，全员从座椅起身并留在房间里等待下一局（秒）
   end-delay-seconds: 5
   # 左轮弹巢数：每个座位一把独立的枪，每扣一次扳机转一格，转到自己的岩浆弹就中弹；
@@ -39,13 +39,13 @@ settings:
   reveal-delay-ticks: 14
   # 拿到左轮后多少秒不开枪就自动扣扳机
   fire-wait-seconds: 15
-  # 被岩浆浇头后焚烧多少秒（血条降到 burn-stop-health 就转观战）
+  # 被岩浆浇头后焚烧多少秒（血条降到 burn-stop-health 即中弹出局）
   burn-seconds: 6
   # 每次灼烧造成的伤害（半颗心 = 1）；调高后几下就能把人烫死
   burn-damage: 8.0
   # 灼烧伤害间隔多少 tick（20 tick = 1 秒）
   burn-interval-ticks: 5
-  # 血条降到这个值就转观战（不会真的死；2.0 = 1 颗心）
+  # 血条降到这个值就算中弹（不会真的死；2.0 = 1 颗心），随后直接退出本局回主城
   burn-stop-health: 2.0
   # 空枪放水持续多少秒
   water-seconds: 3

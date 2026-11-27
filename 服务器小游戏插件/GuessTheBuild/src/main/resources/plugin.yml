@@ -3,7 +3,7 @@ version: '2.8.3'
 main: com.buildbattle.gtb.GuessBuildPlugin
 api-version: '26.2'
 depend: [MiniGameLib, HubCore]
-softdepend: [GameWorlds]
+softdepend: [GameWorlds, voicechat]
 author: BuildBattle
 description: 建筑猜猜乐 - Hypixel Guess the Build 风格中文猜词小游戏
 

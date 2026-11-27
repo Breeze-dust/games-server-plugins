@@ -44,6 +44,7 @@ vending:
     death-note:
       item: death-note
       weight: 10
+    # 留人剑（木剑，一次性：命中任意玩家定身 N 秒，不造成伤害）
     shop-sword:
       item: shop-sword
       weight: 8

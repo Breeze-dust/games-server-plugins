@@ -84,6 +84,8 @@ public final class LiarBarTable {
         ArmorStand stand;
         /** 被岩浆吞没后摆在桌面中间的头颅方块；null 表示没有。 */
         Location headBlock;
+        /** 头颅上方的死亡说明（“xxx死于第x枪！”）；null 表示没有。 */
+        TextDisplay headText;
         Location dispenser;
         Location button;
         /** 这个座位自己的左轮：只有坐在这里的人扣扳机才会转。 */
@@ -293,8 +295,6 @@ public final class LiarBarTable {
             public String startMessage(int seconds) {
                 return "&6" + seconds + "s 后自动开局…";
             }
-            // 骗子酒馆不在街机派对的小游戏池里，牌桌不可能被派对 join-command 拉走：
-            // 不受派对全局抑制，否则派对进行期间发不出准备道具、也开不了局。
         }).exemptFromGlobalSuppression();
         setSeats(chairs);
     }
@@ -560,13 +560,7 @@ public final class LiarBarTable {
         seat.occupant = null;
         seat.dispenser = null;
         seat.button = null;
-        if (seat.headBlock != null) {
-            Block head = seat.headBlock.getBlock();
-            if (head.getType() == Material.PLAYER_HEAD) {
-                head.setType(Material.AIR, false);
-            }
-            seat.headBlock = null;
-        }
+        // 死者留在桌上的头颅和死亡说明不跟着座位一起清掉，留到下一局开始时统一清理。
         if (id != null) {
             countdown.removeReady(id);
             if (player != null) {
@@ -709,6 +703,8 @@ public final class LiarBarTable {
         order.clear();
         selections.clear();
         names.clear();
+        // 上一局留在桌上的头颅和死亡说明，新一局开始前清掉，给本轮出牌腾位置
+        clearHeads();
         for (Seat seat : seats) {
             if (seat.occupant == null) {
                 continue;
@@ -1283,7 +1279,10 @@ public final class LiarBarTable {
         }
     }
 
-    /** 三个展示框：椅子朝桌子走一格，再上一层（桌面），沿桌沿横排。 */
+    /**
+     * 三个展示框：从椅子朝桌子方向逐格往前找，落在前面第一个非空气方块的上一格，
+     * 再沿桌沿横排。椅子离桌子隔了几格、或者桌面比椅子高一格，都能找到正确的那一格。
+     */
     private List<Location> playFramePoints(Seat seat) {
         List<Location> points = new ArrayList<>();
         if (center == null) {
@@ -1294,19 +1293,50 @@ public final class LiarBarTable {
         if (dx == 0 && dz == 0) {
             return points;
         }
-        int frontX = seat.chair.getBlockX() + dx;
-        int frontY = seat.chair.getBlockY() + 1;
-        int frontZ = seat.chair.getBlockZ() + dz;
+        World world = seat.chair.getWorld();
+        if (world == null) {
+            return points;
+        }
+        int chairX = seat.chair.getBlockX();
+        int chairY = seat.chair.getBlockY();
+        int chairZ = seat.chair.getBlockZ();
+        int frontX = 0;
+        int frontY = 0;
+        int frontZ = 0;
+        boolean found = false;
+        for (int step = 1; step <= 6 && !found; step++) {
+            int x = chairX + dx * step;
+            int z = chairZ + dz * step;
+            // 先看椅子这一层（桌子与椅子同高），没有再看上一层（桌面比椅子高的吧台）
+            for (int level = 0; level <= 1; level++) {
+                if (isFrameBase(world.getBlockAt(x, chairY + level, z))) {
+                    frontX = x;
+                    frontY = chairY + level + 1;
+                    frontZ = z;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            return points;
+        }
         // 与椅子朝向垂直的水平方向
         int px = -dz;
         int pz = dx;
         for (int offset = -1; offset <= 1; offset++) {
-            points.add(new Location(seat.chair.getWorld(),
+            points.add(new Location(world,
                     frontX + px * offset + 0.5,
                     frontY,
                     frontZ + pz * offset + 0.5));
         }
         return points;
+    }
+
+    /** 展示框能不能摆在这个方块上面：空气和流体都不算桌面。 */
+    private static boolean isFrameBase(Block block) {
+        Material type = block.getType();
+        return !type.isAir() && type != Material.WATER && type != Material.LAVA;
     }
 
     /** 1 张放中间，2 张放左右两边，3 张全放。 */
@@ -1728,10 +1758,11 @@ public final class LiarBarTable {
         }
         Seat seat = seatOf(id);
         Player p = playerOf(id);
+        int shot = seat == null ? 1 : Math.max(1, seat.gunPulls);
         closeMenu(p);
         manager.clearDamageAllowed(id);
         // 结果只走聊天栏，不再弹屏幕中央的大字
-        broadcastSeated("&c" + nameOf(id) + " 被岩浆吞没了，转为观战。");
+        broadcastSeated("&c" + nameOf(id) + " 死于第" + shot + "枪！");
         if (p != null) {
             p.setFireTicks(0);
             p.setHealth(p.getMaxHealth());
@@ -1748,7 +1779,8 @@ public final class LiarBarTable {
                     seat.stand.remove();
                     seat.stand = null;
                 }
-                spawnHead(seat, p);
+                spawnHead(seat, p, shot);
+                // 死后留在这张桌子自己的座位旁边观战，不再回主城
                 p.teleport(seat.sit.clone().add(0, 1.4, 0));
             }
             p.setGameMode(GameMode.SPECTATOR);
@@ -1757,7 +1789,9 @@ public final class LiarBarTable {
             p.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME,
                     p.getLocation(), 40, 0.4, 0.6, 0.4, 0.02);
             p.playSound(p.getLocation(), Sound.ITEM_TOTEM_USE, 1.0f, 0.8f);
+            Chat.send(p, "&c你死于第" + shot + "枪，留在座位旁观战。");
         }
+        // 死亡只是出局：人留在本桌座位旁观战，本局结束时由 finishRound 统一放回座位
         if (order.size() <= 1) {
             endGame(order.isEmpty() ? null : order.get(0));
         } else {
@@ -1767,9 +1801,10 @@ public final class LiarBarTable {
 
     /**
      * 被岩浆吞没：不要倒下的尸体，直接把该玩家的头颅摆到桌面
-     * 三个展示框正中间的那一格上，当作留在桌上的“遗物”。
+     * 三个展示框正中间的那一格上，当作留在桌上的“遗物”，并在头颅上方
+     * 飘一行“xxx死于第x枪！”。
      */
-    private void spawnHead(Seat seat, Player player) {
+    private void spawnHead(Seat seat, Player player, int shot) {
         List<Location> points = playFramePoints(seat);
         if (points.size() < 3) {
             return;
@@ -1795,9 +1830,43 @@ public final class LiarBarTable {
             block.setBlockData(rotatable, false);
         }
         seat.headBlock = block.getLocation();
+        removeHeadText(seat);
+        Location textAt = middle.clone().add(0, 1.2, 0);
+        seat.headText = world.spawn(textAt, TextDisplay.class, display -> {
+            display.text(Chat.color("&c" + player.getName() + "死于第" + shot + "枪！"));
+            display.setBillboard(Display.Billboard.CENTER);
+            display.setSeeThrough(false);
+            display.setShadowed(true);
+            display.setPersistent(false);
+            display.setGravity(false);
+        });
         Location at = middle.clone().add(0, 0.4, 0);
         world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 24, 0.25, 0.2, 0.25, 0.01);
         world.playSound(middle, Sound.ENTITY_PLAYER_HURT, 0.9f, 0.6f);
+    }
+
+    /** 清掉某个座位头顶的死亡说明，避免同一格重复叠字。 */
+    private void removeHeadText(Seat seat) {
+        if (seat.headText != null) {
+            if (seat.headText.isValid()) {
+                seat.headText.remove();
+            }
+            seat.headText = null;
+        }
+    }
+
+    /** 清理所有座位留在桌面上的头颅和死亡说明（新一局开始 / 强制结束时）。 */
+    private void clearHeads() {
+        for (Seat seat : seats) {
+            if (seat.headBlock != null) {
+                Block head = seat.headBlock.getBlock();
+                if (head.getType() == Material.PLAYER_HEAD) {
+                    head.setType(Material.AIR, false);
+                }
+                seat.headBlock = null;
+            }
+            removeHeadText(seat);
+        }
     }
 
     /** 桌上的头颅朝向死者自己的座位。 */
@@ -2121,6 +2190,8 @@ public final class LiarBarTable {
                 HubAPI.setGame(id, LiarBarManager.GAME);
             }
         }
+        // 强制结束 / 关服 / 删桌：桌上的遗物头颅一并清掉
+        clearHeads();
         clearGameState();
         manager.reportArena(this);
     }

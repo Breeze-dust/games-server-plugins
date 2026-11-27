@@ -1,6 +1,7 @@
 package com.murdermystery;
 
 import com.hub.util.Chat;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.AbstractArrow;
@@ -37,7 +38,7 @@ import org.bukkit.event.player.PlayerSignOpenEvent;
 import org.bukkit.inventory.ItemStack;
 
 /**
- * 密室杀手事件：杀手一击必杀、商店武器（石剑/弩）与猎人的弓、同归于尽、友伤拦截、
+ * 密室杀手事件：杀手一击必杀、商店武器（留人剑/弩）与猎人的弓、同归于尽、友伤拦截、
  * 金锭商店点击购买、飞剑投掷、出界淘汰、退出清理、配置工具与加入告示牌，
  * 以及**地图保护**（对局中不能脱盔甲架、动展示框、打坏装饰实体）。
  */
@@ -55,6 +56,11 @@ public class MurderMysteryListener implements Listener {
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onAnyDamage(EntityDamageEvent event) {
+        // 结算后等回大厅的 3 秒：一律不掉血（PvP / 摔落 / 虚空都不能在成绩界面上把人打死）
+        if (event.getEntity() instanceof Player waiting && awaitingLobby(waiting)) {
+            event.setCancelled(true);
+            return;
+        }
         // 地图保护：对局中的玩家（或 TA 的弹射物）不能打坏地图上的盔甲架/展示框/装饰实体
         if (!(event.getEntity() instanceof Player) && attackerInArena(event)) {
             event.setCancelled(true);
@@ -89,9 +95,9 @@ public class MurderMysteryListener implements Listener {
 
     /**
      * 核心战斗规则（杀手不隐身，全体玩家可用商店武器；猎人开局自带弓）：
-     * 1. 杀手铁剑/飞剑/石剑命中任何人 → 一击必杀（掉金锭 + 尸体 + 剑升级）；
-     * 2. 无辜者石剑命中杀手 → 一击必杀，无辜者获胜；误伤无辜者 → 两人同归于尽；
-     * 3. 商店弩 / 猎人弓（箭矢）命中杀手 → 一击必杀；误伤好人 → 两人同归于尽；
+     * 1. 杀手铁剑/飞剑命中任何人 → 一击必杀（掉金锭 + 尸体 + 剑升级）；
+     * 2. 商店弩 / 猎人弓（箭矢）命中杀手 → 一击必杀；误伤好人 → 两人同归于尽；
+     * 3. 任何人手持留人剑命中任意玩家 → 只定身（不造成伤害），剑随即消失（一次性）；
      * 4. 无辜者徒手反击杀手 → 正常掉血（死亡事件结算）；
      * 5. 无辜者之间其他伤害 → 取消。
      */
@@ -101,6 +107,11 @@ public class MurderMysteryListener implements Listener {
             return;
         }
         MurderMysteryManager m = plugin.getManager();
+        // 结算后等回大厅的 3 秒：已经不在 playerArena 里，这里补一道拦截，别让人在成绩界面上互殴
+        if (m.isReturningToLobby(victim.getUniqueId())) {
+            event.setCancelled(true);
+            return;
+        }
         // 开局身份倒数期间禁止一切伤害（免得有人抢跑）
         if (m.isRoleCountdown(victim)) {
             event.setCancelled(true);
@@ -179,29 +190,18 @@ public class MurderMysteryListener implements Listener {
                 m.handleTruthStone(arena, attacker, victim);
                 return;
             }
-            // 商店石剑
-            if (m.isSwordItem(attacker.getInventory().getItemInMainHand())) {
+            // 商店留人剑：命中任意玩家都只定身（不造成伤害），剑随即消失（一次性）
+            if (m.isDetainSword(attacker.getInventory().getItemInMainHand())) {
                 event.setCancelled(true);
-                if (arena.isMurderer(attacker.getUniqueId())) {
-                    if (!arena.isMurderer(victim.getUniqueId())
-                            && m.startKnifeCooldown(arena, attacker)) { // 近战刀 2 秒冷却
-                        arena.getKnifeUsers().add(attacker.getUniqueId());
-                        m.handleMurdererKill(arena, attacker, victim);
-                    }
-                } else if (arena.isMurderer(victim.getUniqueId())) {
-                    m.handleInnocentKill(arena, attacker, victim);
-                } else {
-                    m.handleMutualDeath(arena, attacker, victim, "石剑");
-                }
+                m.handleDetainHit(arena, attacker, victim);
                 return;
             }
-            // 杀手：**只有手持铁剑**命中才一击必杀；其他武器（弓/石剑/徒手/捡到的东西）一律不生效
+            // 杀手：**只有手持铁剑**命中才一击必杀；其他武器（弓/留人剑/徒手/捡到的东西）一律不生效
             // （不能放普通伤害过去：onDeath 会把被打死的好人满血传送回去，变成"打死了又复活"）
             if (arena.isMurderer(attacker.getUniqueId())) {
                 event.setCancelled(true);
                 if (attacker.getInventory().getItemInMainHand().getType() == Material.IRON_SWORD
-                        && !arena.isMurderer(victim.getUniqueId())
-                        && m.startKnifeCooldown(arena, attacker)) { // 近战刀 2 秒冷却
+                        && !arena.isMurderer(victim.getUniqueId())) {
                     arena.getKnifeUsers().add(attacker.getUniqueId());
                     m.handleMurdererKill(arena, attacker, victim);
                 }
@@ -474,6 +474,19 @@ public class MurderMysteryListener implements Listener {
         if (!p.getWorld().equals(event.getFrom().getWorld())) {
             return;
         }
+        // 留人剑定身：只锁水平移动，转身（yaw/pitch）和垂直方向都放开，避免卡半空、卡台阶
+        if (plugin.getManager().isFrozen(p)) {
+            Location from = event.getFrom();
+            Location to = event.getTo();
+            if (to != null && (to.getX() != from.getX() || to.getZ() != from.getZ())) {
+                Location fixed = from.clone();
+                fixed.setY(to.getY());
+                fixed.setYaw(to.getYaw());
+                fixed.setPitch(to.getPitch());
+                event.setTo(fixed);
+                return;
+            }
+        }
         if (p.getLocation().distanceSquared(event.getFrom()) < 0.0001) {
             return;
         }
@@ -708,10 +721,17 @@ public class MurderMysteryListener implements Listener {
     private boolean inArena(Player p) {
         String arenaName = plugin.getManager().arenaOf(p.getUniqueId());
         if (arenaName == null) {
-            return false;
+            // 结算后等回大厅的 3 秒仍然算"场内"：玩家此时已从 playerArena 移除，
+            // 但还不能拆地图 / 拿展示框里的东西 / 掉饥饿
+            return awaitingLobby(p);
         }
         MurderMysteryArena a = plugin.getManager().getArena(arenaName);
         return a != null && a.getPlayers().contains(p.getUniqueId());
+    }
+
+    /** 是否正在结算后等回大厅（这 3 秒里不掉血、不饿、也不能拆地图）。 */
+    private boolean awaitingLobby(Player p) {
+        return plugin.getManager().isReturningToLobby(p.getUniqueId());
     }
 
     /** 场内玩家不掉饥饿（等待中或对局中，复用 inArena）。 */

@@ -38,6 +38,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         if (manager != null) {
+            manager.shutdownVoiceChat();
             manager.cancelAllTasksAndGlow();
             manager.clearAllCorpses();
             manager.restoreAllWorldPvp(); // 对局中关服时把临时开启的 PvP 还原

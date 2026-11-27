@@ -9,7 +9,6 @@ import com.hub.api.GameState;
 import com.hub.data.PlayerStats;
 import com.hub.util.Top3;
 import com.hub.api.HubAPI;
-import com.hub.util.SpectatorHud;
 import com.hub.util.WaitCountdown;
 import com.buildbattle.gtb.words.Word;
 import net.kyori.adventure.text.Component;
@@ -60,8 +59,6 @@ public class GameManager {
     private final GuessBuildPlugin plugin;
 
     private final List<UUID> players = new ArrayList<>();
-    /** 主城观战者：把同一块计分板也发给他们，回到等待阶段时还原。 */
-    private final SpectatorHud spectatorHud = new SpectatorHud();
     private final Map<UUID, String> names = new HashMap<>();
     private final Map<UUID, PlayerState> states = new HashMap<>();
     private final Map<UUID, Integer> scores = new HashMap<>();
@@ -236,6 +233,7 @@ public class GameManager {
             p.setInvulnerable(true);
             Chat.send(p, "&a你已作为猜测者加入本局！&7本局不参与建造，下一局可正常参与建造。");
             broadcast("&e" + p.getName() + "&f 中途加入了本局（仅猜测，&e" + players.size() + "/" + max + "&f 人）");
+            plugin.getVoice().enter(p); // 语音频道：中途加入者立即进本局频道
         } else {
             // ---- 等待阶段：正常加入，参与建造轮换 ----
             HubAPI.setGame(id, "猜猜乐");
@@ -245,8 +243,9 @@ public class GameManager {
                 p.teleport(waitPoint);
             }
             Chat.send(p, "&a你已加入！当前 &e" + players.size() + "/" + max + "&a 人。右键右下角的床可以退出。");
-            broadcast("&e" + p.getName() + "&f 加入了游戏（&e" + players.size() + "/" + max + "&f 人）");
-            HubAPI.announceJoin(plugin.getName(), p.getName()); // 全服公屏播报
+            // 只保留这一条带人数的加入提示：走本插件 Chat.broadcast（全服 + 头衔装饰），
+            // 不再调用 HubAPI.announceJoin，否则全服会多出一条不带人数的重复提示。
+            Chat.broadcast("&e" + p.getName() + "&f 加入了游戏（&e" + players.size() + "/" + max + "&f 人）");
             giveWaitingItems(p); // 清空背包并发放等待道具
             updateWaitCountdown();
         }
@@ -262,6 +261,7 @@ public class GameManager {
         if (!players.contains(id)) {
             return;
         }
+        plugin.getVoice().exit(p); // 语音频道：退出即离开本局频道
         boolean wasPlaying = phase == Phase.PLAYING;
         players.remove(id);
         names.remove(id);
@@ -373,8 +373,17 @@ public class GameManager {
             }
         }
 
+        /** 不再提示"OP 在队列中，等待手动开始"：返回空串，由 {@link #onMessage(String)} 丢弃。 */
+        @Override
+        public String opQueuedMessage() {
+            return "";
+        }
+
         @Override
         public void onMessage(String message) {
+            if (message == null || message.isEmpty()) {
+                return;
+            }
             broadcast(message);
         }
 
@@ -456,6 +465,13 @@ public class GameManager {
         for (UUID u : players) {
             HubAPI.setPlaying(u, "猜猜乐");
         }
+        // 语音频道：全员进入同一个频道，频道内说话不受距离限制（未装 Simple Voice Chat 时为空实现）
+        for (UUID u : players) {
+            Player voicePlayer = Bukkit.getPlayer(u);
+            if (voicePlayer != null && voicePlayer.isOnline()) {
+                plugin.getVoice().enter(voicePlayer);
+            }
+        }
         // 回收等待道具，不带入游戏
         for (UUID u : players) {
             Player pp = Bukkit.getPlayer(u);
@@ -491,7 +507,6 @@ public class GameManager {
             p.getInventory().setItem(0, waitingItem(START_ITEM, START_NAME, "右键开始游戏（一次确认）"));
         }
         p.getInventory().setItem(8, waitingItem(LEAVE_ITEM, LEAVE_NAME, "右键离开游戏"));
-        wait.giveReadyItem(p);
     }
 
     /** 游戏开始前回收等待道具。 */
@@ -597,9 +612,11 @@ public class GameManager {
             broadcast("&f第 &e" + round + "/" + totalRounds + "&f 轮：&e" + name(builder)
                     + "&f 请选择本轮题目（&e" + selectSec + "&f 秒内不选将随机分配）");
             sendThemeOptions(b);
+            announceRoundStart(true);
             endTask = Bukkit.getScheduler().runTaskLater(plugin, this::autoPickTheme, selectSec * 20L);
         } else {
             // 未启用题目选择：直接随机词开建
+            announceRoundStart(false);
             startBuildRound(null);
             return;
         }
@@ -784,6 +801,32 @@ public class GameManager {
         opt6 = opt6.clickEvent(ClickEvent.runCommand("/gtb theme 6"))
                 .hoverEvent(HoverEvent.showText(Chat.color("&7输入两次相同词语确认，评分 >6 分可入库，<4 分进黑名单")));
         b.sendMessage(opt6);
+    }
+
+    /**
+     * 每轮开始时在屏幕中央提示本轮身份：
+     * 建造者看到「你是本轮的建造者 / 请在聊天框选择本轮词语」，
+     * 猜测者看到「本轮建造者 / 玩家名」。
+     */
+    private void announceRoundStart(boolean selecting) {
+        if (selecting) {
+            Player b = Bukkit.getPlayer(builder);
+            if (b != null && b.isOnline()) {
+                Chat.title(b, "&6&l你是本轮的建造者", "&e请在聊天框选择本轮词语", 4);
+            }
+        }
+        String subtitle = selecting
+                ? "&e" + name(builder) + " &7正在选题…"
+                : "&e" + name(builder);
+        for (UUID u : players) {
+            if (u.equals(builder)) {
+                continue;
+            }
+            Player g = Bukkit.getPlayer(u);
+            if (g != null && g.isOnline()) {
+                Chat.title(g, "&6&l本轮建造者", subtitle, 4);
+            }
+        }
     }
 
     private void sendHint() {
@@ -1022,6 +1065,7 @@ public class GameManager {
         }
         boolean wasPlaying = phase == Phase.PLAYING;
         phase = Phase.WAITING;
+        plugin.getVoice().disband(); // 语音频道：游戏结束自动解散（不会残留到下一局）
         reportArena();
         currentWord = null;
         wordLen = 0;
@@ -1129,6 +1173,7 @@ public class GameManager {
         }
         cancelEndTask();
         cancelHintTask();
+        plugin.getVoice().disband(); // 关服兜底：删除语音频道
     }
 
     // ---------- 猜词 ----------
@@ -1591,20 +1636,10 @@ public class GameManager {
             setScore(obj, line--, "&7/gtb join 加入");
             setScore(obj, line--, "&7/gtb start 开始");
         }
-        if (phase == Phase.PLAYING) {
-            for (UUID u : spectatorHud.viewers("gtb", players, 96.0)) {
-                Player p = Bukkit.getPlayer(u);
-                if (p != null && p.isOnline()) {
-                    p.setScoreboard(sb);
-                }
-            }
-        } else {
-            spectatorHud.restore("gtb");
-            for (UUID u : players) {
-                Player p = Bukkit.getPlayer(u);
-                if (p != null && p.isOnline()) {
-                    p.setScoreboard(sb);
-                }
+        for (UUID u : players) {
+            Player p = Bukkit.getPlayer(u);
+            if (p != null && p.isOnline()) {
+                p.setScoreboard(sb);
             }
         }
     }

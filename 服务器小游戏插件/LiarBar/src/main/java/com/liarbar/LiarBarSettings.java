@@ -11,7 +11,7 @@ public final class LiarBarSettings {
     public int handSize = 5;
     public int maxPlayCards = 3;
     public int turnSeconds = 30;
-    public int roundDelaySeconds = 4;
+    public int roundDelaySeconds = 1;
     public int endDelaySeconds = 5;
     public int chambers = 6;
     /** 揭幕时每张牌之间的间隔（tick）。 */
@@ -41,7 +41,7 @@ public final class LiarBarSettings {
         handSize = clamp(c.getInt("settings.hand-size", 5), 1, 5);
         maxPlayCards = clamp(c.getInt("settings.max-play-cards", 3), 1, 5);
         turnSeconds = clamp(c.getInt("settings.turn-seconds", 30), 5, 300);
-        roundDelaySeconds = clamp(c.getInt("settings.round-delay-seconds", 4), 1, 30);
+        roundDelaySeconds = clamp(c.getInt("settings.round-delay-seconds", 1), 1, 30);
         endDelaySeconds = clamp(c.getInt("settings.end-delay-seconds", 5), 1, 60);
         chambers = clamp(c.getInt("settings.chambers", 6), 2, 12);
         revealDelayTicks = clamp(c.getInt("settings.reveal-delay-ticks", 14), 4, 100);

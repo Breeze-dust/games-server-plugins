@@ -4,7 +4,7 @@
 #
 # type 支持的值：
 #   gt-soda        GT混沌汽水（右键触发随机事件，事件见文件末尾 effects.gt-soda）
-#   shop-sword     一击必杀石剑
+#   shop-sword     留人剑（木剑，一次性：命中任意玩家定身 N 秒，不造成伤害）
 #   shop-crossbow  一击必杀弩
 #   arrow          箭
 #   truth-stone    真理之石
@@ -28,6 +28,8 @@ items:
   shop-sword:
     enabled: true
     type: shop-sword
+    # 留人剑命中后，被打玩家被定身（只锁水平移动）的秒数
+    freeze-seconds: 3
 
   shop-crossbow:
     enabled: true

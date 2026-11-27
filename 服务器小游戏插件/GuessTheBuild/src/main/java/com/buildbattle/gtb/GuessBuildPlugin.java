@@ -7,6 +7,7 @@ import com.buildbattle.gtb.command.GTBCommand;
 import com.buildbattle.gtb.game.GameManager;
 import com.buildbattle.gtb.listener.GameListener;
 import com.buildbattle.gtb.util.Chat;
+import com.buildbattle.gtb.voice.VoiceChatBridge;
 import com.buildbattle.gtb.words.WordManager;
 import com.hub.util.SetupMode;
 import org.bukkit.Bukkit;
@@ -40,6 +41,9 @@ public final class GuessBuildPlugin extends JavaPlugin {
 
     /** 公共库建场模式（MiniGameLib）：备份背包 → 发放工具 → 保存/退出时还原。 */
     private SetupMode setupMode;
+
+    /** 语音频道桥接（Simple Voice Chat 可选依赖；未安装时为 NOOP）。 */
+    private VoiceChatBridge voice;
 
     /** 建场工具：木棍=选区（左右键），纸=保存，屏障=退出（退出与背包还原由公共库处理）。 */
     private static final List<SetupMode.Tool> SETUP_TOOLS = List.of(
@@ -79,6 +83,9 @@ public final class GuessBuildPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
         saveDefaultConfig();
+        // 语音频道（Simple Voice Chat）：没装 SVC 时返回空实现，其余功能不受影响
+        voice = VoiceChatBridge.create(this);
+        voice.load(VoiceChatBridge.readSettings(this));
         setupMode = new SetupMode(this, "gtb-setup-tool");
 
         wordManager = new WordManager(this);
@@ -139,6 +146,9 @@ public final class GuessBuildPlugin extends JavaPlugin {
         if (game != null) {
             game.restoreAllOnDisable();
         }
+        if (voice != null) {
+            voice.disband();
+        }
         getLogger().info("建筑猜猜乐 已禁用。");
     }
 
@@ -148,6 +158,9 @@ public final class GuessBuildPlugin extends JavaPlugin {
         wordManager.reload();
         arenas.loadAll();
         initFloorNpc();
+        if (voice != null) {
+            voice.load(VoiceChatBridge.readSettings(this)); // 热更新 voice 段（频道名/锁死/开关）
+        }
         getLogger().info("配置、词库、场地已重载。");
     }
 
@@ -157,6 +170,10 @@ public final class GuessBuildPlugin extends JavaPlugin {
 
     public GameManager getGame() {
         return game;
+    }
+
+    public VoiceChatBridge getVoice() {
+        return voice != null ? voice : VoiceChatBridge.NOOP;
     }
 
     /** 当前生效场地（未配置时返回兜底空场地，不会为 null）。 */

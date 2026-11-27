@@ -47,8 +47,9 @@ gold-spawn-interval: 10
 gold-spawn-amount: 1
 
 # 金锭商店（开局所有玩家获得商店道具，右键打开；商店道具不可丢弃）
-# 石剑：近战命中杀手一击必杀；误伤无辜者两人同归于尽
-sword-cost: 8
+# 留人剑：近战命中任意玩家 → 对方定身（只锁水平移动）N 秒，不造成伤害；一次性，命中后消失
+# 定身秒数在 items.yml 的 items.shop-sword.freeze-seconds（默认 3）
+sword-cost: 2
 # 弩：远程弩矢命中杀手一击必杀；误伤无辜者两人同归于尽
 # 旧配置里的 bow-cost 仍作兜底读取；新服直接用 crossbow-cost
 crossbow-cost: 8
@@ -69,3 +70,21 @@ join-signs: {}
 # 售货机按钮登记数据已移到 mechanisms-data.yml（运行时数据文件，打包上传默认不会覆盖它）。
 # 旧版本的 vending-machines 段会在启动时自动迁移进 mechanisms-data.yml 并删除。
 # 货物列表与权重在 mechanisms.yml 的 vending.goods 里配置。
+
+# ========== 语音（可选，服务端装了 Simple Voice Chat 才生效）==========
+# SVC 默认就是「真实世界麦」：玩家不在任何语音组时，声音按距离衰减（服务端 max_voice_distance）。
+# 但语音组是无方向、恒定音量的（官方文档：组语音与 static 频道一致），玩家自己建组就能跨全场通话，
+# 所以进局时会把人踢出现有语音组，并（默认）禁止局内建组 / 入组。
+voice-chat:
+  # 总开关：false = 完全不碰语音（玩家自己建的组在大厅和局内都会保留）
+  enabled: true
+  # 局内禁止建组 / 入组；false 时只保证「进局瞬间退组」，局内玩家仍能重新建组绕过距离限制
+  block-groups: true
+  # 淘汰者语音（「死者频道」）：被淘汰时自动把人拉进一个隐藏的固定语音组，
+  # 组语音跨全图恒定音量、不受距离限制；死者之间随便聊，也退不出这个组（/mm leave 或结算才放出来）。
+  dead-group:
+    # false = 退回旧行为：只把人踢出语音组，靠 SVC 原生旁观者范围（spectator_interaction=false）
+    enabled: true
+    # true = 死者只能听见同为淘汰者的玩家（说不到活人，也听不见附近活人）；
+    # false（默认）= 还能听见附近活人说话（按距离衰减），活人仍然听不见死者
+    isolated: false

@@ -7,7 +7,6 @@ import com.hub.api.HubAPI;
 import com.hub.util.Chat;
 import com.hub.util.LiveSidebar;
 import com.hub.util.Top3;
-import com.hub.util.StartCountdown;
 import com.hub.util.SetupMode;
 import com.hub.util.WaitCountdown;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
@@ -82,12 +81,6 @@ public class MurderMysteryManager {
 
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
-    /** 杀手飞剑冷却（毫秒）。 */
-    private static final int THROW_COOLDOWN_MS = 5000;
-
-    /** 杀手近战刀冷却（毫秒）：一次近战击杀后 2 秒内不能再刀人（飞剑另有自己的 5 秒冷却）。 */
-    private static final int KNIFE_COOLDOWN_MS = 2000;
-
     /** 头衔「无声之刃」：杀手不用近战刀/飞剑赢下一局。ID、内容只在这里定义。 */
     public static final String TITLE_NO_KNIFE = "mm_no_knife";
     public static final String TITLE_NO_KNIFE_NAME = "无声之刃";
@@ -101,6 +94,13 @@ public class MurderMysteryManager {
      * （杀手铁剑/指南针、猎人弓）。商店道具（绿宝石）人人都有，开局就发，不参与这段延后。
      */
     private static final int ITEM_COUNTDOWN_SECONDS = 3;
+    /**
+     * 结算后延迟回大厅的秒数（2026-11-22 按需求改）：不再立刻传送，
+     * 先公屏提示，再在屏幕下方 3/2/1 倒数，到点才送回主城——这样胜负大字能看完整。
+     */
+    private static final int LOBBY_RETURN_SECONDS = 3;
+    /** 飞剑（剑气）冷却（毫秒）：只有剑气有冷却，近战刀无冷却。 */
+    private static final int THROW_COOLDOWN_MS = 5000;
     /** 金块扫描每 tick 处理多少列（一列要扫一遍场地的 Y 范围）。 */
     private static final int GOLD_SCAN_COLUMNS_PER_TICK = 60;
 
@@ -154,6 +154,8 @@ public class MurderMysteryManager {
     public static final int WEAPON_SLOT = 0;
 
     private final MurderMysteryPlugin plugin;
+    /** Simple Voice Chat 可选集成（没装 SVC 时空转）。 */
+    private final VoiceChatBridge voiceChat;
     private final LiveSidebar liveSidebar;
     /** items.yml：道具总表、售货机货物、GT混沌汽水事件配置。 */
     private final MurderMysteryItems items;
@@ -182,6 +184,8 @@ public class MurderMysteryManager {
     private final Map<UUID, ItemDisplay> flyingSwords = new LinkedHashMap<>();
     /** 同步飞剑外形的 1 tick 任务（只要有飞剑在飞就保持运行）。 */
     private BukkitTask flyingSwordTask;
+    /** 结算后等待回大厅的倒计时任务（UUID -> 任务）；join / leave / 退出 / 关服都会取消。 */
+    private final Map<UUID, BukkitTask> lobbyReturnTasks = new LinkedHashMap<>();
 
     // ---------- 地图机关与 GT混沌汽水 ----------
     /** 玩家上次从售货机抽货的时间（冷却用）。 */
@@ -206,6 +210,8 @@ public class MurderMysteryManager {
     private final List<BukkitTask> rpgMissiles = new ArrayList<>();
     /** 隐身时被临时收起来的物品（UUID -> 槽位 + 物品），到时恢复。 */
     private final Map<UUID, HiddenHeld> hiddenHeldItems = new LinkedHashMap<>();
+    /** 被留人剑定住的玩家：UUID -> 定身结束时间戳（ms）。只锁水平移动，不禁转身/攻击/用道具。 */
+    private final Map<UUID, Long> frozenUntil = new LinkedHashMap<>();
 
     // ---------- 角色分配的公平性历史（详见 assignRoles） ----------
     /** 角色历史文件名（单独一份，不塞进会被 saveAll 回写的 config.yml）。 */
@@ -311,6 +317,7 @@ public class MurderMysteryManager {
 
     public MurderMysteryManager(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
+        this.voiceChat = VoiceChatBridge.create(plugin);
         this.liveSidebar = new LiveSidebar(plugin);
         this.items = new MurderMysteryItems(plugin);
         this.mechanisms = new MurderMysteryMechanisms(plugin);
@@ -390,8 +397,9 @@ public class MurderMysteryManager {
         return rooms.goldPerDeath(a == null ? null : a.getName(), goldPerDeath());
     }
 
+    /** 留人剑（木剑，一次性）的价格。 */
     public int swordCost() {
-        return cfgInt("sword-cost", 8);
+        return cfgInt("sword-cost", 2);
     }
 
     public int crossbowCost() {
@@ -462,7 +470,6 @@ public class MurderMysteryManager {
     // ---------- 加载与保存 ----------
 
     public void load() {
-        startCountdown();
         invalidateGoldScan(); // 场地可能要重读，金块位置缓存也一起作废
         arenas.clear();
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("arenas");
@@ -493,6 +500,12 @@ public class MurderMysteryManager {
         mechanisms.load(this::arenaAt); // 机关参数与已登记的拉杆/传送点/售货机（按场地隔离）
         migrateLegacyVendingMachines(); // 旧版存在 config.yml 的售货机坐标迁进 mechanisms-data.yml
         rooms.load(); // 每个场地的金锭刷新设置
+        // 语音集成（可选）：没装 Simple Voice Chat 时空转；局内是否禁组、淘汰者是否进死人区由配置决定
+        voiceChat.load(new VoiceChatBridge.Settings(
+                plugin.getConfig().getBoolean("voice-chat.enabled", true),
+                plugin.getConfig().getBoolean("voice-chat.block-groups", true),
+                plugin.getConfig().getBoolean("voice-chat.dead-group.enabled", true),
+                plugin.getConfig().getBoolean("voice-chat.dead-group.isolated", true)));
         ConfigurationSection js = plugin.getConfig().getConfigurationSection("join-signs");
         if (js != null) {
             for (String name : js.getKeys(false)) {
@@ -522,6 +535,11 @@ public class MurderMysteryManager {
         roleConfig.clear();
         roleOdds.clear();
         startWaitingTask();
+    }
+
+    /** 关服：断开与 Simple Voice Chat 的回调。 */
+    public void shutdownVoiceChat() {
+        voiceChat.shutdown();
     }
 
     public void saveAll() {
@@ -735,7 +753,10 @@ public class MurderMysteryManager {
             msg(p, "&c人数已满（&e" + max + "&c）。");
             return false;
         }
+        // 结算后正在等回大厅：直接进新局，先取消回大厅任务（否则 3 秒后会被拽回主城）
+        cancelLobbyReturn(id);
         playerArena.put(id, arenaName);
+        voiceChat.enter(id); // 局内必须是距离麦：先踢出语音组
         a.getPlayers().add(id);
         p.getInventory().clear();
         p.setGameMode(GameMode.SURVIVAL);
@@ -750,8 +771,11 @@ public class MurderMysteryManager {
             giveStartPaper(p);
         }
         msg(p, "&a你已加入 &e" + arenaName + "&a，等待开始。");
-        broadcast(a, "&e" + p.getName() + "&f 加入了（&e" + a.getPlayers().size() + "&f 人）");
-        HubAPI.announceJoin(plugin.getName(), p.getName()); // 全服公屏播报
+        // 全服公屏只发一条：原「场地内 N 人」+ HubCore「[游戏] 玩家 加入了游戏」两条合并成
+        // [密室杀手][场地] 玩家 加入了游戏（N 人）。HubCore 的 announceJoin 没有人数参数，
+        // 所以这里用 Chat.broadcastTitled 本地拼整行，不再调 HubAPI.announceJoin（否则会重复两条）。
+        Chat.broadcastTitled("&8[&8" + GAME_NAME + "&8][&e" + arenaName + "&8] &e" + p.getName()
+                + " &7加入了游戏&7（&e" + a.getPlayers().size() + "&7 人）");
         recomputeRoleOdds(a);
         updateWaitCountdown(a);
         reportArena(a);
@@ -771,16 +795,25 @@ public class MurderMysteryManager {
      */
     public void leave(Player p, boolean silent) {
         UUID id = p.getUniqueId();
+        // 结算后正在等回大厅：先取消倒计时，避免 3 秒后又把人从别处拽回主城
+        boolean pendingLobbyReturn = cancelLobbyReturn(id);
         cleanupSodaState(p);
         showNameTag(p);
         p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
         String name = playerArena.remove(id);
         if (name == null) {
+            if (pendingLobbyReturn && !silent) {
+                // 刚结算完、正在等回大厅：/mm leave 就立刻送回，不把人留在对局世界
+                HubAPI.teleportToLobby(p);
+                msg(p, "&7你已离开。");
+                return;
+            }
             if (!silent) {
                 msg(p, "&c你不在任何场中。");
             }
             return;
         }
+        voiceChat.exit(id); // 回到大厅：解除局内限制，可以自己建组
         removeEventItems(p);
         MurderMysteryArena a = arenas.get(name);
         if (a != null) {
@@ -793,7 +826,6 @@ public class MurderMysteryManager {
             a.getHunters().remove(id);
             a.getKills().remove(id);
             a.getThrowCooldown().remove(id);
-            a.getKnifeCooldown().remove(id);
             forgetCompassTarget(a, id);
             updateCompassTargets(a);
             HubAPI.clearGame(id);
@@ -810,8 +842,10 @@ public class MurderMysteryManager {
         }
         p.setGameMode(GameMode.SURVIVAL);
         removeHunterBow(p);
-        HubAPI.teleportToLobby(p);
-        msg(p, "&7你已离开。");
+        if (!silent) {
+            HubAPI.teleportToLobby(p);
+            msg(p, "&7你已离开。");
+        }
         if (a != null && a.getState() == MurderMysteryArena.State.WAITING) {
             updateWaitCountdown(a);
         }
@@ -820,18 +854,19 @@ public class MurderMysteryManager {
     /** 游戏中有人离开：杀手退=无辜者胜；无辜者全走光=杀手胜。 */
     private void handleLeaveDuringGame(MurderMysteryArena a, Player p, UUID id, boolean wasMurderer) {
         if (wasMurderer) {
-            endGame(a, true, "&a&l无辜者获胜！&f杀手（&e" + p.getName() + "&f）退出了游戏。");
+            endGame(a, true, "&f杀手 &c" + p.getName() + "&f 退出了游戏。");
             return;
         }
         broadcast(a, "&e有人离开了游戏&f（剩余无辜者 &e" + a.innocentsLeft() + "&f）");
         if (a.innocentsLeft() <= 0) {
-            endGame(a, false, "&c&l杀手获胜！&f无辜者都离开了。");
+            endGame(a, false, "&f无辜者都离开了游戏。");
         }
     }
 
     /** 退出服务器清理。 */
     public void handleQuit(Player p) {
         UUID id = p.getUniqueId();
+        cancelLobbyReturn(id); // 人已经退出去了，别再排队传送
         cleanupSodaState(p);
         showNameTag(p);
         p.getActivePotionEffects().forEach(e -> p.removePotionEffect(e.getType()));
@@ -840,6 +875,7 @@ public class MurderMysteryManager {
         if (name == null) {
             return;
         }
+        voiceChat.exit(id);
         removeEventItems(p);
         MurderMysteryArena a = arenas.get(name);
         if (a == null) {
@@ -860,9 +896,9 @@ public class MurderMysteryManager {
         HubAPI.clearGame(id);
         if (a.getState() == MurderMysteryArena.State.RUNNING) {
             if (wasMurderer) {
-                endGame(a, true, "&a&l无辜者获胜！&f杀手退出了游戏。");
+                endGame(a, true, "&f杀手退出了游戏。");
             } else if (a.innocentsLeft() <= 0) {
-                endGame(a, false, "&c&l杀手获胜！&f无辜者都已离开。");
+                endGame(a, false, "&f无辜者都已离开。");
             } else {
                 reportArena(a);
             }
@@ -992,7 +1028,16 @@ public class MurderMysteryManager {
 
             @Override
             public void onMessage(String message) {
-                broadcast(a, message);
+                // 等待室仍会播「Ns 后自动开始…」，但 OP 在队列中不再反复刷提示
+                if (message != null && !message.isBlank()) {
+                    broadcast(a, message);
+                }
+            }
+
+            @Override
+            public String opQueuedMessage() {
+                // OP 在队列中只暂停自动倒计时、等手动开始，不再提示
+                return "";
             }
 
             @Override
@@ -1021,16 +1066,7 @@ public class MurderMysteryManager {
 
     // ---------- 开局 ----------
 
-    /** OP 开始游戏。 */
-    private StartCountdown startCountdown;
-
-    private StartCountdown startCountdown() {
-        if (startCountdown == null) {
-            startCountdown = new StartCountdown(plugin);
-        }
-        return startCountdown;
-    }
-
+    /** OP 开始游戏（不再有额外的开局 3 秒倒计时，直接进入身份倒数）。 */
     public boolean start(Player op, String arenaName) {
         MurderMysteryArena a = arenas.get(arenaName);
         if (a == null) {
@@ -1050,9 +1086,6 @@ public class MurderMysteryManager {
             msg(op, "&c该场未配置完成（缺少 pos1/pos2/lobby）。");
             return false;
         }
-        if (startCountdown().begin(arenaName, new ArrayList<>(a.getPlayers()), () -> start(op, arenaName))) {
-            return true;
-        }
         a.setState(MurderMysteryArena.State.RUNNING);
         plugin.getLogger().info("游戏开始：" + arenaName + "（" + a.getPlayers().size() + " 人）");
         reportArena(a);
@@ -1061,9 +1094,8 @@ public class MurderMysteryManager {
         a.getEliminated().clear();
         a.getElimOrder().clear();
         a.getKills().clear();
-        a.getThrowCooldown().clear();
-        a.getKnifeCooldown().clear();
         a.getKnifeUsers().clear();
+        a.getThrowCooldown().clear();
         a.getDetectiveStoneAt().clear();
         a.getCompassTargets().clear();
         cancelGameTask(a); // 清掉上一局可能残留的计时/指南针任务
@@ -1727,7 +1759,7 @@ public class MurderMysteryManager {
         long left = (a.getGameEndMs() - now) / 1000;
         if (left <= 0) {
             // 时间到：杀手没能杀光所有人 → 无辜者获胜
-            endGame(a, true, "&6&l时间到！&f杀手没能杀光所有人 —— &a&l无辜者获胜！");
+            endGame(a, true, "&f时间到，杀手没能杀光所有人（还剩 &e" + a.innocentsLeft() + "&f 名无辜者）。");
             return;
         }
         maybeSpawnGold(a);
@@ -1872,26 +1904,6 @@ public class MurderMysteryManager {
         }
     }
 
-    /**
-     * 杀手近战刀的冷却：刀死一个人后 {@link #KNIFE_COOLDOWN_MS}（2 秒）内不能再次近战秒人。
-     * <p>
-     * 只拦「近战一击必杀」（铁剑 / 商店石剑）；飞剑走自己的 5 秒冷却（{@code THROW_COOLDOWN_MS}），
-     * 互不影响。冷却中的挥砍不生效，只在杀手本人 actionbar 提示——公屏/聊天提示会暴露杀手在哪。
-     *
-     * @return true = 不在冷却中（本次可以出手，已开始计时）；false = 冷却中（本次击杀作废）
-     */
-    public boolean startKnifeCooldown(MurderMysteryArena a, Player murderer) {
-        UUID id = murderer.getUniqueId();
-        long now = System.currentTimeMillis();
-        long cd = a.getKnifeCooldown().getOrDefault(id, 0L);
-        if (now < cd) {
-            Chat.actionBar(murderer, "&c杀手之剑冷却中（&e" + Math.max(1, (cd - now + 999) / 1000) + "s&c）");
-            return false;
-        }
-        a.getKnifeCooldown().put(id, now + KNIFE_COOLDOWN_MS);
-        return true;
-    }
-
     /** 杀手击杀：受害者淘汰为观战、掉金锭、杀手之剑升级。 */
     public void handleMurdererKill(MurderMysteryArena a, Player murderer, Player victim) {
         UUID mid = murderer.getUniqueId();
@@ -1900,6 +1912,7 @@ public class MurderMysteryManager {
         upgradeSword(murderer, kills);
         victim.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, victim.getLocation(), 1, 0, 0, 0, 0);
         victim.getWorld().playSound(victim.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 1f, 1.2f);
+        a.noteKill(mid, victim.getUniqueId()); // 结算第二行可能要用「谁杀了最后一名无辜者」
         eliminate(a, victim); // 死亡不出任何提示（谁死了要自己买死亡名单）
         victim.getWorld().dropItemNaturally(victim.getLocation(),
                 new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
@@ -1923,7 +1936,7 @@ public class MurderMysteryManager {
         sword.setItemMeta(meta);
     }
 
-    /** 无辜者用商店武器（石剑/弓）消灭杀手：一击必杀，无辜者获胜。 */
+    /** 无辜者用商店武器（弩/弓）消灭杀手：一击必杀，无辜者获胜。 */
     public void handleInnocentKill(MurderMysteryArena a, Player killer, Player murderer) {
         handleInnocentKill(a, killer, murderer, null);
     }
@@ -1937,14 +1950,68 @@ public class MurderMysteryManager {
         recordKill(killer.getUniqueId());
         murderer.getWorld().dropItemNaturally(murderer.getLocation(),
                 new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
+        a.noteKill(killer.getUniqueId(), murderer.getUniqueId());
         eliminate(a, murderer);
-        // 结算横幅写明"杀手被谁消灭了"
-        endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + murderer.getName() + "&f）被 &e" + killer.getName()
+        // 结算第二行：杀手被谁（用什么）消灭了
+        endGame(a, true, "&f杀手 &c" + murderer.getName() + "&f 被 &e" + killer.getName()
                 + (weapon == null ? "" : "&f 的 &e" + weapon) + "&f 消灭了。");
     }
 
     /**
-     * 误伤无辜者（石剑/弓都一样）：两人同归于尽（都淘汰为观战、都掉金锭与尸体）。
+     * 留人剑命中任意玩家：取消伤害、把对方定身 {@link #detainSeconds()} 秒，并消耗这把剑（一次性）。
+     * 定身只锁水平移动，被打的人仍能转身、攻击、用道具。
+     */
+    public void handleDetainHit(MurderMysteryArena a, Player attacker, Player victim) {
+        int seconds = detainSeconds();
+        // 用掉这把剑（命中即消失，无论打的是谁）
+        ItemStack hand = attacker.getInventory().getItemInMainHand();
+        if (hand.getAmount() > 1) {
+            hand.setAmount(hand.getAmount() - 1);
+        } else {
+            attacker.getInventory().setItemInMainHand(null);
+        }
+        freeze(victim, seconds);
+        msg(attacker, "&a你用 &f留人剑 &a定住了 &f" + victim.getName() + "&a " + seconds + " 秒（剑已消失）。");
+        msg(victim, "&c你被 &f" + attacker.getName() + "&c 的留人剑定住了：&e" + seconds + " 秒&c内无法移动！");
+        victim.getWorld().playSound(victim.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.7f, 1.5f);
+        attacker.getWorld().playSound(attacker.getLocation(), Sound.ITEM_TRIDENT_HIT, 0.8f, 1.4f);
+    }
+
+    /** 定身：只锁水平移动（见 MurderMysteryListener#onMove），到时间自动解除；重复命中取更晚的结束时间。 */
+    public void freeze(Player p, int seconds) {
+        UUID id = p.getUniqueId();
+        long until = System.currentTimeMillis() + Math.max(1, seconds) * 1000L;
+        frozenUntil.merge(id, until, Math::max);
+        p.setVelocity(new Vector(0, 0, 0));
+        p.sendActionBar(LEGACY.deserialize("&c&l被留人剑定住 &e" + seconds + "&c 秒！"));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Long current = frozenUntil.get(id);
+            if (current == null || current != until) {
+                return; // 已被更晚的定身覆盖，或已提前解除
+            }
+            frozenUntil.remove(id);
+            Player online = Bukkit.getPlayer(id);
+            if (online != null && online.isOnline()) {
+                online.sendActionBar(LEGACY.deserialize("&a定身结束，可以移动了"));
+            }
+        }, Math.max(1, seconds) * 20L);
+    }
+
+    /** 这名玩家现在是否处于留人剑定身中（到时间会自动清掉）。 */
+    public boolean isFrozen(Player p) {
+        Long until = frozenUntil.get(p.getUniqueId());
+        if (until == null) {
+            return false;
+        }
+        if (System.currentTimeMillis() >= until) {
+            frozenUntil.remove(p.getUniqueId());
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 误伤无辜者（弩/弓都一样）：两人同归于尽（都淘汰为观战、都掉金锭与尸体）。
      *
      * @param weapon 武器名；死亡提示已删除（2026-10-16），此参数当前只用于签名兼容
      */
@@ -1952,6 +2019,7 @@ public class MurderMysteryManager {
         recordKill(attacker.getUniqueId());
         victim.getWorld().dropItemNaturally(victim.getLocation(),
                 new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
+        a.noteKill(attacker.getUniqueId(), victim.getUniqueId());
         eliminate(a, victim);
         attacker.getWorld().dropItemNaturally(attacker.getLocation(),
                 new ItemStack(Material.GOLD_INGOT, Math.max(1, goldPerDeath(a))));
@@ -1960,7 +2028,7 @@ public class MurderMysteryManager {
     }
 
     /**
-     * 将一名存活玩家淘汰为观战者（先在被杀位置生成尸体）。
+     * 将一名存活玩家淘汰为观战者（先在被杀位置生成尸体，**淘汰者本人也留在死亡位置**）。
      * <p>
      * 死亡**不上公屏**（2026-10-16 按需求删掉了死亡播报，想知道谁死了要买死亡名单 / 看尸体 / 看剩余无辜者），
      * 但**当事人自己在聊天栏会收到两行**：一行「你被打死了」，一行告诉 TA 用 {@code /mm watch}
@@ -1994,7 +2062,12 @@ public class MurderMysteryManager {
         p.setGameMode(GameMode.SPECTATOR);
         p.setHealth(20);
         p.setFoodLevel(20);
-        p.teleport(a.getCenter());
+        // 淘汰后停在死亡位置，不传送到场地中心（2026-11-22 按需求改）：
+        // 观战者原地变成旁观者，想看别人再自己飞或者用 /mm watch 点人传送。
+        // 只有死在场地外（虚空 / 出界，例如掉出世界）才拉回中心，否则会卡在虚空里出不来。
+        if (!a.contains(p.getLocation())) {
+            p.teleport(a.getCenter());
+        }
         // tab 里**不区分死活**：淘汰者仍挂在「密室杀手 · 已加入」分区，名字格式与存活者完全一样，
         // 否则他一死就从游戏分区掉到大厅分区，等于当众公布"谁死了"（死亡本身也不出任何提示）。
         HubAPI.setPlaying(id, GAME_NAME);
@@ -2002,6 +2075,7 @@ public class MurderMysteryManager {
         Chat.send(p, "&c&l你被打死了！&7你现在是旁观者，可以自由飞行看别人打。");
         Chat.send(p, "&7输入 &e/mm watch&7 打开「存活玩家」菜单，点玩家头像就能传送到 TA 那里。");
         plugin.getLogger().info("淘汰：" + p.getName() + " 场地=" + a.getName());
+        voiceChat.eliminated(id); // 拉进「死者频道」：组语音恒定音量、无距离限制，只能和别的淘汰者说话
         updateCompassTargets(a);
         reportArena(a);
     }
@@ -2069,10 +2143,11 @@ public class MurderMysteryManager {
     public void murdererEliminated(MurderMysteryArena a, Player murderer) {
         Player killer = murderer.getKiller();
         boolean byPlayer = killer != null && !killer.getUniqueId().equals(murderer.getUniqueId());
+        a.noteKill(byPlayer ? killer.getUniqueId() : null, murderer.getUniqueId());
         eliminate(a, murderer);
         endGame(a, true, byPlayer
-                ? "&a&l无辜者获胜！&f杀手（&c" + murderer.getName() + "&f）被 &e" + killer.getName() + "&f 消灭了。"
-                : "&a&l无辜者获胜！&f杀手已被消灭（凶手未知）。");
+                ? "&f杀手 &c" + murderer.getName() + "&f 被 &e" + killer.getName() + "&f 消灭了。"
+                : "&f杀手 &c" + murderer.getName() + "&f 已被消灭（凶手未知）。");
     }
 
     /** 存活无辜者/侦探为 0 → 杀手获胜。 */
@@ -2081,17 +2156,54 @@ public class MurderMysteryManager {
             return;
         }
         if (a.innocentsLeft() <= 0) {
-            endGame(a, false, "&c&l杀手获胜！&f无辜者全部阵亡。");
+            endGame(a, false, murdererWinDetail(a));
         }
     }
 
     /**
+     * 杀手获胜的第二行：谁杀了最后一名无辜者。
+     * <p>
+     * 取最近一次淘汰记录（{@link MurderMysteryArena#getLastKiller()} / {@link MurderMysteryArena#getLastVictim()}），
+     * 只有它与淘汰顺序的最后一项对得上时才写具体人名；否则（环境死亡/同时阵亡/数据缺失）退回通用文案。
+     */
+    private String murdererWinDetail(MurderMysteryArena a) {
+        UUID victim = a.getLastVictim();
+        List<UUID> order = a.getElimOrder();
+        if (victim == null || order.isEmpty()) {
+            return "&f无辜者全部阵亡。";
+        }
+        String victimName = nameOf(victim);
+        UUID killer = a.getLastKiller();
+        UUID lastOut = order.get(order.size() - 1);
+        boolean victimIsLast = lastOut.equals(victim);
+        // 同归于尽：好人对砍时先淘汰受害者、再淘汰动手的人，所以受害者是倒数第二条、动手的人是最后一条
+        boolean mutual = !victimIsLast && order.size() >= 2
+                && order.get(order.size() - 2).equals(victim)
+                && killer != null && killer.equals(lastOut) && !a.isMurderer(killer);
+        if (mutual) {
+            return "&f最后两名无辜者 &e" + victimName + " &f与 &e" + nameOf(killer) + " &f同归于尽。";
+        }
+        if (!victimIsLast) {
+            return "&f无辜者全部阵亡。";
+        }
+        if (killer != null && !killer.equals(victim)) {
+            if (a.isMurderer(killer)) {
+                return "&f杀手 &c" + nameOf(killer) + " &f击杀了最后一名无辜者 &e" + victimName + "&f。";
+            }
+            return "&f最后一名无辜者 &e" + victimName + " &f被 &e" + nameOf(killer) + " &f击杀了。";
+        }
+        return "&f最后一名无辜者 &e" + victimName + " &f倒下了。";
+    }
+
+    /**
      * 结束对局并还原所有玩家。
+     * <p>
+     * 结算横幅固定三行：分隔线 → 谁赢了 → 关键获胜信息（谁杀了谁 / 时间到 / 杀手退出…）。
      *
      * @param innocentsWin true 表示无辜者阵营获胜（决定战绩记给谁）
-     * @param outcome      结算横幅，由调用方按实际结束原因给出（时间到 / 杀手被消灭 / 无辜者全灭…）
+     * @param detail       第二行关键信息，**不要**再自带「XX获胜！」前缀
      */
-    private void endGame(MurderMysteryArena a, boolean innocentsWin, String outcome) {
+    private void endGame(MurderMysteryArena a, boolean innocentsWin, String detail) {
         if (a.getState() != MurderMysteryArena.State.RUNNING) {
             return;
         }
@@ -2104,7 +2216,15 @@ public class MurderMysteryManager {
         restoreWorldPvp(a);
         reportArena(a);
         broadcast(a, "&6&l========== 游戏结束 ==========");
-        broadcast(a, outcome);
+        // 第一行：谁赢了（守方/杀手统一在这里播报，调用方只给原因）
+        broadcast(a, innocentsWin ? "&a&l无辜者获胜！" : "&c&l杀手获胜！");
+        // 第二行：关键获胜信息（谁杀了谁 / 时间到还剩几人 / 杀手退出…）
+        if (detail != null && !detail.isBlank()) {
+            broadcast(a, detail);
+        }
+        // 每个玩家屏幕中央：第一行胜负大字，第二行关键信息（title 停留 5 秒，回主城后仍可见）
+        broadcastTitle(a, innocentsWin ? "&a&l无辜者胜利！" : "&c&l杀手胜利！",
+                detail == null ? "" : detail, 5);
         // 结算时揭晓本局杀手（原来这里显示的是"首个被杀害"，按需求去掉）
         if (!a.getMurderers().isEmpty()) {
             List<String> murderers = new ArrayList<>();
@@ -2123,8 +2243,7 @@ public class MurderMysteryManager {
         if (ranked.size() >= 1) firsts.add(ranked.get(0));
         if (ranked.size() >= 2) seconds.add(ranked.get(1));
         if (ranked.size() >= 3) thirds.add(ranked.get(2));
-        Top3.broadcast(msg -> broadcast(a, msg), id -> nameOf(id) + " &7("
-                + a.getKills().getOrDefault(id, 0) + " 击杀)", firsts, seconds, thirds);
+        // 结算只公布胜负与关键信息，不再公屏展示前三名；Top3 的统计分仍照常记录，避免外部排行丢数据
         Top3.award(data, firsts, seconds, thirds);
         saveData();
         broadcast(a, "&6===============================");
@@ -2140,34 +2259,41 @@ public class MurderMysteryManager {
             }
         }
         grantNoKnifeTitle(a, innocentsWin);
-        // 还原所有玩家：自动回主城并拿菜单道具
+        // 结算完不再立刻传送：先提示，再由 scheduleLobbyReturn 每秒在行动栏倒数，3 秒后才回大厅
+        broadcast(a, "&7对局结束，&e" + LOBBY_RETURN_SECONDS + " 秒后返回大厅…");
+        // 还原所有玩家：先清掉局内道具/状态，3 秒后自动回主城并拿菜单道具
         for (UUID id : new ArrayList<>(a.getPlayers())) {
             Player pp = Bukkit.getPlayer(id);
+            playerArena.remove(id);
+            voiceChat.exit(id);
             if (pp != null && pp.isOnline()) {
                 pp.setGameMode(GameMode.SURVIVAL);
                 cleanupSodaState(pp);
                 removeEventItems(pp);
                 removeHunterBow(pp);
                 pp.getActivePotionEffects().forEach(e -> pp.removePotionEffect(e.getType()));
-                HubAPI.teleportToLobby(pp);
+                HubAPI.clearGame(id);
+                scheduleLobbyReturn(pp);
             } else {
                 HubAPI.clearGame(id);
             }
-            playerArena.remove(id);
         }
         for (UUID id : new ArrayList<>(a.getEliminated())) {
             Player pp = Bukkit.getPlayer(id);
+            playerArena.remove(id);
+            voiceChat.exit(id);
             if (pp != null && pp.isOnline()) {
-                pp.setGameMode(GameMode.SURVIVAL);
+                // 结算这 3 秒里让已淘汰者继续旁观：最后被杀的杀手也要先变成旁观者。
+                // 生存模式在 scheduleLobbyReturn 真正回大厅前才恢复，别在这里改回去。
                 cleanupSodaState(pp);
                 removeEventItems(pp);
                 removeHunterBow(pp);
                 pp.getActivePotionEffects().forEach(e -> pp.removePotionEffect(e.getType()));
-                HubAPI.teleportToLobby(pp);
+                HubAPI.clearGame(id);
+                scheduleLobbyReturn(pp);
             } else {
                 HubAPI.clearGame(id);
             }
-            playerArena.remove(id);
         }
         a.getPlayers().clear();
         a.getEliminated().clear();
@@ -2176,16 +2302,67 @@ public class MurderMysteryManager {
         a.getDetectives().clear();
         a.getHunters().clear();
         a.getKills().clear();
-        a.getThrowCooldown().clear();
-        a.getKnifeCooldown().clear();
         a.getKnifeUsers().clear();
+        a.getThrowCooldown().clear();
         a.getDetectiveStoneAt().clear();
         a.getCompassTargets().clear();
         lastGoldSpawn.remove(a.getName());
         goldCursor.remove(a.getName()); // 下一局重新从第一个金块开始按顺序刷
         roleCountdown.remove(a.getName());
+        a.clearLastKill(); // 击杀记录只服务本局结算，别带到下一局
         clearFlyingSwords(); // 场上还在飞的飞剑（雪球 + 铁剑展示实体）一起清掉
         clearRpgMissiles(); // 还在飞的 RPG 导弹也取消
+    }
+
+    // ---------- 结算后延迟回大厅 ----------
+
+    /**
+     * 结算完不立刻传送：先让玩家看 3 秒结算，屏幕下方 3/2/1 倒数，到点才送回主城。
+     * <p>
+     * 这 3 秒里玩家已经从 {@link #playerArena} 移除（tab / 主城登记都已复原），所以下面几种情况必须取消任务：
+     * 玩家 /hub、/mm leave（见 {@link #leave(Player, boolean)}，会立刻传送）、退出、加入别的场、关服。
+     */
+    private void scheduleLobbyReturn(Player p) {
+        UUID id = p.getUniqueId();
+        cancelLobbyReturn(id);
+        int[] left = {LOBBY_RETURN_SECONDS};
+        lobbyReturnTasks.put(id, Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            Player pp = Bukkit.getPlayer(id);
+            if (pp == null || !pp.isOnline()) {
+                cancelLobbyReturn(id);
+                return;
+            }
+            if (playerArena.get(id) != null) { // 已经进了新的一场：别把人从新局里拽回大厅
+                cancelLobbyReturn(id);
+                return;
+            }
+            if (left[0] <= 0) {
+                cancelLobbyReturn(id);
+                // 已淘汰者在结算后一直保持旁观，真正回大厅这一下才恢复生存
+                // （HubCore 的 teleportToLobby 也会设生存，这里显式兜底旧版 HubCore）。
+                pp.setGameMode(GameMode.SURVIVAL);
+                HubAPI.teleportToLobby(pp);
+                return;
+            }
+            Chat.actionBar(pp, "&e&l" + left[0] + "&e 秒后返回大厅…");
+            pp.playSound(pp.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1.4f);
+            left[0]--;
+        }, 0L, 20L));
+    }
+
+    /** 取消某个玩家还没执行的「结算后回大厅」，返回是否真的取消了一个任务。 */
+    private boolean cancelLobbyReturn(UUID id) {
+        BukkitTask task = lobbyReturnTasks.remove(id);
+        if (task == null) {
+            return false;
+        }
+        task.cancel();
+        return true;
+    }
+
+    /** 是否正在结算后等回大厅（这 3 秒里听不到伤害、也不会掉饥饿，见 MurderMysteryListener）。 */
+    public boolean isReturningToLobby(UUID id) {
+        return lobbyReturnTasks.containsKey(id);
     }
 
     // ---------- 出界淘汰 ----------
@@ -2232,10 +2409,11 @@ public class MurderMysteryManager {
             return; // 在选区内 → 安全
         }
         boolean wasMurderer = a.isMurderer(p.getUniqueId());
+        a.noteKill(null, p.getUniqueId());
         eliminate(a, p); // 掉出世界同样不出提示（死亡一律不显示）
         p.teleport(a.getCenter());
         if (wasMurderer) {
-            endGame(a, true, "&a&l无辜者获胜！&f杀手掉出了世界。");
+            endGame(a, true, "&f杀手 &c" + p.getName() + "&f 掉出了世界。");
         } else {
             checkMurdererWin(a);
         }
@@ -2278,7 +2456,7 @@ public class MurderMysteryManager {
 
     // ---------- 金锭商店 ----------
 
-    /** 打开金锭商店（石剑 / 弓 / 箭 / 真理之石 / 死亡名单 / 断头饭）。 */
+    /** 打开金锭商店（弩 / 箭 / 留人剑 / 真理之石 / 死亡名单 / 断头饭）。 */
     public void openShop(Player p) {
         String name = playerArena.get(p.getUniqueId());
         if (name == null) {
@@ -2292,14 +2470,14 @@ public class MurderMysteryManager {
             return;
         }
         org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 9, SHOP_TITLE);
-        inv.setItem(0, shopButton(Material.STONE_SWORD, "&f一击必杀石剑", "&e" + swordCost() + " 金锭",
-                "&7近战：命中杀手一击必杀",
-                "&7误伤无辜者：两人同归于尽"));
-        inv.setItem(1, shopButton(Material.CROSSBOW, "&f一击必杀弩", "&e" + crossbowCost() + " 金锭",
+        inv.setItem(0, shopButton(Material.CROSSBOW, "&f一击必杀弩", "&e" + crossbowCost() + " 金锭",
                 "&7远程：弩矢命中杀手一击必杀",
                 "&7误伤无辜者：两人同归于尽"));
-        inv.setItem(2, shopButton(Material.ARROW, "&f箭 ×1", "&e" + arrowCost() + " 金锭",
+        inv.setItem(1, shopButton(Material.ARROW, "&f箭 ×1", "&e" + arrowCost() + " 金锭",
                 "&7搭配弩使用"));
+        inv.setItem(2, shopButton(Material.WOODEN_SWORD, "&f留人剑", "&e" + swordCost() + " 金锭",
+                "&7命中任意玩家：对方 &e" + detainSeconds() + " 秒&7 不能移动",
+                "&7不造成伤害；命中后这把剑消失（一次性）"));
         inv.setItem(3, shopButton(Material.STONE, "&f真理之石", "&e" + truthStoneCost() + " 金锭",
                 "&7右键打开菜单选玩家探测（也可左键直接点人）",
                 "&7对方是杀手 → 变成 &c红石块",
@@ -2437,25 +2615,26 @@ public class MurderMysteryManager {
         boolean killer = a.isMurderer(p.getUniqueId());
         if (slot == 0) {
             if (killer) {
-                msg(p, "&c你是杀手，铁剑已经够用，无需购买石剑。");
-            } else if (!hasTaggedItem(p, swordKey)) {
-                buyItem(p, stoneSword(), swordCost(), "已购买一击必杀石剑！");
-            } else {
-                msg(p, "&c你已经有一把石剑了。");
-            }
-        } else if (slot == 1) {
-            if (killer) {
                 msg(p, "&c你是杀手，只有铁剑能秒人，买弩没用。");
             } else if (!hasTaggedItem(p, shopRangedKey)) {
                 buyItem(p, shopCrossbow(), crossbowCost(), "已购买一击必杀弩！");
             } else {
                 msg(p, "&c你已经有一把弩了。");
             }
-        } else if (slot == 2) {
+        } else if (slot == 1) {
             if (killer) {
                 msg(p, "&c你是杀手，只有铁剑能秒人，不需要箭。");
             } else {
                 buyItem(p, new ItemStack(Material.ARROW, 1), arrowCost(), "已购买 1 支箭！");
+            }
+        } else if (slot == 2) {
+            if (killer) {
+                msg(p, "&c你是杀手，铁剑已经够用，无需购买留人剑。");
+            } else if (!hasTaggedItem(p, swordKey)) {
+                buyItem(p, detainSword(), swordCost(),
+                        "已购买留人剑！命中任意玩家定身 " + detainSeconds() + " 秒，用一次就消失。");
+            } else {
+                msg(p, "&c你已经有一把留人剑了。");
             }
         } else if (slot == 3) {
             if (!hasTaggedItem(p, truthKey)) {
@@ -2590,17 +2769,28 @@ public class MurderMysteryManager {
                 && it.getItemMeta().getPersistentDataContainer().has(roleItemKey, PersistentDataType.STRING);
     }
 
-    private ItemStack stoneSword() {
-        ItemStack it = new ItemStack(Material.STONE_SWORD);
+    /** 留人剑（木剑，一次性）：命中任意玩家 → 对方定身若干秒，剑随即消失；不造成伤害。 */
+    private ItemStack detainSword() {
+        int seconds = detainSeconds();
+        ItemStack it = new ItemStack(Material.WOODEN_SWORD);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
             meta.setUnbreakable(true); // 局内不掉耐久（用户要求：游戏期间不掉耐久度）
-            meta.displayName(Chat.noItalic(LEGACY.deserialize("&f一击必杀石剑")));
-            meta.lore(List.of(LEGACY.deserialize("&7命中杀手一击必杀；误伤无辜者两人同归于尽")));
+            meta.displayName(Chat.noItalic(LEGACY.deserialize("&f留人剑")));
+            meta.lore(List.of(
+                    LEGACY.deserialize("&7命中任意玩家：对方 &e" + seconds + " 秒&7 内无法移动"),
+                    LEGACY.deserialize("&7不造成伤害；命中后这把剑消失（一次性）")));
             meta.getPersistentDataContainer().set(swordKey, PersistentDataType.STRING, "1");
             it.setItemMeta(meta);
         }
         return it;
+    }
+
+    /** 留人剑的定身秒数：读 items.yml 的 items.shop-sword.freeze-seconds（默认 3）。 */
+    public int detainSeconds() {
+        MurderMysteryItems.ItemDef def = items.item("shop-sword");
+        int seconds = def == null || def.section() == null ? 3 : def.section().getInt("freeze-seconds", 3);
+        return Math.max(1, seconds);
     }
 
     /** 商店的一击必杀弩（消耗普通箭；与猎人自带的无限弓箭不同）。 */
@@ -2617,7 +2807,7 @@ public class MurderMysteryManager {
         return it;
     }
 
-    public boolean isSwordItem(ItemStack it) {
+    public boolean isDetainSword(ItemStack it) {
         return it != null && it.hasItemMeta()
                 && it.getItemMeta().getPersistentDataContainer().has(swordKey, PersistentDataType.STRING);
     }
@@ -2909,7 +3099,7 @@ public class MurderMysteryManager {
         }
         return switch (def.type()) {
             case "gt-soda" -> gtSodaItem(def);
-            case "shop-sword" -> stoneSword();
+            case "shop-sword", "detain-sword" -> detainSword();
             case "shop-crossbow" -> shopCrossbow();
             case "arrow" -> new ItemStack(Material.ARROW, def.amount());
             case "truth-stone" -> truthStone();
@@ -3137,8 +3327,9 @@ public class MurderMysteryManager {
         if (damageShooter && a.getState() == MurderMysteryArena.State.RUNNING
                 && a.getPlayers().contains(shooterId)
                 && shooter.getLocation().distanceSquared(at) <= radiusSq) {
+            a.noteKill(null, shooterId);
             eliminate(a, shooter);
-            endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + shooter.getName() + "&f）被自己的 RPG 炸死了。");
+            endGame(a, true, "&f杀手 &c" + shooter.getName() + "&f 被自己的 RPG 炸死了。");
             return;
         }
         checkMurdererWin(a);
@@ -3856,9 +4047,10 @@ public class MurderMysteryManager {
         }
         boolean wasMurderer = a.isMurderer(id);
         msg(p, "&c&l烫手山芋爆炸了！");
-        eliminate(a, p); // 只淘汰本人，不算任何人的击杀
+        a.noteKill(null, id); // 只淘汰本人，不算任何人的击杀
+        eliminate(a, p);
         if (wasMurderer) {
-            endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + p.getName() + "&f）被烫手山芋炸死了。");
+            endGame(a, true, "&f杀手 &c" + p.getName() + "&f 被烫手山芋炸死了。");
         } else {
             checkMurdererWin(a);
         }
@@ -3973,9 +4165,10 @@ public class MurderMysteryManager {
                 return;
             }
             boolean wasMurderer = a.isMurderer(id);
+            a.noteKill(null, id);
             eliminate(a, q);
             if (wasMurderer) {
-                endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + q.getName() + "&f）死于汽水效果。");
+                endGame(a, true, "&f杀手 &c" + q.getName() + "&f 死于汽水效果。");
             } else {
                 checkMurdererWin(a);
             }
@@ -4028,10 +4221,12 @@ public class MurderMysteryManager {
         MurderMysteryItems.EffectDef effect = items.effect("midas");
         int goldAmount = Math.max(1, effect == null ? 5 : effect.getInt("gold-amount", 5));
         boolean mutual = effect == null || effect.getBoolean("friendly-fire-mutual-death", true);
-        // eliminate() 会把受害者传回场地中心，金锭要掉在死亡位置，所以先记下来
+        // 金锭要掉在死亡位置：eliminate() 不再移动玩家位置，但出界死亡会被拉回场地中心，所以先记下来
         Location deathLoc = victim.getLocation().clone();
 
         recordKill(aid);
+        // 迈达斯之手按攻击者记录击杀；同归于尽时下面会把最后一条覆盖成"无凶手"
+        a.noteKill(aid, vid);
         if (attackerMurderer) {
             int kills = a.getKills().merge(aid, 1, Integer::sum);
             upgradeSword(attacker, kills);
@@ -4043,7 +4238,7 @@ public class MurderMysteryManager {
         if (victimMurderer) {
             eliminate(a, victim, false);
             dropGoldAt(deathLoc, goldAmount);
-            endGame(a, true, "&a&l无辜者获胜！&f杀手（&c" + victim.getName() + "&f）被 &e"
+            endGame(a, true, "&f杀手 &c" + victim.getName() + "&f 被 &e"
                     + attacker.getName() + "&f 的迈达斯之手消灭了。");
             return;
         }
@@ -4051,6 +4246,7 @@ public class MurderMysteryManager {
         dropGoldAt(deathLoc, goldAmount);
         if (mutual) {
             eliminate(a, attacker);
+            // 保留 a.noteKill(aid, vid) 这条记录：结算时两人正好是最后两条淘汰，写「同归于尽」
         }
         checkMurdererWin(a);
     }
@@ -4302,6 +4498,7 @@ public class MurderMysteryManager {
         hotPotatoDeadlines.remove(p.getUniqueId());
         rpgCooldown.remove(p.getUniqueId());
         hiddenHeldItems.remove(p.getUniqueId());
+        frozenUntil.remove(p.getUniqueId());
     }
 
     /** 局末/离开时把汽水和售货机货物从背包清掉，避免带出对局世界。 */
@@ -4349,6 +4546,7 @@ public class MurderMysteryManager {
         hotPotatoDeadlines.clear();
         rpgCooldown.clear();
         hiddenHeldItems.clear();
+        frozenUntil.clear();
         clearRpgMissiles();
     }
 
@@ -4636,7 +4834,7 @@ public class MurderMysteryManager {
 
     // ---------- 杀手飞剑 ----------
 
-    /** 杀手右键铁剑：投掷飞剑（冷却 THROW_COOLDOWN_MS）。 */
+    /** 杀手右键铁剑：投掷飞剑（剑气）；近战刀无冷却，剑气有 5 秒冷却。 */
     public void handleSwordThrow(Player p) {
         String name = playerArena.get(p.getUniqueId());
         if (name == null) {
@@ -4655,9 +4853,9 @@ public class MurderMysteryManager {
             return;
         }
         long now = System.currentTimeMillis();
-        long cd = a.getThrowCooldown().getOrDefault(id, 0L);
-        if (now < cd) {
-            msg(p, "&c飞剑冷却中（&e" + Math.max(0, (cd - now) / 1000 + 1) + "s&c）。");
+        Long readyAt = a.getThrowCooldown().get(id);
+        if (readyAt != null && now < readyAt) {
+            Chat.actionBar(p, "&c飞剑冷却中（&e" + Math.max(1, (readyAt - now + 999) / 1000) + "s&c）。");
             return;
         }
         a.getThrowCooldown().put(id, now + THROW_COOLDOWN_MS);
@@ -4846,6 +5044,10 @@ public class MurderMysteryManager {
             t.cancel();
         }
         compassTasks.clear();
+        for (BukkitTask t : lobbyReturnTasks.values()) {
+            t.cancel();
+        }
+        lobbyReturnTasks.clear();
         goldScans.clear();
         clearFlyingSwords();
         clearGtSodaStates();

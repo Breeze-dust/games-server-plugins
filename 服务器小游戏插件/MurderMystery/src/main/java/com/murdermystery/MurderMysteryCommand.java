@@ -408,9 +408,10 @@ public class MurderMysteryCommand implements CommandExecutor, TabCompleter {
         Chat.send(sender, "&e/mm watch&f 观战：打开「存活玩家」菜单，点玩家头像传送到 TA 那里（被打死变旁观者后可用）");
         MurderMysteryManager m = plugin.getManager();
         Chat.send(sender, "&7玩法：杀手持铁剑行凶（不隐身）。开局人人有商店道具，右键开金锭商店："
-                + m.swordCost() + " 金锭=一击必杀石剑，" + m.crossbowCost() + " 金锭=弩，" + m.arrowCost() + " 金锭=1 支箭，"
+                + m.crossbowCost() + " 金锭=一击必杀弩，" + m.arrowCost() + " 金锭=1 支箭，"
+                + m.swordCost() + " 金锭=留人剑（命中任意玩家定身 " + m.detainSeconds() + " 秒，用一次就消失），"
                 + m.deathNoteCost() + " 金锭=死亡名单，" + m.steakCost() + " 金锭=断头饭（牛排）×" + m.steakAmount()
-                + "。石剑/弩误伤无辜者都是两人同归于尽。");
+                + "。弩误伤无辜者两人同归于尽。");
         if (admin) {
             Chat.send(sender, "&6-- OP --");
             Chat.send(sender, "&e/mm create <名>&f 创建  &e/mm remove <名>&f 删除  &e/mm rename <旧> <新>&f 改名");
