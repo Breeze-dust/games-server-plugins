@@ -586,11 +586,6 @@ public final class JumpFillManager {
             if (online == null || !online.isOnline()) {
                 return;
             }
-            if (!arena.starts().isEmpty()) {
-                int next = Math.floorMod(startIndex.getOrDefault(id, 0) + 1, arena.starts().size());
-                startIndex.put(id, next);
-                startY.put(id, arena.starts().get(next).getY());
-            }
             Location start = startFor(id);
             if (start != null) {
                 online.teleport(start);
