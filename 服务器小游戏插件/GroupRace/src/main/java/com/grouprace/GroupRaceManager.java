@@ -470,15 +470,18 @@ public final class GroupRaceManager {
 
     public void startGame(boolean force) {
         if (state != State.WAITING) {
+            plugin.getLogger().info("收到开始请求，但当前不是等待状态，已忽略。");
             return;
         }
         if (!arena.isReady()) {
+            plugin.getLogger().warning("无法开始：" + GAME_NAME + "赛场未配置完整（缺 " + arena.missing() + "）");
             for (UUID id : waiting) {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null) {
                     Chat.send(p, "&c赛道未配置完整（缺 " + arena.missing() + "），无法开始。");
                 }
             }
+            updateCountdown();
             return;
         }
         List<UUID> ready = new ArrayList<>();
@@ -494,26 +497,48 @@ public final class GroupRaceManager {
             }
         }
         if (autoRings()) {
-            int generated = arena.generateAutoCourse(autoRingCount(), autoRingSpacing(),
-                    autoRingJitter(), ringRadius(), random);
+            int generated;
+            try {
+                generated = arena.generateAutoCourse(autoRingCount(), autoRingSpacing(),
+                        autoRingJitter(), ringRadius(), random);
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("自动生成赛道时出错：" + exception);
+                generated = 0;
+            }
             if (generated < 2) {
-                waiting.addAll(ready);
+                String reason = arena.lastAutoError();
+                if (reason == null || reason.isBlank()) {
+                    reason = "未知原因，检查 /race list 与 /race listrings";
+                }
+                plugin.getLogger().warning("自动生成赛道失败：" + reason);
                 for (UUID id : ready) {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null) {
-                        Chat.send(p, "&c自动生成赛道失败：请先用 /race addfinish 设好终点环，并确认出生点/场地范围已设置。");
+                        Chat.send(p, "&c自动生成赛道失败：" + reason + "。");
+                        Chat.send(p, "&7等待室已保留，修好后可再开一局。");
                     }
                 }
+                waiting.addAll(ready);
+                // 等待倒计时在归零时已经把自己停掉了；不重新拉起来的话等待室会一直卡住
+                updateCountdown();
                 return;
             }
             rebuildRings();
         }
         waiting.clear();
         if (ready.isEmpty()) {
+            plugin.getLogger().warning("收到开始请求，但等待队列里没有在线玩家。");
+            updateCountdown();
             return;
         }
         if (ready.size() < minPlayers() && !force) {
             waiting.addAll(ready);
+            for (UUID id : ready) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) {
+                    Chat.send(p, "&e人数不足（至少 " + minPlayers() + " 人），继续等待。");
+                }
+            }
             updateCountdown();
             return;
         }
@@ -573,6 +598,13 @@ public final class GroupRaceManager {
                 // 玩家只隐身，不再发光；发光只留给飞猪
             }
             Vector initial = location.getDirection().setY(0.0);
+            if (initial.lengthSquared() < 0.001) {
+                // 视角朝正上/正下时水平分量为 0，改成朝向第一个圆环，避免开局往固定方向乱飞
+                GroupRaceRing first = arena.firstRing();
+                if (first != null) {
+                    initial = first.center().toVector().subtract(location.toVector()).setY(0.0);
+                }
+            }
             if (initial.lengthSquared() < 0.001) {
                 initial = new Vector(0.0, 0.0, 1.0);
             }

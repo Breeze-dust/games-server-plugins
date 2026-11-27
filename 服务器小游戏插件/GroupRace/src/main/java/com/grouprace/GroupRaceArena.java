@@ -27,6 +27,8 @@ public final class GroupRaceArena {
     private final List<GroupRaceRing> rings = new ArrayList<>();
     /** 本局自动生成的随机赛道（不写回配置）；为空时用配置里的 rings。 */
     private final List<GroupRaceRing> runtime = new ArrayList<>();
+    /** 上一次自动生成失败的原因（供开局处打印到控制台）。 */
+    private String lastAutoError = "";
 
     public GroupRaceArena(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -261,6 +263,7 @@ public final class GroupRaceArena {
      */
     public int generateAutoCourse(int maxRings, double spacing, double jitter,
                                   double ringRadius, Random random) {
+        lastAutoError = "";
         GroupRaceRing finish = null;
         for (int i = rings.size() - 1; i >= 0; i--) {
             if (rings.get(i).finish()) {
@@ -268,17 +271,33 @@ public final class GroupRaceArena {
                 break;
             }
         }
-        if (finish == null || start == null || pos1 == null || pos2 == null) {
+        if (finish == null) {
+            lastAutoError = "配置里没有终点环（先 /race addfinish）";
+            return 0;
+        }
+        if (start == null || start.getWorld() == null) {
+            lastAutoError = "没有起跑点（先 /race setstart）";
+            return 0;
+        }
+        if (pos1 == null || pos2 == null) {
+            lastAutoError = "没有出界方框（先 /race pos1、/race pos2）";
             return 0;
         }
         clearRuntime();
 
         Location from = start.clone().add(0.0, 1.2, 0.0);
         Location to = finish.center();
+        if (to.getWorld() == null || !to.getWorld().equals(from.getWorld())) {
+            lastAutoError = "起跑点和终点环不在同一个世界";
+            return 0;
+        }
         double dx = to.getX() - from.getX();
+        double dy = to.getY() - from.getY();
         double dz = to.getZ() - from.getZ();
-        double distance = Math.hypot(dx, dz);
+        // 用三维距离：起跑点和终点高度差很大（爬升/俯冲赛道）时也能算出环数
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (distance < 1.0) {
+            lastAutoError = "起跑点和终点环几乎重合（距离不到 1 格）";
             return 0;
         }
         int total = Math.max(2, maxRings);
@@ -297,41 +316,45 @@ public final class GroupRaceArena {
             minZ = Math.min(pos1.getZ(), pos2.getZ());
             maxZ = Math.max(pos1.getZ(), pos2.getZ());
         }
-        double minY = Math.min(pos1.getY(), pos2.getY()) + 2;
-        double maxY = Math.max(pos1.getY(), pos2.getY()) - 2;
-        if (minY > maxY) {
-            minY = Math.min(from.getY(), to.getY());
-            maxY = Math.max(from.getY(), to.getY());
+
+        Vector flat = new Vector(dx, 0.0, dz);
+        if (flat.lengthSquared() < 0.001) {
+            flat = new Vector(0.0, 0.0, 1.0);
         }
+        flat.normalize();
+        Vector perp = new Vector(-flat.getZ(), 0.0, flat.getX());
 
-        Vector dir = new Vector(dx, 0.0, dz).normalize();
-        Vector perp = new Vector(-dir.getZ(), 0.0, dir.getX());
-
+        // 起点本身不放环：第一环放在 1/ringsTotal 处，否则开局朝向会指着头顶上的环
         List<Location> points = new ArrayList<>();
-        points.add(from);
         double amp = Math.max(0.0, jitter);
         for (int i = 1; i < ringsTotal; i++) {
             double t = (double) i / ringsTotal;
-            Location p = from.clone().add(dx * t, 0.0, dz * t);
+            Location p = from.clone().add(dx * t, dy * t, dz * t);
             if (amp > 0.0) {
                 p.add(perp.clone().multiply((random.nextDouble() * 2 - 1) * amp));
                 p.add(0.0, (random.nextDouble() * 2 - 1) * amp * 0.6, 0.0);
             }
             p.setX(clamp(p.getX(), minX, maxX));
             p.setZ(clamp(p.getZ(), minZ, maxZ));
-            p.setY(clamp(p.getY(), minY, maxY));
             points.add(p);
         }
         points.add(to);
 
-        for (int i = 0; i < points.size() - 1; i++) {
+        for (int i = 0; i < points.size(); i++) {
             Location center = points.get(i);
-            Vector normal = points.get(i + 1).toVector().subtract(center.toVector());
-            boolean isFinish = i == points.size() - 2;
+            Vector normal = i + 1 < points.size()
+                    ? points.get(i + 1).toVector().subtract(center.toVector())
+                    : center.toVector().subtract(points.get(i - 1).toVector());
+            boolean isFinish = i == points.size() - 1;
             runtime.add(new GroupRaceRing(i, center, normal, isFinish ? finish.radius() : ringRadius, isFinish));
         }
         persistRuntime();
         return runtime.size();
+    }
+
+    /** 上一次自动生成失败的原因；未失败时为空串。 */
+    public String lastAutoError() {
+        return lastAutoError;
     }
 
     private static double clamp(double value, double min, double max) {

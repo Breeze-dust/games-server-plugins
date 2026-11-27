@@ -23,6 +23,8 @@
   3. 站到出界范围的一角：`/race pos1`；站到对角：`/race pos2`（只取 X/Z，Y 自动忽略）。
   4. 站到第一个圆环位置（地面即可，圆心会自动抬高）、面朝赛道前进方向：`/race addring`；沿赛道重复 `addring`（后续环自动沿用第一环的单轴朝向）。
   5. 站到终点圆环位置、面朝终点方向：`/race addfinish`（必须是最后一环；加完后不能再 `addring`）。
+     **开了自动赛道（`ring.auto.enabled: true`，默认）时第 4 步可以跳过**：只要
+     `setlobby/setstart/pos1/pos2` + 一个 `addfinish`，普通环每局按起点→终点自动生成。
   6. `/race listrings` 检查；`/race save`（`setlobby/setstart/pos1/pos2/addring/addfinish/clearrings` 都会自动保存）。
   7. 可选主城菜单入口（选空槽，例如 37）：
      ```
@@ -33,6 +35,9 @@
   - `min-players`（2）、`max-players`（16）、`game-seconds`（300）、`finish-short-seconds`（20）。
   - `pig.speed`：自动前进速度（格/tick）；`pig.inertia`：惯性（0~0.99，越大越滑）；`pig.ascend-speed` / `descend-speed`：按空格/下蹲的升降速度；`pig.start-spread`：多人起跑横向散开间距。
   - `ring.radius`：圆环半径；`ring.material` / `ring.finish-material`：普通/终点圆环方块材质。
+  - `ring.auto.enabled`（默认 true）/ `.count`（10）/ `.spacing`（15）/ `.jitter`（6）：自动赛道。
+    开启后配置里**只需要一个终点环**；起跑点到终点之间每局随机生成普通环（不写回 `config.yml`，
+    坐标写 `plugins/GroupRace/auto-course.yml`，下一局/关服自动清掉）。
   - `lobby-pig.enabled` / `lobby-pig.speed`：准备阶段可骑猪、手动移动速度（有重力，不会飞）。
   - `invisible-glowing`：参赛玩家隐身但**不发光**；飞猪保持可见并带发光轮廓（默认 true；false = 玩家和猪都恢复正常可见）。
   - `wait-items.return`（床，槽位 8）、`wait-items.start`（开始纸，槽位 4）。
@@ -43,6 +48,13 @@
   - **参赛玩家/飞猪外观**：`invisible-glowing: true` 时，`preparePlayer` 只给玩家 `INVISIBILITY`（无限时长），**不再 `setGlowing`**；`spawnPig` 只给飞猪 `setGlowing(true)`，猪可见并带发光轮廓。完成比赛/离开/结算时 `finishPlayer` / `restorePlayer` 会清掉玩家隐身，猪直接移除。把它设为 false 即可让玩家和猪都恢复正常外观。
   - **名次**：`computeRanking` 先按分数降序；同分时有到达终点的优先、再按终点顺序；都没到终点按最后圆环序号；仍相同按名字排序。`endGame` 广播前三名「冠军 / 亚军 / 季军」，前三名的 title 分别显示冠军/亚军/季军，其余玩家 title 副标题显示「再接再厉」。
   - **终点必须最后**：`addfinish` 之后不能再 `addring`；要重排就 `/race clearrings` 全部重来。
+  - **自动赛道（`ring.auto.*`）**：`startGame` 时按起跑点→终点环的**三维**连线生成普通环
+    （`rings = clamp(3D 距离 / spacing + 1, 2, count)`），起点本身不放环；只用到 `start`、`pos1/pos2`
+    和配置里的终点环。生成失败（缺终点环 / 缺起跑点 / 缺出界方框 / 两者几乎重合）时**不会开局**：
+    控制台打 `WARNING` 写原因、等待室保留并把等待倒计时重新拉起来，物品栏里的准备/开始道具会留着——
+    修好场地后重新点开始即可，不用重启插件。
+  - **开局被中止**：`startGame` 的每条早退路径都会往控制台打日志（未配置完整 / 队列无人在线 /
+    人数不足 / 自动生成失败），线上看 `logs/latest.log` 里的 `[GroupRace]` 行就能知道卡在哪一步。
   - **飞猪是服务端速度驱动**：`tickFlight` 每 tick `pig.setVelocity(当前*惯性 + 期望*(1-惯性))`。猪必须保持 `AI=true` + `setAware(false)`：这个 Paper 构建里 `setAI(false)` 的 NoAI 实体完全不跑物理，`setVelocity` 不会前进（真实踩坑）。玩家视角的水平朝向决定前进方向，空格/下蹲只改垂直速度。下蹲会触发原版下猪，`EntityDismountEvent` 会被取消；每 tick 还会兜底重新 `addPassenger`。
   - **跳跃/下蹲输入**来自 Paper `PlayerInputEvent`（`Input.isJump/isSneak`），同时用 `PlayerToggleSneakEvent` 兜底下蹲；如果客户端不发输入事件，升降会失效，先看这里。
   - **出界范围只算 X/Z**：`arena.inside` 只比较水平坐标，Y 不限制；圆环和起跑点都要在水平范围内，否则会立刻被传回。传回目标是 `lastRingIndex` 对应的圆环中心，面朝 `lastRingIndex+1`；还没穿过任何圆环时传回起跑点、面朝第一环。
