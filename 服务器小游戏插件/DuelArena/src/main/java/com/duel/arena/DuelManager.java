@@ -888,8 +888,6 @@ public class DuelManager {
                 HubAPI.teleportToLobby(p); // 回主城并拿菜单道具
             }
             // 死亡玩家：重生后由 HubCore（HubListener.onRespawn）自动送回主城并给菜单道具
-            Chat.send(p, "&7对战结束，你已离开决斗场。");
-        } else {
         }
     }
 

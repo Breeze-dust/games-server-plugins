@@ -419,8 +419,10 @@ public class ColorPartyManager {
             reportArena(a);
         }
         p.setGameMode(GameMode.SURVIVAL);
-        HubAPI.teleportToLobby(p);
-        msg(p, "&7你已离开。");
+        if (!silent) {
+            HubAPI.teleportToLobby(p);
+            msg(p, "&7你已离开。");
+        }
         if (a != null && a.getState() == ColorPartyArena.State.WAITING) {
             updateWaitCountdown(a);
         }

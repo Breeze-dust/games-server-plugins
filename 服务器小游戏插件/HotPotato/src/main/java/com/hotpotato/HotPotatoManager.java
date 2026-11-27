@@ -375,8 +375,10 @@ public class HotPotatoManager {
             reportArena(a);
         }
         p.setGameMode(GameMode.SURVIVAL);
-        HubAPI.teleportToLobby(p); // 回主城并拿菜单道具
-        msg(p, "&7你已离开。");
+        if (!silent) {
+            HubAPI.teleportToLobby(p); // 回主城并拿菜单道具
+            msg(p, "&7你已离开。");
+        }
         if (a != null && a.getState() == HotPotatoArena.State.WAITING) {
             updateWaitCountdown(a);
         }
