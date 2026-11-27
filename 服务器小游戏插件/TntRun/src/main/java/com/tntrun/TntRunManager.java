@@ -508,6 +508,10 @@ public class TntRunManager {
         }
         a.setState(TntRunArena.State.RUNNING);
         a.nextRound(); // 新局次：上一局残留的"延迟消失"任务由此失效，不会再改已经重置的地图
+        // 开局保护期：派对过渡的「游戏即将开始」字幕会持续到开局后约 1 秒，
+        // 这段时间里脚下的雪先不消失，避免"倒计时还没结束人就掉下去"。
+        int graceTicks = Math.max(0, plugin.getConfig().getInt("start-grace-ticks", 40));
+        a.setFadeGraceUntil(System.currentTimeMillis() + graceTicks * 50L);
         wait(a).cancel();
         reportArena(a);
         a.getEliminated().clear();
@@ -749,6 +753,10 @@ public class TntRunManager {
             eliminate(a, p);
             return;
         }
+        // 开局保护期内不塌雪（倒计时字幕还没淡出）
+        if (System.currentTimeMillis() < a.getFadeGraceUntil()) {
+            return;
+        }
         // 踩雪检测：脚底中心 + 四角 5 个采样点。
         // 只检测中心点时，人站在洞口边缘会因中心格已是空气而漏检支撑方块，导致卡在边缘不掉下去。
         Location feet = p.getLocation().subtract(0, 1, 0);
@@ -833,6 +841,7 @@ public class TntRunManager {
     private void endGame(TntRunArena a, UUID winner) {
         liveSidebar.hide("tntrun:" + a.getName());
         a.setState(TntRunArena.State.WAITING);
+        a.setFadeGraceUntil(0);
         reportArena(a);
         broadcast(a, "&b&l========== 雪塔大作战 结束 ==========");
         List<UUID> firsts = new ArrayList<>();

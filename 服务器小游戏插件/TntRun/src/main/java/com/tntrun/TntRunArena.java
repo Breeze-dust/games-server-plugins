@@ -59,6 +59,8 @@ public class TntRunArena {
     private State state = State.WAITING;
     /** 局次编号：每局 +1，用来让上一局残留的"延迟消失"任务不再改地图。 */
     private long round;
+    /** 开局保护期截止时间（毫秒）：这段时间内踩雪不消失，等倒计时字幕淡出后再开始塌。 */
+    private long fadeGraceUntil;
     private final List<UUID> players = new ArrayList<>();
     private final List<UUID> eliminated = new ArrayList<>();
     private final List<UUID> elimOrder = new ArrayList<>();
@@ -159,6 +161,14 @@ public class TntRunArena {
 
     public long getRound() {
         return round;
+    }
+
+    public long getFadeGraceUntil() {
+        return fadeGraceUntil;
+    }
+
+    public void setFadeGraceUntil(long fadeGraceUntil) {
+        this.fadeGraceUntil = fadeGraceUntil;
     }
 
     /** 开新一局：局次 +1（上一局残留的延迟任务随之失效）。 */
