@@ -80,6 +80,25 @@ public final class WaitCountdown {
         return globallySuppressed;
     }
 
+    /** 本实例是否不受派对全局抑制影响（见 {@link #exemptFromGlobalSuppression()}）。 */
+    private boolean exemptFromGlobalSuppression;
+
+    /**
+     * 声明本实例不受街机派对的全局抑制：派对进行期间照常发准备道具、右键准备、自动开局。
+     * <p>
+     * 只给**不在派对小游戏池里**的常驻游戏用（如骗子酒馆的牌桌）：它们的等待室不可能被派对
+     * join-command 拉走，抑制它们只会让玩家发不出准备道具。池内游戏不要调用。
+     */
+    public WaitCountdown exemptFromGlobalSuppression() {
+        this.exemptFromGlobalSuppression = true;
+        return this;
+    }
+
+    /** 本实例此刻是否应停摆：派对接管且自己没有声明豁免。 */
+    private boolean suppressed() {
+        return globallySuppressed && !exemptFromGlobalSuppression;
+    }
+
     private BukkitTask task;
     private long endMs;
     /** 已点过“准备”的玩家（只保留还在等待室里的人）。 */
@@ -93,7 +112,7 @@ public final class WaitCountdown {
     /** 人数/状态变化后调用：该启动就启动，该缩短就缩短，该取消就取消。 */
     public void update() {
         pruneReady();
-        if (globallySuppressed) {
+        if (suppressed()) {
             cancel();
             return;
         }
@@ -124,7 +143,7 @@ public final class WaitCountdown {
 
     /** 启动/重启倒计时。 */
     public void start(int seconds) {
-        if (globallySuppressed) {
+        if (suppressed()) {
             return;
         }
         cancel();
@@ -171,7 +190,7 @@ public final class WaitCountdown {
      * 街机派对接管期间不发。
      */
     public void giveReadyItem(Player player) {
-        if (player == null || globallySuppressed) {
+        if (player == null || suppressed()) {
             return;
         }
         UUID id = player.getUniqueId();
@@ -182,7 +201,7 @@ public final class WaitCountdown {
 
     /** 右键准备道具：在“已准备 / 未准备”之间切换，并刷新倒计时。 */
     public void toggleReady(Player player) {
-        if (player == null || globallySuppressed) {
+        if (player == null || suppressed()) {
             return;
         }
         UUID id = player.getUniqueId();

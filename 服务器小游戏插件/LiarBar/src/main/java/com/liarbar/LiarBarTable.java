@@ -293,7 +293,9 @@ public final class LiarBarTable {
             public String startMessage(int seconds) {
                 return "&6" + seconds + "s 后自动开局…";
             }
-        });
+            // 骗子酒馆不在街机派对的小游戏池里，牌桌不可能被派对 join-command 拉走：
+            // 不受派对全局抑制，否则派对进行期间发不出准备道具、也开不了局。
+        }).exemptFromGlobalSuppression();
         setSeats(chairs);
     }
 

@@ -83,6 +83,10 @@ D:\BuildBattle\server-backup.bat              # 一键快照整个 server\ -> se
    全员准备后由 `WaitCountdown` 提前 3 秒开局；队列里有管理员时仍然只等管理员手动开；
    准备道具占用**槽位 2**（0/1/4/8 通常已被开始纸、床、选队道具占用，新增等待道具时不要挤占 2）。
    街机派对接管期间（`WaitCountdown.isGloballySuppressed()`）不发准备道具，也不发红色退出床。
+   **不在街机派对小游戏池里的游戏必须声明豁免**（目前是 LiarBar 这类主城常驻/桌面游戏）：
+   构造 `WaitCountdown` 后接 `.exemptFromGlobalSuppression()`。它们不可能被派对的 join-command 拉走，
+   不豁免的话派对进行期间会发不出准备道具、右键没反应、也开不了局（真实事故：骗子酒馆）。
+   **新增非池子游戏时必须同步声明**；池内游戏不要调。
    实现与外观见 `MiniGameLib/src/main/java/com/hub/util/{ReadyItems,WaitCountdown}.java`。
 
 ## 6. 汇报格式（用户要的收尾）
