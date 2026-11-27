@@ -510,18 +510,30 @@ public final class GroupRaceManager {
                 if (reason == null || reason.isBlank()) {
                     reason = "未知原因，检查 /race list 与 /race listrings";
                 }
-                plugin.getLogger().warning("自动生成赛道失败：" + reason);
+                if (!arena.hasConfiguredCourse()) {
+                    plugin.getLogger().warning("自动生成赛道失败：" + reason);
+                    for (UUID id : ready) {
+                        Player p = Bukkit.getPlayer(id);
+                        if (p != null) {
+                            Chat.send(p, "&c自动生成赛道失败：" + reason + "。");
+                            Chat.send(p, "&7等待室已保留，修好后可再开一局。");
+                        }
+                    }
+                    waiting.addAll(ready);
+                    // 等待倒计时在归零时已经把自己停掉了；不重新拉起来的话等待室会一直卡住
+                    updateCountdown();
+                    return;
+                }
+                // 自动生成不成立（例如起跑点和终点环几乎重合），但配置里有完整的手摆赛道：直接用它开局
+                plugin.getLogger().warning("自动生成赛道失败（" + reason + "），改用配置里手摆的 "
+                        + arena.configuredRings().size() + " 个环开局。");
+                arena.clearRuntime();
                 for (UUID id : ready) {
                     Player p = Bukkit.getPlayer(id);
                     if (p != null) {
-                        Chat.send(p, "&c自动生成赛道失败：" + reason + "。");
-                        Chat.send(p, "&7等待室已保留，修好后可再开一局。");
+                        Chat.send(p, "&e自动生成赛道失败（" + reason + "），本局使用配置里手摆的赛道。");
                     }
                 }
-                waiting.addAll(ready);
-                // 等待倒计时在归零时已经把自己停掉了；不重新拉起来的话等待室会一直卡住
-                updateCountdown();
-                return;
             }
             rebuildRings();
         }

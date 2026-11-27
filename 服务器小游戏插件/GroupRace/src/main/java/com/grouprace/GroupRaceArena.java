@@ -91,6 +91,9 @@ public final class GroupRaceArena {
         if (lobby == null || start == null || pos1 == null || pos2 == null) {
             return false;
         }
+        if (!consistentWorlds()) {
+            return false;
+        }
         if (autoCourseEnabled()) {
             // 自动生成模式下只需要固定终点环，普通环开局随机生成
             return !rings.isEmpty() && rings.get(rings.size() - 1).finish();
@@ -98,6 +101,33 @@ public final class GroupRaceArena {
         List<GroupRaceRing> course = rings();
         return course.size() >= 2 && course.get(course.size() - 1).finish()
                 && !course.get(0).finish();
+    }
+
+    /** 起跑点、出界方框和配置里的环必须在同一个世界（lobby 可以在主城）。 */
+    private boolean consistentWorlds() {
+        World world = start.getWorld();
+        if (world == null) {
+            return false;
+        }
+        if (pos1.getWorld() != world || pos2.getWorld() != world) {
+            return false;
+        }
+        for (GroupRaceRing ring : rings) {
+            Location center = ring.center();
+            if (center.getWorld() == world) {
+                continue;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /** 配置里手摆的环是否是一条能跑的赛道（≥2 环、最后是终点、和起跑点同世界）。 */
+    public boolean hasConfiguredCourse() {
+        if (rings.size() < 2 || !rings.get(rings.size() - 1).finish()) {
+            return false;
+        }
+        return consistentWorlds();
     }
 
     private boolean autoCourseEnabled() {
@@ -117,6 +147,9 @@ public final class GroupRaceArena {
         }
         if (pos2 == null) {
             missing.add("pos2");
+        }
+        if (lobby != null && start != null && pos1 != null && pos2 != null && !consistentWorlds()) {
+            missing.add("起跑点/出界方框/终点环不在同一个世界（重新 setstart、pos1、pos2、addfinish）");
         }
         List<GroupRaceRing> course = rings();
         if (autoCourseEnabled()) {
