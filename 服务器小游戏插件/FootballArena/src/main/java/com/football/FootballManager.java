@@ -1193,7 +1193,7 @@ public class FootballManager {
             public void onStart() {
                 startMatch(a);
             }
-        }));
+        }).exemptFromGlobalSuppression());
     }
 
     private void cancelWait(FootballArena a) {

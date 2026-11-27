@@ -1838,7 +1838,7 @@ public class LuckyPillarManager {
                 }
                 startMatch(a, online);
             }
-        }));
+        }).exemptFromGlobalSuppression());
     }
 
     private void cancelWait(LuckyPillarArena a) {
@@ -2027,9 +2027,6 @@ public class LuckyPillarManager {
     // ---------- 道具 ----------
 
     public void giveLeaveBed(Player p) {
-        if (WaitCountdown.isGloballySuppressed()) {
-            return;
-        }
         ItemStack bed = new ItemStack(Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {

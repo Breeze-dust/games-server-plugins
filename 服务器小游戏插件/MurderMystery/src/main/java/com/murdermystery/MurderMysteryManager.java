@@ -912,9 +912,6 @@ public class MurderMysteryManager {
     // ---------- 等待倒计时 ----------
 
     public void giveLeaveBed(Player p) {
-        if (WaitCountdown.isGloballySuppressed()) {
-            return;
-        }
         ItemStack bed = new ItemStack(Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {
@@ -1006,7 +1003,7 @@ public class MurderMysteryManager {
                     start(any, a.getName());
                 }
             }
-        }));
+        }).exemptFromGlobalSuppression());
     }
 
     /** 人数/状态变化后刷新等待倒计时（保留原调用点的方法名）。 */

@@ -127,7 +127,7 @@ public class GameManager {
 
     public GameManager(GuessBuildPlugin plugin) {
         this.plugin = plugin;
-        this.wait = new WaitCountdown(plugin, new WaitHost());
+        this.wait = new WaitCountdown(plugin, new WaitHost()).exemptFromGlobalSuppression();
         startCountdown();
         // 战绩数据
         // 战绩数据（唯一文件 plugins/MiniGameLib/players.yml，命名空间 gtb）
@@ -490,9 +490,7 @@ public class GameManager {
         if (p.isOp()) {
             p.getInventory().setItem(0, waitingItem(START_ITEM, START_NAME, "右键开始游戏（一次确认）"));
         }
-        if (!WaitCountdown.isGloballySuppressed()) {
-            p.getInventory().setItem(8, waitingItem(LEAVE_ITEM, LEAVE_NAME, "右键离开游戏"));
-        }
+        p.getInventory().setItem(8, waitingItem(LEAVE_ITEM, LEAVE_NAME, "右键离开游戏"));
         wait.giveReadyItem(p);
     }
 

@@ -134,7 +134,7 @@ public final class Game {
             public String startMessage(int seconds) {
                 return "&6" + seconds + "s 后自动开始…（每队至少 1 人，用选队菜单分配队伍）";
             }
-        });
+        }).exemptFromGlobalSuppression();
     }
 
     public DontDoItArena arena() {

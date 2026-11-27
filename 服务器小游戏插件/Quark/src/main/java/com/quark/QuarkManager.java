@@ -124,7 +124,7 @@ public final class QuarkManager {
             public void onStart() {
                 startGame(false);
             }
-        });
+        }).exemptFromGlobalSuppression();
     }
 
     public void load() {

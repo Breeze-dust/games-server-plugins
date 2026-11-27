@@ -740,15 +740,13 @@ public final class DontDoItManager {
         if (player.isOp() || player.hasPermission("ddi.admin")) {
             player.getInventory().setItem(4, startPaper());
         }
-        if (!com.hub.util.WaitCountdown.isGloballySuppressed()) {
-            ItemStack bed = new ItemStack(Material.RED_BED);
-            ItemMeta meta = bed.getItemMeta();
-            if (meta != null) {
-                meta.displayName(Chat.noItalic(Chat.color("&c退出游戏 &7(右键)")));
-                bed.setItemMeta(meta);
-            }
-            player.getInventory().setItem(8, bed);
+        ItemStack bed = new ItemStack(Material.RED_BED);
+        ItemMeta meta = bed.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Chat.noItalic(Chat.color("&c退出游戏 &7(右键)")));
+            bed.setItemMeta(meta);
         }
+        player.getInventory().setItem(8, bed);
     }
 
     public void refreshWaitItems(Player player) {

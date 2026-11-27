@@ -588,9 +588,6 @@ public class DuelManager {
 
     /** 退出床。 */
     public void giveLeaveBed(Player p) {
-        if (WaitCountdown.isGloballySuppressed()) {
-            return;
-        }
         org.bukkit.inventory.ItemStack bed = new org.bukkit.inventory.ItemStack(org.bukkit.Material.RED_BED);
         var meta = bed.getItemMeta();
         if (meta != null) {
@@ -698,7 +695,7 @@ public class DuelManager {
                     startFight(a);
                 }
             }
-        }));
+        }).exemptFromGlobalSuppression());
     }
 
     /** 人数/状态变化后刷新该场的自动开局倒计时。 */

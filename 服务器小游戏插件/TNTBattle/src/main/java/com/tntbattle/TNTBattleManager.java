@@ -395,7 +395,7 @@ public final class TNTBattleManager {
             public void onStart() {
                 startGame(false);
             }
-        });
+        }).exemptFromGlobalSuppression();
     }
 
     public int minPlayers() {
