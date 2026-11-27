@@ -18,17 +18,23 @@ import java.util.logging.Level;
  * 小游戏不需要判断服务器有没有装。
  * <p>
  * SVC 的组是客户端可自行退出的，所以这里每秒对账一次，把被踢出组的玩家拉回来。
+ * <p>
+ * 要注意 SVC 要等服务端启动后的下一个 tick 才回调 initialize()：注册插件时拿不到 API
+ * 是正常现象，必须等就绪后再建组/拉人，否则语音会一直停留在原版「按距离衰减」模式。
  */
 public final class VoiceChat {
 
     private static VoiceChatBackend backend;
+    private static Plugin owner;
     private static BukkitTask enforceTask;
+    private static boolean announced;
     private static final Map<UUID, UUID> desired = new HashMap<>();
 
     private VoiceChat() {
     }
 
     public static void init(Plugin plugin) {
+        owner = plugin;
         Plugin svc = Bukkit.getPluginManager().getPlugin("voicechat");
         if (svc == null || !svc.isEnabled()) {
             plugin.getLogger().info("未安装 Simple Voice Chat，队伍语音功能关闭（不影响游戏）。");
@@ -36,8 +42,7 @@ public final class VoiceChat {
         }
         try {
             backend = SvcBackend.install();
-            enforceTask = Bukkit.getScheduler().runTaskTimer(plugin, VoiceChat::enforce, 20L, 20L);
-            plugin.getLogger().info("已接入 Simple Voice Chat，队伍语音功能可用。");
+            enforceTask = Bukkit.getScheduler().runTaskTimer(plugin, VoiceChat::tick, 20L, 20L);
         } catch (Throwable t) {
             backend = null;
             plugin.getLogger().log(Level.WARNING, "接入 Simple Voice Chat 失败，队伍语音功能关闭。", t);
@@ -45,11 +50,11 @@ public final class VoiceChat {
     }
 
     public static boolean available() {
-        return backend != null;
+        return backend != null && backend.ready();
     }
 
     public static UUID createIsolatedGroup(String name) {
-        return backend == null ? null : backend.createIsolatedGroup(name);
+        return available() ? backend.createIsolatedGroup(name) : null;
     }
 
     /** 把玩家放进组；groupId 为 null 等同于 {@link #leave(UUID)}。 */
@@ -59,14 +64,14 @@ public final class VoiceChat {
             return;
         }
         desired.put(player, groupId);
-        if (backend != null) {
+        if (available()) {
             backend.apply(player, groupId);
         }
     }
 
     public static void leave(UUID player) {
         desired.remove(player);
-        if (backend != null) {
+        if (available()) {
             backend.apply(player, null);
         }
     }
@@ -76,7 +81,7 @@ public final class VoiceChat {
             return;
         }
         desired.values().removeIf(groupId::equals);
-        if (backend != null) {
+        if (available()) {
             backend.removeGroup(groupId);
         }
     }
@@ -86,17 +91,33 @@ public final class VoiceChat {
             enforceTask.cancel();
             enforceTask = null;
         }
-        if (backend != null) {
+        if (available()) {
             for (UUID player : new HashMap<>(desired).keySet()) {
                 backend.apply(player, null);
             }
         }
         desired.clear();
         backend = null;
+        announced = false;
+        owner = null;
+    }
+
+    /** 等 SVC 就绪后开始每秒对账；就绪之前什么都不做。 */
+    private static void tick() {
+        if (!available()) {
+            return;
+        }
+        if (!announced) {
+            announced = true;
+            if (owner != null) {
+                owner.getLogger().info("已接入 Simple Voice Chat，队伍语音功能可用。");
+            }
+        }
+        enforce();
     }
 
     private static void enforce() {
-        if (backend == null) {
+        if (!available()) {
             return;
         }
         for (Map.Entry<UUID, UUID> entry : new HashMap<>(desired).entrySet()) {

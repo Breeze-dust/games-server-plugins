@@ -592,10 +592,17 @@ public final class TNTBattleManager {
         return sb.length() == 0 ? "&7(无)" : sb.toString();
     }
 
-    /** 开局：每队一个隔离语音组，外加一个已淘汰玩家的旁观组。 */
+    /**
+     * 开局：每队一个隔离语音组（组内不受距离影响、也听不到对面队）。
+     * voice-chat.distance-based = true 时不建组，改回原版接近语音（受服务器距离衰减）；
+     * voice-chat.hear-eliminated = false 时另建一个「观众」组收容淘汰玩家。
+     */
     private void startVoiceGroups() {
         voiceGroups.clear();
         voiceSpectatorGroup = null;
+        if (voiceDistanceBased()) {
+            return;
+        }
         if (!plugin.getConfig().getBoolean("voice-chat.enabled", true) || !VoiceChat.available()) {
             return;
         }
@@ -605,7 +612,19 @@ public final class TNTBattleManager {
                 voiceGroups.put(team, groupId);
             }
         }
-        voiceSpectatorGroup = VoiceChat.createIsolatedGroup("TNT观众-" + arena.name());
+        if (!voiceHearEliminated()) {
+            voiceSpectatorGroup = VoiceChat.createIsolatedGroup("TNT观众-" + arena.name());
+        }
+    }
+
+    /** 队伍语音是否按原版距离衰减（true = 不建隔离组）。 */
+    private boolean voiceDistanceBased() {
+        return plugin.getConfig().getBoolean("voice-chat.distance-based", false);
+    }
+
+    /** 淘汰玩家是否留在本队语音组里（活人还能听见他们说话）。 */
+    private boolean voiceHearEliminated() {
+        return plugin.getConfig().getBoolean("voice-chat.hear-eliminated", true);
     }
 
     /** 结算：先把人放出组，再删组。 */
@@ -909,6 +928,8 @@ public final class TNTBattleManager {
         changed |= setDefault("music.tail-ticks", 20);
         changed |= setDefault("music.max-record-seconds", 600);
         changed |= setDefault("voice-chat.enabled", true);
+        changed |= setDefault("voice-chat.distance-based", false);
+        changed |= setDefault("voice-chat.hear-eliminated", true);
         if (!plugin.getConfig().isConfigurationSection("wait-items")) {
             plugin.getConfig().set("wait-items.return.material", "CLOCK");
             plugin.getConfig().set("wait-items.return.name", "&a&l回主城 &7(右键)");
@@ -2293,8 +2314,12 @@ public final class TNTBattleManager {
         specialReadyAt.remove(id);
         fallImmune.remove(id);
         clearTeamGlow(player);
-        // 淘汰后转旁观：挪进观众语音组，活人听不到
-        VoiceChat.join(id, voiceSpectatorGroup);
+        // 淘汰后转旁观：默认留在本队语音组，活着的队友还能听见；关掉 hear-eliminated 才挪进观众组
+        if (voiceHearEliminated()) {
+            VoiceChat.join(id, voiceGroups.get(teams.get(id)));
+        } else {
+            VoiceChat.join(id, voiceSpectatorGroup);
+        }
         refreshTitle(player);
         // 旁观期间也保留无粒子夜视
         giveNightVision(player);

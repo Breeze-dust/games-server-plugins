@@ -8,6 +8,9 @@ import java.util.UUID;
  */
 interface VoiceChatBackend {
 
+    /** SVC 要等服务端启动后的下一个 tick 才回调 initialize()，在那之前都是 false。 */
+    boolean ready();
+
     UUID createIsolatedGroup(String name);
 
     void removeGroup(UUID groupId);

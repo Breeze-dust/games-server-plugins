@@ -16,11 +16,19 @@ max-players: 16
 debug-damage: false
 
 # ---------- 队伍语音（Simple Voice Chat） ----------
-# 需要服务端装 voicechat 插件、玩家装同名客户端模组；没装时这个开关不起作用，游戏照常进行。
-# true = 开局自动建「红队/蓝队」两个互相听不到的语音组，淘汰后转进旁观组；
-#        结算时自动删组。玩家没装模组也不会被踢，只是听不到。
+# 需要服务端装 voicechat 插件、玩家装同名客户端模组；没装时这些开关不起作用，游戏照常进行。
+# 语音「距离」本身是 voicechat 插件的全局设置（plugins/voicechat/voicechat-server.properties
+# 里的 max_voice_distance），不能按世界/按游戏分别改；但本插件可以选择用不用隔离组：
 voice-chat:
+  # true = 开局自动建「红队/蓝队」两个互相听不到的语音组，结算时自动删组。
+  #        玩家没装模组也不会被踢，只是听不到。
   enabled: true
+  # false = 队内用隔离语音组：同队之间不受距离影响，也听不到对面队（推荐）
+  # true  = 不建组，用原版接近语音：按服务器的 max_voice_distance 衰减，且能听到附近敌人
+  distance-based: false
+  # true = 被淘汰的队友留在本队语音组：活人还能听见淘汰队友说话（推荐）
+  # false = 淘汰后转进「观众」隔离组，活人听不到死者
+  hear-eliminated: true
 
 # ---------- 背景音乐（红石音乐录制） ----------
 # 用 /tntbattle music 把世界里的红石音乐录成音符序列，之后对局中任一方剩
