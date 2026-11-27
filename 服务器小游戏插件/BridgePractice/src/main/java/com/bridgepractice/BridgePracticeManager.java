@@ -3,6 +3,7 @@ package com.bridgepractice;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
+import com.hub.util.LiveSidebar;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -45,6 +46,7 @@ public final class BridgePracticeManager {
     private final BridgePracticePlugin plugin;
     private final File coursesFile;
     private final NamespacedKey itemKey;
+    private final LiveSidebar liveSidebar;
     private final Map<String, PracticeCourse> courses = new LinkedHashMap<>();
     private final Map<UUID, BridgeSession> sessions = new LinkedHashMap<>();
     private final Map<String, RoomState> rooms = new LinkedHashMap<>();
@@ -69,6 +71,7 @@ public final class BridgePracticeManager {
         this.plugin = plugin;
         this.coursesFile = new File(plugin.getDataFolder(), "courses.yml");
         this.itemKey = new NamespacedKey(plugin, "practice_item");
+        this.liveSidebar = new LiveSidebar(plugin);
     }
 
     // ---------- 加载 ----------
@@ -154,6 +157,7 @@ public final class BridgePracticeManager {
         }
         sessions.clear();
         rooms.clear();
+        liveSidebar.hideAll();
         if (dirtyStats) {
             saveStats();
         }
@@ -618,6 +622,7 @@ public final class BridgePracticeManager {
         removeFromRoom(session);
         clearBlocks(session);
         session.savedState.apply(player);
+        liveSidebar.hide(sidebarKey(session.playerId));
         if (toLobby) {
             HubAPI.teleportToLobby(player);
         }
@@ -637,6 +642,7 @@ public final class BridgePracticeManager {
         }
         removeFromRoom(session);
         clearBlocks(session);
+        liveSidebar.hide(sidebarKey(session.playerId));
         HubAPI.clearGame(player.getUniqueId());
     }
 
@@ -686,7 +692,7 @@ public final class BridgePracticeManager {
             }
             if (now - session.lastHud >= 400) {
                 session.lastHud = now;
-                sendHud(player, session, now);
+                updateSidebar(player, session, now);
             }
         }
     }
@@ -787,7 +793,6 @@ public final class BridgePracticeManager {
             player.setFallDistance(0);
             givePracticeTools(player, session.course);
             ensureBlocks(player);
-            Chat.actionBar(player, "&e放下第一个方块开始计时");
         }
         session.startedAt = 0;
         session.pending = false;
@@ -808,19 +813,23 @@ public final class BridgePracticeManager {
         player.setFallDistance(0);
     }
 
-    private void sendHud(Player player, BridgeSession session, long now) {
-        if (!session.started()) {
-            double distance = session.course.horizontalDistanceToEnd(player.getLocation());
-            String away = distance >= 0 ? String.format(Locale.ROOT, "%.1f", distance) : "--";
-            Chat.actionBar(player, "&e放下第一个方块开始计时 &7| &f距终点 " + away + " 格");
-            return;
-        }
-        long best = bestOf(session.course.name(), session.playerId);
+    /** 右侧计分板：用时 / 距终点 / 个人最佳（每个练习者一块，互不影响）。 */
+    private void updateSidebar(Player player, BridgeSession session, long now) {
         double distance = session.course.horizontalDistanceToEnd(player.getLocation());
         String away = distance >= 0 ? String.format(Locale.ROOT, "%.1f", distance) : "--";
-        Chat.actionBar(player, "&b用时 &f" + formatTime(session.elapsed(now))
-                + " &7| &b距终点 &f" + away + " 格"
-                + " &7| &b最佳 &f" + (best > 0 ? formatTime(best) : "--"));
+        long best = bestOf(session.course.name(), session.playerId);
+        List<LiveSidebar.Line> lines = new ArrayList<>();
+        lines.add(session.started()
+                ? new LiveSidebar.Line("§b用时 §f" + formatTime(session.elapsed(now)), 3)
+                : new LiveSidebar.Line("§e放下第一个方块开始计时", 3));
+        lines.add(new LiveSidebar.Line("§b距终点 §f" + away + " 格", 2));
+        lines.add(new LiveSidebar.Line("§b个人最佳 §f" + (best > 0 ? formatTime(best) : "--"), 1));
+        liveSidebar.update(sidebarKey(session.playerId), "&b&l搭路练习",
+                List.of(session.playerId), lines);
+    }
+
+    private String sidebarKey(UUID id) {
+        return "bridge:" + id;
     }
 
     // ---------- 方块跟踪与清理 ----------

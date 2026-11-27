@@ -1,5 +1,5 @@
 name: BridgePractice
-version: '1.0.0'
+version: '1.1.0'
 main: com.bridgepractice.BridgePracticePlugin
 api-version: '26.2'
 description: 起床战争搭路练习：多房间、方块自动补满、掉虚空回起点、房间最快纪录
