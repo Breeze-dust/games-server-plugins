@@ -5,6 +5,7 @@ import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -1072,10 +1073,12 @@ public class CloudWalkManager {
         refreshPageViews();
         syncTitlesSafe();
         prunePageViews();
+        pruneStrayBoardDisplays();
     }
 
     private void loadLeaderboards() {
         leaderboards.clear();
+        boolean dropped = false;
         for (Map<?, ?> raw : plugin.getConfig().getMapList("leaderboards")) {
             Location loc = readLbLocation(raw);
             if (loc == null) {
@@ -1084,10 +1087,52 @@ public class CloudWalkManager {
             Object entity = raw.get("entity");
             Object footer = raw.get("footer");
             Object stand = raw.get("interact") != null ? raw.get("interact") : raw.get("stand");
-            leaderboards.add(new LeaderBoard(loc,
+            LeaderBoard board = new LeaderBoard(loc,
                     parseUuid(entity == null ? "" : String.valueOf(entity)),
                     parseUuid(footer == null ? "" : String.valueOf(footer)),
-                    parseUuid(stand == null ? "" : String.valueOf(stand))));
+                    parseUuid(stand == null ? "" : String.valueOf(stand)));
+            if (isDuplicateBoard(board)) {
+                // 同一地点、同一朝向放了两块榜（多为 /cloudwalk top place 连点两次）：
+                // 翻页只会藏掉点到的那一块，另一块留在原地 —— 看起来就是两块榜叠在一起。
+                removeBoardEntities(board);
+                dropped = true;
+                plugin.getLogger().warning("云中漫步：配置里有重复的排行榜（"
+                        + board.loc.getWorld().getName() + " " + fmtLoc(board.loc) + "），已移除重复的那一块");
+                continue;
+            }
+            leaderboards.add(board);
+        }
+        if (dropped) {
+            saveLeaderboards();
+        }
+    }
+
+    private boolean isDuplicateBoard(LeaderBoard board) {
+        for (LeaderBoard existing : leaderboards) {
+            if (existing.loc.getWorld() == null || !existing.loc.getWorld().equals(board.loc.getWorld())) {
+                continue;
+            }
+            if (snapYaw(existing.loc.getYaw()) != snapYaw(board.loc.getYaw())) {
+                continue;
+            }
+            if (existing.loc.distanceSquared(board.loc) < 0.36) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String fmtLoc(Location loc) {
+        return Math.round(loc.getX()) + "," + Math.round(loc.getY()) + "," + Math.round(loc.getZ());
+    }
+
+    /** 删掉一块榜的全部实体（主榜、底部文字、点击区）。 */
+    private void removeBoardEntities(LeaderBoard board) {
+        for (UUID id : new UUID[]{board.entityId, board.footerId, board.interactionId}) {
+            Entity entity = id == null ? null : Bukkit.getEntity(id);
+            if (entity != null) {
+                entity.remove();
+            }
         }
     }
 
@@ -1118,6 +1163,12 @@ public class CloudWalkManager {
         loc.setYaw(snapYaw(loc.getYaw()));
         loc.setPitch(0f);
         LeaderBoard board = new LeaderBoard(loc, null, null, null);
+        if (isDuplicateBoard(board)) {
+            // 重复放在同一格会多出一块永远被藏住的榜，翻页时两块就叠在一起
+            refreshLeaderboards();
+            Chat.send(p, "&e这里已经有一块云中漫步排行榜了，没有重复放置。");
+            return;
+        }
         leaderboards.add(board);
         board.entityId = spawnDisplay(mainLocation(board, settings.topSize));
         board.footerId = spawnFooter(loc);
@@ -1130,18 +1181,7 @@ public class CloudWalkManager {
     public void removeLeaderboards(CommandSender sender) {
         clearPageViews();
         for (LeaderBoard board : leaderboards) {
-            Entity entity = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
-            if (entity != null) {
-                entity.remove();
-            }
-            Entity stand = board.interactionId == null ? null : Bukkit.getEntity(board.interactionId);
-            if (stand != null) {
-                stand.remove();
-            }
-            Entity footer = board.footerId == null ? null : Bukkit.getEntity(board.footerId);
-            if (footer != null) {
-                footer.remove();
-            }
+            removeBoardEntities(board);
         }
         leaderboards.clear();
         saveLeaderboards();
@@ -1414,10 +1454,12 @@ public class CloudWalkManager {
                     other.hideEntity(plugin, display);
                 }
             }
-            Entity base = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
-            if (base != null) {
-                p.hideEntity(plugin, base);
-            }
+        }
+        // 主榜每次翻页都重新藏一次（已藏过是空操作）：重登、区块重载后 hide 状态会丢，
+        // 丢了就会看到主榜和私有页叠在一起。
+        Entity base = board.entityId == null ? null : Bukkit.getEntity(board.entityId);
+        if (base != null) {
+            p.hideEntity(plugin, base);
         }
         display.text(difficultyText(next));
         pageViews.put(p.getUniqueId(), new PageView(display.getUniqueId(), next.id, board,
@@ -1474,7 +1516,74 @@ public class CloudWalkManager {
             display.teleport(mainLocation(view.board, settings.topSize));
             display.setRotation(snapYaw(view.board.loc.getYaw() + 180f), 0f);
             display.text(difficultyText(difficulty));
+
+            // 每次兜底刷新都重新同步可见性：主榜对翻页者隐藏、私有页只给本人看。
+            // 重复调用 hideEntity 是空操作，不会多发包。
+            Player viewer = Bukkit.getPlayer(playerId);
+            if (viewer != null && viewer.isOnline()) {
+                Entity base = view.board.entityId == null ? null : Bukkit.getEntity(view.board.entityId);
+                if (base != null) {
+                    viewer.hideEntity(plugin, base);
+                }
+            }
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (!other.getUniqueId().equals(playerId)) {
+                    other.hideEntity(plugin, display);
+                }
+            }
         }
+    }
+
+    /**
+     * 清掉没人认领的云中漫步榜实体。
+     *
+     * <p>私有页的 TextDisplay 是 {@code setPersistent(false)} 生成的，但这个标记在 Paper 26.2 挡不住存盘；
+     * 玩家看完榜马上离开主城（区块卸载 → 写盘 → 实体查不到删不掉）或服务器正好在那 20 秒内停过机，
+     * 世界里就会永久留下一块「鬼榜」，重启后没人隐藏它，就跟主榜叠在一起。
+     */
+    private void pruneStrayBoardDisplays() {
+        if (leaderboards.isEmpty()) {
+            return;
+        }
+        Set<UUID> keep = new HashSet<>();
+        for (LeaderBoard board : leaderboards) {
+            if (board.entityId != null) {
+                keep.add(board.entityId);
+            }
+            if (board.footerId != null) {
+                keep.add(board.footerId);
+            }
+            if (board.interactionId != null) {
+                keep.add(board.interactionId);
+            }
+        }
+        for (PageView view : pageViews.values()) {
+            keep.add(view.entityId);
+        }
+        for (LeaderBoard board : leaderboards) {
+            World world = board.loc.getWorld();
+            if (world == null || !board.loc.isChunkLoaded()) {
+                continue;
+            }
+            Location center = mainLocation(board, settings.topSize);
+            for (Entity entity : center.getChunk().getEntities()) {
+                if (!(entity instanceof TextDisplay display) || keep.contains(entity.getUniqueId())) {
+                    continue;
+                }
+                if (!isLeaderboardText(display.text())) {
+                    continue;
+                }
+                if (entity.getLocation().distanceSquared(center) > 64.0) {
+                    continue;
+                }
+                display.remove();
+            }
+        }
+    }
+
+    private static boolean isLeaderboardText(Component text) {
+        return text != null
+                && PlainTextComponentSerializer.plainText().serialize(text).contains("云中漫步");
     }
 
     private void clearPageViews() {
