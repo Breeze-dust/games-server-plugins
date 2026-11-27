@@ -22,6 +22,8 @@ transition:
   freeze: true
 # 单个小游戏最长等多久（秒）：超时按“无人得分”进入下一局，防止卡死
 round-timeout-seconds: 600
+# 一局结束后先展示前三名多少秒，再进入下一局（0 = 立即进入）
+round-end-delay-seconds: 3
 
 # ---------- 星星 ----------
 stars:

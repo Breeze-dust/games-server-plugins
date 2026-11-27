@@ -12,6 +12,11 @@
 - **1.3.9 修复**：
   - 有些小游戏上报结果后还会**延迟 teleportToLobby**，回城会触发所有游戏的 lobby 回调，把已经加入下一局等待区的玩家踢掉 → 派对误判「没人/没回报」跳过下一局。现在**每局 `start-command` 前重新 join 一次**，并在派对进行中**拦截小游戏发起的回城传送**（玩家主动 `/hub` 不受影响）。
   - 派对进行中玩家 `/hub`（或右键回城道具）现在会**退出整个派对**，不再只是退出当前小游戏、随后又被传送到下一局场地。
+- **1.3.16 观战与播报**：
+  - 派对拉人进迷你小游戏时**不再全服播报「某某加入了游戏」**（HubCore 的 `announceJoin` 查 `ArcadeBridge.isInRound` 跳过）；玩家自己在等待室 `/arcade join` 仍会播报。
+  - **超员观战者整场派对保持旁观模式**：局间不再被切回生存，下一局开始后由 `syncPartySpectators` 送到当前小游戏的观战落点；单场游戏（记忆翻牌 / One Shot 等）用空场地名取整场落点，并每秒重试最多 10 秒等小游戏上报。
+  - **主城观战者跟着派对换局**：观战的是派对当前这一局的小游戏时，该局结束后改挂到「街机派对」观战点（`ArcadeBridge` 新增 `isPartyRunning/currentGameDisplay/partyGameName/partyArenaName`），不会送回大厅。
+  - **局间展示 3 秒**：新增 `round-end-delay-seconds`（默认 3），一局结束先播完前三名，隔 3 秒再进下一局过渡；0 = 立即进入。
 - **命令**：
   - 玩家：`/arcade join`、`leave`、`list`、`stars [玩家]`
   - OP：`menu`（设置菜单）、`start`、`stop`、`setlobby`、`setaudience`、`setpodium <first|second|third>`、**`addfirework`**（把脚下这格设为烟花发射点，可多次添加）、`clearfireworks`、`fireworks`（查看已配置的点）、`save`、`reload`

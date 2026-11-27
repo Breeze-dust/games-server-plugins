@@ -92,6 +92,8 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
     private BukkitTask podiumTask;
     private BukkitTask endTask;
     private BukkitTask guardTask;
+    private BukkitTask roundEndTask;
+    private int spectatorSyncTries;
     private int guardTicks;
     private int guardIdleTicks;
     private final List<BukkitTask> fireworkTasks = new ArrayList<>();
@@ -196,6 +198,11 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         return Math.max(30, Math.min(7200, cfgInt("round-timeout-seconds", 600)));
     }
 
+    /** 一局结束后先展示前三名多少秒，再进入下一局（0 = 立即进入）。 */
+    private int roundEndDelaySeconds() {
+        return Math.max(0, Math.min(30, cfgInt("round-end-delay-seconds", 3)));
+    }
+
     private int starFirst() {
         return Math.max(0, Math.min(10, cfgInt("stars.first", 3)));
     }
@@ -269,6 +276,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         changed |= setDefault("transition-seconds", 15);
         changed |= setDefault("transition.freeze", true);
         changed |= setDefault("round-timeout-seconds", 600);
+        changed |= setDefault("round-end-delay-seconds", 3);
         changed |= setDefault("stars.first", 3);
         changed |= setDefault("stars.second", 2);
         changed |= setDefault("stars.third", 1);
@@ -806,12 +814,15 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             addStars(id, starSpectatorBonus());
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
-                normalizePlayer(p);
+                // 观战者整场派对都保持旁观模式：以前这里 normalizePlayer 会把人切回生存，
+                // 看起来就是"一局结束就被踢出观战"。下一局开始时再由 syncPartySpectators 送去场地。
+                preparePartySpectator(p);
                 // 上一局结算会 HubAPI.clearGame(id) 把归属清空，这里补回"街机派对"：
                 // 下一个游戏靠它判断这局是不是派对拉进来的（例：轰炸区别自己回城）
                 HubAPI.setPlaying(id, GAME);
                 p.teleport(lobby != null ? lobby : p.getLocation());
-                Chat.send(p, "&7本局人数超出上限，你在旁观，补偿 &e" + starSpectatorBonus() + " &7颗星。");
+                Chat.send(p, "&7本局你旁观，补偿 &e" + starSpectatorBonus() + " &7颗星；"
+                        + "下一局开始时自动传送到场地观战。");
             }
         }
 
@@ -926,6 +937,7 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         }, roundTimeoutSeconds() * 20L);
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), start);
         // 迷你小游戏开局后会上报自己的观战落点；稍等片刻再让观战者跟过去
+        spectatorSyncTries = 0;
         Bukkit.getScheduler().runTaskLater(plugin, this::syncPartySpectators, 40L);
     }
 
@@ -962,15 +974,52 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         return state != State.WAITING && player != null && playing.contains(player);
     }
 
+    /** 主城观战用：派对是不是正在跑（等待室阶段不算）。 */
+    @Override
+    public boolean isPartyRunning() {
+        return state != State.WAITING;
+    }
+
+    /** 主城观战用：这一局正在玩的小游戏显示名；不在对局中返回 null。 */
+    @Override
+    public String currentGameDisplay() {
+        if (state != State.ROUND || currentGameKey == null || currentGameKey.isEmpty()) {
+            return null;
+        }
+        return displayOf(currentGameKey);
+    }
+
+    /** 主城观战用：派对在服务端注册表里的游戏名。 */
+    @Override
+    public String partyGameName() {
+        return GAME;
+    }
+
+    /** 主城观战用：派对上报观战落点时用的场地名。 */
+    @Override
+    public String partyArenaName() {
+        return ARENA;
+    }
+
     /**
      * 观战者跟着每一局走：把派对的观战落点指向当前迷你小游戏的落点（主城的外部观战者据此跟过去），
      * 并把本局人数超限、坐在旁边看的派对玩家传送到同一个点。
+     * <p>非多场地小游戏（记忆翻牌 / One Shot 等）没有 currentArena，用空场地名取它上报的整场落点。
      */
     private void syncPartySpectators() {
-        if (state != State.ROUND || currentGameKey == null || currentArena == null) {
+        if (state != State.ROUND || currentGameKey == null) {
+            spectatorSyncTries = 0;
             return;
         }
-        Location spot = HubAPI.getArenaSpectator(displayOf(currentGameKey), currentArena);
+        String targetArena = currentArena == null ? "" : currentArena;
+        Location spot = HubAPI.getArenaSpectator(displayOf(currentGameKey), targetArena);
+        if (spot == null && spectatorSyncTries < 10) {
+            // 小游戏可能还没上报观战落点：每秒重试，最多 10 秒
+            spectatorSyncTries++;
+            Bukkit.getScheduler().runTaskLater(plugin, this::syncPartySpectators, 20L);
+            return;
+        }
+        spectatorSyncTries = 0;
         if (spot == null) {
             return;
         }
@@ -982,10 +1031,21 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
             }
             p.teleport(spot);
             p.setFallDistance(0f);
-            if (p.getGameMode() != GameMode.SPECTATOR) {
-                p.setGameMode(GameMode.SPECTATOR);
-            }
+            preparePartySpectator(p);
         }
+    }
+
+    /** 把派对内的观战者固定在旁观模式（可飞行、无伤、不给道具），切局时不会掉回生存。 */
+    private void preparePartySpectator(Player p) {
+        p.getInventory().clear();
+        p.setGameMode(GameMode.SPECTATOR);
+        p.setAllowFlight(true);
+        p.setInvisible(false);
+        p.setInvulnerable(true);
+        p.setHealth(20);
+        p.setFoodLevel(20);
+        p.setFireTicks(0);
+        p.setFallDistance(0f);
     }
 
     private void finishRound(List<UUID> firsts, List<UUID> seconds, List<UUID> thirds) {
@@ -1021,6 +1081,23 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         }
 
         roundIndex++;
+        int delay = roundEndDelaySeconds();
+        if (delay <= 0) {
+            advanceAfterRound();
+        } else {
+            // 先让前三名多留一会儿：小游戏结算会立刻把人送回主城，这里晚点再拉进下一局，
+            // 否则播报刚出来就被传送走，玩家根本看不清名次。
+            broadcast("&7下一局将在 &e" + delay + " &7秒后开始…");
+            roundEndTask = Bukkit.getScheduler().runTaskLater(plugin, this::advanceAfterRound, delay * 20L);
+        }
+    }
+
+    /** 局间展示时间结束：进入下一局过渡，或全部打完后颁奖。 */
+    private void advanceAfterRound() {
+        roundEndTask = null;
+        if (state != State.ROUND) {
+            return;
+        }
         if (roundIndex >= selected.size()) {
             beginPodium();
         } else {
@@ -1587,6 +1664,10 @@ public final class ArcadePartyManager implements ArcadeBridge.Listener {
         cancelTransition();
         cancelTimeout();
         cancelGuard();
+        if (roundEndTask != null) {
+            roundEndTask.cancel();
+            roundEndTask = null;
+        }
         if (endTask != null) {
             endTask.cancel();
             endTask = null;

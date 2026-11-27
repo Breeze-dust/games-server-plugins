@@ -394,6 +394,10 @@ public class HubManager implements HubService {
             }
             String game = spectating.get(id);
             if (!isGameRunning(game)) {
+                // 街机派对换局：观战的若是派对当前这一局的小游戏，跟着派对继续看，别送回大厅
+                if (followPartyAfterRound(p, id, game)) {
+                    continue;
+                }
                 stopSpectating(id);
                 if (p.getGameMode() == GameMode.SPECTATOR) {
                     teleportToLobby(p);
@@ -421,6 +425,51 @@ public class HubManager implements HubService {
             }
             Chat.actionBar(p, spectateBar(game, arena));
         }
+    }
+
+    /**
+     * 街机派对换局：观战的正好是派对当前这一局的小游戏时，不结束观战，改跟派对继续看。
+     * <p>派对会通过 ArcadeBridge 暴露"正在跑 / 当前小游戏 / 派对游戏名与场地名"，
+     * 主城只管把人挂到派对的观战点上；下一局开始时派对会更新落点，tickSpectate 会继续跟随。
+     *
+     * @return true = 已改挂到街机派对，这次不要送回大厅
+     */
+    private boolean followPartyAfterRound(Player p, UUID id, String spectatedGame) {
+        String partyName = ArcadeBridge.partyGameName();
+        if (partyName == null || partyName.isBlank() || !ArcadeBridge.isPartyRunning()) {
+            return false;
+        }
+        String partyGame = plugin.getRegistry().canonicalName(partyName);
+        if (spectatedGame.equals(partyGame)) {
+            return false; // 本来就在看派对本身，交给正常的 isGameRunning 判断
+        }
+        String current = ArcadeBridge.currentGameDisplay();
+        if (current == null || !spectatedGame.equals(plugin.getRegistry().canonicalName(current))) {
+            return false; // 结束的不是派对当前这一局
+        }
+        String partyArena = ArcadeBridge.partyArenaName();
+        Location spot = spectatorSpot(partyGame, partyArena);
+        if (spot == null) {
+            // 派对还没上报落点时，退回到它任意一个正在进行的场地落点
+            for (Map.Entry<String, ArenaInfo> e : arenasOf(partyGame).entrySet()) {
+                if (e.getValue() != null && e.getValue().state() == GameState.PLAYING) {
+                    spot = spectatorSpot(partyGame, e.getKey());
+                    if (spot != null) {
+                        break;
+                    }
+                }
+            }
+        }
+        spectating.put(id, partyGame);
+        spectatingArena.put(id, partyArena == null ? "" : partyArena);
+        if (spot != null) {
+            p.teleport(spot);
+            p.setFallDistance(0f);
+            lastSpectatorSpot.put(id, spot.clone());
+        }
+        p.sendMessage(LEGACY.deserialize("&7这一局结束了，继续观战 &b" + partyName + "&7。"));
+        Chat.actionBar(p, "&7观战中：&b" + partyName + " &7｜ 输入 &e/hub &7退出");
+        return true;
     }
 
     /** 清掉一个玩家的观战状态（不含传送）。 */
@@ -621,6 +670,12 @@ public class HubManager implements HubService {
      */
     @Override
     public void announceJoin(String gameIdOrName, String playerName, String arenaName) {
+        // 街机派对拉人进迷你小游戏时不播"某某加入了游戏"：那不是玩家自己选的游戏，
+        // 一局派对会连着刷 3~5 条没有意义的全服播报。
+        Player joined = Bukkit.getPlayerExact(playerName);
+        if (joined != null && ArcadeBridge.isInRound(joined.getUniqueId())) {
+            return;
+        }
         GameInfo info = plugin.getRegistry().get(gameIdOrName);
         String name = info == null ? String.valueOf(gameIdOrName) : info.displayName();
         char color = info != null && info.hasColor() ? info.color() : '6';

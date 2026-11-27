@@ -41,6 +41,26 @@ public final class ArcadeBridge {
         default boolean isInRound(java.util.UUID player) {
             return false;
         }
+
+        /** 街机派对当前是否在跑（等待室阶段为 false）。主城观战用来判断"换局后要不要继续跟着看"。 */
+        default boolean isPartyRunning() {
+            return false;
+        }
+
+        /** 街机派对这一局正在玩的小游戏显示名（不在对局中返回 null）。 */
+        default String currentGameDisplay() {
+            return null;
+        }
+
+        /** 街机派对在主城注册表里的显示名（观战菜单里的那一行）；没注册返回 null。 */
+        default String partyGameName() {
+            return null;
+        }
+
+        /** 街机派对的观战场地名（主城用它查观战落点）。 */
+        default String partyArenaName() {
+            return "";
+        }
     }
 
     private static volatile Listener listener;
@@ -67,6 +87,30 @@ public final class ArcadeBridge {
     public static boolean isInRound(java.util.UUID player) {
         Listener l = listener;
         return l != null && l.isInRound(player);
+    }
+
+    /** 街机派对当前是否在跑（等待室阶段为 false）。 */
+    public static boolean isPartyRunning() {
+        Listener l = listener;
+        return l != null && l.isPartyRunning();
+    }
+
+    /** 街机派对这一局正在玩的小游戏显示名；不在对局中返回 null。 */
+    public static String currentGameDisplay() {
+        Listener l = listener;
+        return l == null ? null : l.currentGameDisplay();
+    }
+
+    /** 街机派对在主城注册表里的显示名；没注册返回 null。 */
+    public static String partyGameName() {
+        Listener l = listener;
+        return l == null ? null : l.partyGameName();
+    }
+
+    /** 街机派对的观战场地名。 */
+    public static String partyArenaName() {
+        Listener l = listener;
+        return l == null ? "" : l.partyArenaName();
     }
 
     public static void report(String gameKey, Collection<UUID> firsts,
