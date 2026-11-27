@@ -91,6 +91,9 @@ public final class SnakePartyManager {
     private double shrinkHalf;
     private boolean shrinkStarted;
     private BukkitTask borderTask;
+    /** 临时诊断：本局前几次玻璃板放置/跳过的原因，只打前几条，排"玻璃板不出现"用。 */
+    private int plateDebugCount;
+    private boolean plateWarned;
     private int secondsLeft;
     private int readySeconds;
     private YamlConfiguration stats;
@@ -539,6 +542,8 @@ public final class SnakePartyManager {
         secondsLeft = gameSeconds();
         readySeconds = countdownSeconds();
         assignColors();
+        plateDebugCount = 0;
+        plateWarned = false;
 
         List<Location> spawnOrder = new ArrayList<>(arena.getSpawns());
         Collections.shuffle(spawnOrder, random);
@@ -617,6 +622,7 @@ public final class SnakePartyManager {
             }
         }
         broadcast("&a&l开始！&f时间 &e" + gameSeconds() + " &f秒。");
+        smokeLog("开局");
         shrinkHalf = arena.getRadius();
         shrinkStarted = false;
         if (shrinkEnabled()) {
@@ -750,6 +756,10 @@ public final class SnakePartyManager {
             }
             Location loc = p.getLocation();
             double half = shrinkEnabled() ? shrinkHalf : arena.getRadius();
+            if (half < 1.0) {
+                // 防御：缩圈值还没初始化/异常时按场地原半径判定，避免开局全员被判出界
+                half = arena.getRadius();
+            }
             if (!arena.containsXZ(loc, half) || loc.getY() < arena.floorY() - 6) {
                 eliminate(p, shrinkEnabled() && shrinkStarted && !arena.containsXZ(loc, half)
                         ? "越过了收缩边界" : "掉出了场地");
@@ -869,6 +879,23 @@ public final class SnakePartyManager {
         if (state != State.RUNNING) {
             return;
         }
+        if (!plateWarned && plates.isEmpty() && gameSeconds() - secondsLeft >= 6) {
+            plateWarned = true;
+            smokeLog("开局 6 秒仍没有玻璃板");
+            for (UUID id : playing) {
+                Player p = Bukkit.getPlayer(id);
+                if (p == null) {
+                    continue;
+                }
+                Location l = p.getLocation();
+                Block under = l.clone().subtract(0, 1, 0).getBlock();
+                plugin.getLogger().info("[蛇行诊断] 玩家 " + p.getName() + " 位置="
+                        + l.getBlockX() + "," + l.getBlockY() + "," + l.getBlockZ()
+                        + " 脚下=" + under.getType()
+                        + " 在场内=" + arena.containsXZ(l)
+                        + " lastFloor=" + lastFloor.get(id));
+            }
+        }
         if (secondsLeft == 30 || secondsLeft == 10) {
             broadcast("&e剩余 &f" + secondsLeft + " &e秒！");
         }
@@ -878,6 +905,20 @@ public final class SnakePartyManager {
     }
 
     // ---------- 缩圈 ----------
+
+    /** 一次性诊断：把场地/缩圈/玩家状态写到控制台，排查"玻璃板不生成"。 */
+    private void smokeLog(String where) {
+        Location c = arena.center();
+        String center = c == null ? "null"
+                : (c.getWorld() == null ? "无世界" : c.getWorld().getName()
+                + " " + c.getBlockX() + "," + c.getBlockY() + "," + c.getBlockZ());
+        plugin.getLogger().info("[蛇行诊断] " + where + "：center=" + center
+                + " floorY=" + arena.floorY() + " radius=" + arena.getRadius()
+                + " spawns=" + arena.getSpawns().size()
+                + " shrink=" + (shrinkEnabled()
+                ? shrinkStartSeconds() + "s后收/" + shrinkDurationSeconds() + "s" : "关")
+                + " 玩家=" + playing.size() + " 现有玻璃板=" + plates.size());
+    }
 
     private boolean shrinkEnabled() {
         return plugin.getConfig().getBoolean("shrink.enabled", true);
@@ -1112,6 +1153,11 @@ public final class SnakePartyManager {
         }
         Block pane = world.getBlockAt(q.x, q.y, q.z);
         if (!arena.contains(pane) || !pane.getType().isAir()) {
+            if (plateDebugCount < 5) {
+                plateDebugCount++;
+                plugin.getLogger().info("[蛇行诊断] 玻璃板跳过 " + q.x + "," + q.y + "," + q.z
+                        + "：在场内=" + arena.contains(pane) + " 当前方块=" + pane.getType());
+            }
             return;
         }
         String paneKey = key(q.x, q.y, q.z);
@@ -1123,6 +1169,9 @@ public final class SnakePartyManager {
                 System.currentTimeMillis() + plateLifetimeMs(), q.x, q.y, q.z, id);
         plates.put(paneKey, plate);
         pane.setBlockData(color.createBlockData(), true);
+        if (plates.size() == 1) {
+            plugin.getLogger().info("[蛇行诊断] 第一块玻璃板：" + paneKey + " " + color);
+        }
     }
 
     private Block blockFromKey(String key) {
