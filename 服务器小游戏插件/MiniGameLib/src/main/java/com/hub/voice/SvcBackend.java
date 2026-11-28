@@ -74,7 +74,7 @@ final class SvcBackend implements VoiceChatBackend {
         if (server == null) {
             return null;
         }
-        Group group = server.getGroup(groupId);
+        Group group = findGroup(server, groupId);
         if (group == null) {
             group = server.groupBuilder()
                     .setId(groupId)
@@ -83,14 +83,33 @@ final class SvcBackend implements VoiceChatBackend {
                     .setPersistent(true)
                     .build();
         }
-        groups.put(group.getId(), group);
-        return group.getId();
+        groups.put(groupId, group);
+        return groupId;
     }
 
     @Override
     public boolean groupExists(UUID groupId) {
         VoicechatServerApi server = api;
-        return server != null && groupId != null && server.getGroup(groupId) != null;
+        return server != null && groupId != null && findGroup(server, groupId) != null;
+    }
+
+    /**
+     * 按 ID 找组。
+     * <p>
+     * 不能用 {@code api.getGroup()}：voicechat-bukkit-2.6.25 在组不存在时也会返回
+     * 内部 delegate 为 null 的 GroupImpl，紧接着的 getId() 会直接 NPE。组表里的都是真组。
+     */
+    private static Group findGroup(VoicechatServerApi server, UUID groupId) {
+        try {
+            for (Group group : server.getGroups()) {
+                if (group != null && groupId.equals(group.getId())) {
+                    return group;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 老版本组表异常时按“没有这个组”处理，下一 tick 会重试
+        }
+        return null;
     }
 
     @Override

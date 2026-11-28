@@ -215,7 +215,7 @@ final class VoiceChatHook implements VoiceChatBridge {
 
     /** 取「死人组」：组表里没有就按当前配置建一个（persistent → 人走光也不会被 SVC 回收）。 */
     private Group deadGroupOf(VoicechatServerApi a) {
-        Group existing = a.getGroup(DEAD_GROUP_ID);
+        Group existing = findGroup(a);
         if (existing != null) {
             return existing;
         }
@@ -226,6 +226,25 @@ final class VoiceChatHook implements VoiceChatBridge {
                 .setHidden(true)     // 不出现在客户端的组列表里，活人不会误入
                 .setType(deadGroupIsolated ? Group.Type.ISOLATED : Group.Type.NORMAL)
                 .build();
+    }
+
+    /**
+     * 按固定 ID 在组表里找死人组。
+     * <p>
+     * 不能用 {@code api.getGroup()}：voicechat-bukkit-2.6.25 在组不存在时也会返回
+     * 内部 delegate 为 null 的 GroupImpl，setGroup 时直接 NPE。
+     */
+    private static Group findGroup(VoicechatServerApi a) {
+        try {
+            for (Group group : a.getGroups()) {
+                if (group != null && DEAD_GROUP_ID.equals(group.getId())) {
+                    return group;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 老版本组表异常时当作没有，交给本次重建
+        }
+        return null;
     }
 
     private boolean isInGame(VoicechatConnection c) {

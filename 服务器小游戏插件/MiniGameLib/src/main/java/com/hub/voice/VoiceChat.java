@@ -43,6 +43,8 @@ public final class VoiceChat {
     private static Plugin owner;
     private static BukkitTask enforceTask;
     private static boolean announced;
+    /** 建组失败只提示一次，避免定时任务刷屏。 */
+    private static boolean hubWarned;
     private static UUID hubGroupId;
     private static final Map<UUID, UUID> desired = new HashMap<>();
     /** SVC 还没就绪时先记下要进公共组的人，就绪后补一次。 */
@@ -53,6 +55,7 @@ public final class VoiceChat {
 
     public static void init(Plugin plugin) {
         owner = plugin;
+        hubWarned = false;
         Plugin svc = Bukkit.getPluginManager().getPlugin("voicechat");
         if (svc == null || !svc.isEnabled()) {
             plugin.getLogger().info("未安装 Simple Voice Chat，队伍语音功能关闭（不影响游戏）。");
@@ -164,6 +167,7 @@ public final class VoiceChat {
         }
         pendingHub.clear();
         hubGroupId = null;
+        hubWarned = false;
         desired.clear();
         backend = null;
         announced = false;
@@ -192,10 +196,19 @@ public final class VoiceChat {
             hubGroupId = null;
             return;
         }
-        if (hubGroupId != null && backend.groupExists(hubGroupId)) {
-            return;
+        try {
+            if (hubGroupId != null && backend.groupExists(hubGroupId)) {
+                return;
+            }
+            hubGroupId = backend.createPersistentGroup(HUB_GROUP_ID, HUB_GROUP_NAME);
+        } catch (RuntimeException ex) {
+            // 出错时不要让定时任务每秒钟刷一次堆栈；只提示一次，下一 tick 继续重试
+            hubGroupId = null;
+            if (owner != null && !hubWarned) {
+                hubWarned = true;
+                owner.getLogger().log(Level.WARNING, "创建主城公共语音组失败，稍后自动重试。", ex);
+            }
         }
-        hubGroupId = backend.createPersistentGroup(HUB_GROUP_ID, HUB_GROUP_NAME);
     }
 
     /** SVC 就绪前收到的入组请求，在这里补发一次。 */
