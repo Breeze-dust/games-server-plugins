@@ -131,7 +131,7 @@ public final class VoiceChatHook implements VoiceChatBridge, VoicechatPlugin {
                 release(id);
             }
             try {
-                if (a.getGroup(GROUP_ID) != null) {
+                if (findGroup(a) != null) {
                     a.removeGroup(GROUP_ID);
                 }
             } catch (RuntimeException ignored) {
@@ -188,10 +188,10 @@ public final class VoiceChatHook implements VoiceChatBridge, VoicechatPlugin {
 
     private Group ensureGroup(VoicechatServerApi a) {
         Group g = this.group;
-        if (g != null && a.getGroup(GROUP_ID) != null) {
+        if (g != null && findGroup(a) != null) {
             return g;
         }
-        g = a.getGroup(GROUP_ID);
+        g = findGroup(a);
         if (g == null) {
             Group.Builder builder = a.groupBuilder()
                     .setId(GROUP_ID)
@@ -255,9 +255,28 @@ public final class VoiceChatHook implements VoiceChatBridge, VoicechatPlugin {
             }
             assign(id);
         }
-        if (api != null && group != null && api.getGroup(GROUP_ID) == null) {
+        if (api != null && group != null && findGroup(api) == null) {
             group = null;
         }
+    }
+
+    /**
+     * 按固定 ID 在组表里找本局频道。
+     * <p>
+     * 不能用 {@code api.getGroup()}：voicechat-bukkit-2.6.25 在组不存在时也会返回
+     * 内部 delegate 为 null 的 GroupImpl，setGroup 时直接 NPE。
+     */
+    private static Group findGroup(VoicechatServerApi a) {
+        try {
+            for (Group group : a.getGroups()) {
+                if (group != null && GROUP_ID.equals(group.getId())) {
+                    return group;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 老版本组表异常时当作没有，交给调用方重建
+        }
+        return null;
     }
 
     private void exitById(UUID id) {
