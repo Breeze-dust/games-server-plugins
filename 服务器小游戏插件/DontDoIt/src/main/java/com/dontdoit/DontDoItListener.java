@@ -33,6 +33,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /** 事件入口：等待室道具 + 词条判定。 */
@@ -197,19 +199,41 @@ public final class DontDoItListener implements Listener {
         }
     }
 
-    /** 对局中按配置强制死亡掉落（防止其它插件把 keepInventory 设成 true）。 */
+    /** 等待室/对局中按配置强制死亡掉落（防止其它插件把 keepInventory 设成 true）。 */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onDeathDrops(PlayerDeathEvent event) {
-        Game game = manager.gameOf(event.getEntity());
-        if (game == null || game.state() != Game.State.RUNNING) {
+        Player player = event.getEntity();
+        Game game = manager.gameOf(player);
+        if (game == null || game.state() == Game.State.ENDED) {
             return;
         }
         if (manager.keepInventoryOnDeath()) {
             event.setKeepInventory(true);
-        } else {
-            event.setKeepInventory(false);
-            event.setKeepLevel(false);
+            event.setKeepLevel(true);
+            return;
         }
+        event.setKeepInventory(false);
+        event.setKeepLevel(false);
+        // 死亡那一刻世界的 keepInventory 还是 true（GameWorlds 默认开、或别的插件改回来）时，
+        // 服务端在发事件之前就按「保留背包」算好了掉落表，这里再关 keepInventory 只会把背包清空、
+        // 地上什么都不掉。掉落表是空的就补一份背包快照，保证物品真的掉出来。
+        if (!event.getDrops().isEmpty()) {
+            return;
+        }
+        List<ItemStack> loot = new ArrayList<>();
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && !item.getType().isAir()) {
+                loot.add(item.clone());
+            }
+        }
+        if (loot.isEmpty()) {
+            return;
+        }
+        event.getDrops().addAll(loot);
+        manager.getLogger().warning("玩家 " + player.getName() + " 死亡时世界 "
+                + player.getWorld().getName() + " 的 keepInventory 仍为 "
+                + player.getWorld().getGameRuleValue(org.bukkit.GameRule.KEEP_INVENTORY)
+                + "（被其它插件改回？），已按本插件设置强制掉落 " + loot.size() + " 件物品。");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
@@ -350,7 +374,7 @@ public final class DontDoItListener implements Listener {
 
     /**
      * 同理放行本方场地的放置（等待室的放置拦截在 WAITING 生效，不冲突）。
-     * 超过地图基线高度上限的放置直接拒绝，否则那些方块脱离还原范围、会一直留着。
+     * 高处放置不再拒绝；超出地图基线顶部的那部分由 {@link MapBaseline#restore} 一并清掉。
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlaceAllow(BlockPlaceEvent event) {

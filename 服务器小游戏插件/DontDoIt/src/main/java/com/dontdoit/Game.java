@@ -409,9 +409,14 @@ public final class Game {
                 if (baseline.width() != restoreWidth()
                         || baseline.maxY() < mgr.restoreTopFor(world, center.getBlockY(),
                         arena.getStoneY() == Integer.MIN_VALUE ? center.getBlockY() : arena.getStoneY())) {
-                    mgr.getLogger().warning("场地 " + arena.getName() + " 的地图基线尺寸与当前场地不一致"
+                    String warn = "场地 " + arena.getName() + " 的地图基线尺寸与当前场地不一致"
                             + "（基线 " + baseline.width() + " 宽、顶部 Y=" + baseline.maxY()
-                            + "）：请清理残留方块后执行 /ddi savemap " + arena.getName());
+                            + "）：基线上方会自动清空，但水平方向超出的方块清不掉，"
+                            + "请清理残留方块后执行 /ddi savemap " + arena.getName();
+                    mgr.getLogger().warning(warn);
+                    if (starter != null) {
+                        Chat.send(starter, "&e" + warn);
+                    }
                 }
                 int changed = baseline.restore(world);
                 if (changed > 0) {

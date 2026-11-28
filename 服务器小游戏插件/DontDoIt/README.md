@@ -54,8 +54,12 @@
 - **发光 / 夜视**：`glowing: true` 给对局玩家加发光效果（隔墙能看到彼此），`night-vision` 控制夜视；
   两者都在结算时清除。
 - **触发反馈**：触发词条时的音效和灰烬粒子**只发给触发者本人**；播报和屏幕标题仍发给本局玩家与附近观战者。
-- **死亡掉落**：对局中在 HIGHEST 优先级强制按 `keep-inventory-on-death` 设置死亡保留/掉落，
-  即使别的插件把世界的 keepInventory 设成开启也不会影响本局。
+- **死亡掉落**：等待室和对局中都在 HIGHEST 优先级强制按 `keep-inventory-on-death` 设置死亡保留/掉落。
+  注意坑：如果死亡那一刻世界的 keepInventory 仍是 true（GameWorlds 默认 `keep-inventory: true`，
+  或别的插件改回来），服务端**在发事件之前**就按「保留背包」建好了掉落表；这时只 `setKeepInventory(false)`
+  会把背包清空、地上什么都不掉。本插件检测到掉落表为空时会补一份背包快照再掉落，并在控制台打一条
+  warning 指出是哪个世界的 keepInventory 没关。要根治仍应把该世界（或 GameWorlds 的
+  `keep-inventory`）设为 false。
 - **世界规则**：对局开始时按配置把场地所在世界设为 `pvp-enabled`、`mob-spawning-enabled`、
   `keep-inventory-on-death`（false = 死亡掉落），结束时还原世界原来的值。注意这些是世界级设置，
   同一世界的其他区域在对局期间也会受影响；建议把场地放在单独世界。原值会写进
@@ -71,8 +75,10 @@
   场地边长 + 世界边界留白（`world-border-padding`）× 同宽，底部到基岩；默认 `restore-to-max-height: true`
   会一直记录到世界最高处，**玩家搭多高都能还原**（大场地抓取/还原会慢一些）；
   设为 false 时只记录到「中心/石层 + `restore-top-offset`」。基线只存在磁盘，重开服也不会丢。
-  基线尺寸/顶部与当前场地不一致时会在控制台提示，清理残留后重新 `/ddi savemap`。
-  从旧版本升级后基线顶部只到 66，需要重新 `/ddi savemap <场地>` 一次才能覆盖搭高。
+  **基线顶部以上的方块会自动清空**（同一片 X/Z 一直清到世界最高处），所以旧基线（顶部只到 66）
+  也不会再留高处残留；想少扫一遍可以重新 `/ddi savemap <场地>` 保存成全高度基线。
+  基线水平尺寸与当前场地不一致时（改过 `area-size` / `world-border-padding`）会在控制台和开局者聊天栏提示，
+  清理残留后重新 `/ddi savemap`。
   可破坏/放置范围与世界边界一致（= 边长 + 留白），边界圈里的方块也能正常破坏。
 - **地形生成**：照官方 `GameAreaGenerator`——从场地中心往下最多 30 格找「≥25% 石头类方块」的一层作为石层，
   石层下方放基岩（`bedrock-depth`），石层以上按深度比例把石头换成安山岩/煤矿/铁矿/钻石矿。

@@ -129,7 +129,34 @@ public final class MapBaseline {
     /** 方块 + 实体一起还原。返回改动过的方块数量。 */
     public int restore(World world) {
         int changed = restoreBlocks(world);
+        changed += clearAbove(world);
         restoreEntities(world);
+        return changed;
+    }
+
+    /**
+     * 基线顶部以上的残留方块一并清掉。
+     * 基线若是旧版本/低 restore-top-offset 保存的，玩家搭高处的方块会落在基线范围外，
+     * 只按快照还原永远清不掉；这里把同一片 X/Z 上空一直清到世界最高处。
+     */
+    private int clearAbove(World world) {
+        int from = maxY() + 1;
+        int to = world.getMaxHeight() - 1;
+        if (from > to) {
+            return 0;
+        }
+        int changed = 0;
+        for (int y = from; y <= to; y++) {
+            for (int z = minZ; z < minZ + width; z++) {
+                for (int x = minX; x < minX + width; x++) {
+                    Block block = world.getBlockAt(x, y, z);
+                    if (!block.isEmpty()) {
+                        block.setType(org.bukkit.Material.AIR, false);
+                        changed++;
+                    }
+                }
+            }
+        }
         return changed;
     }
 
