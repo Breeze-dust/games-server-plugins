@@ -66,6 +66,9 @@ public class GameManager {
     private final Set<UUID> guessedRound = new HashSet<>();
     /** 游戏进行中中途加入的玩家：仅作为猜测者，本局不参与建造轮换（下一局才正常参与）。 */
     private final Set<UUID> midGameJoins = new HashSet<>();
+    /** 与局内玩家共用语音频道的主城观战者（每秒同步，退出观战时移出）。 */
+    private final Set<UUID> voiceSpectators = new HashSet<>();
+    private BukkitTask voiceSpectatorTask = null;
     /** 本局建造轮换队列：开局时按加入顺序入队；退出者在 leave 时出队（自动跳过其建造回合）；中途加入者不入队。 */
     private final ArrayDeque<UUID> buildRotation = new ArrayDeque<>();
     /** 收尾中标志：endGame 期间禁止回调重入 leave()（HubAPI.teleportToLobby 会回调本插件的 lobby handler）。 */
@@ -472,6 +475,8 @@ public class GameManager {
                 plugin.getVoice().enter(voicePlayer);
             }
         }
+        // 主城观战者与局内玩家共用一个频道：每秒把附近观战者拉进来，退出观战/走远的自动移出
+        startVoiceSpectatorTask();
         // 回收等待道具，不带入游戏
         for (UUID u : players) {
             Player pp = Bukkit.getPlayer(u);
@@ -1058,6 +1063,7 @@ public class GameManager {
     private synchronized void endGame0() {
         cancelEndTask();
         cancelHintTask();
+        stopVoiceSpectatorTask();
         evaluating = false;
         if (evalTask != null) {
             evalTask.cancel();
@@ -1667,6 +1673,46 @@ public class GameManager {
         if (hintTask != null) {
             hintTask.cancel();
             hintTask = null;
+        }
+    }
+
+    /** 观战者与局内玩家共用一个语音频道：开局后每秒同步一次。 */
+    private void startVoiceSpectatorTask() {
+        stopVoiceSpectatorTask();
+        voiceSpectatorTask = Bukkit.getScheduler().runTaskTimer(plugin, this::syncVoiceSpectators, 20L, 20L);
+    }
+
+    private void stopVoiceSpectatorTask() {
+        if (voiceSpectatorTask != null) {
+            voiceSpectatorTask.cancel();
+            voiceSpectatorTask = null;
+        }
+        voiceSpectators.clear();
+    }
+
+    private void syncVoiceSpectators() {
+        if (phase != Phase.PLAYING || players.isEmpty()) {
+            return;
+        }
+        Arena arena = plugin.getArenas().getActive();
+        double radius = arena != null && arena.isReady() ? arena.getRadiusXZ() + 32.0 : 128.0;
+        List<UUID> near = HubAPI.spectatorsNear(players, radius);
+        for (UUID id : near) {
+            if (voiceSpectators.add(id)) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline()) {
+                    plugin.getVoice().enter(p);
+                }
+            }
+        }
+        for (UUID id : new ArrayList<>(voiceSpectators)) {
+            if (!near.contains(id)) {
+                voiceSpectators.remove(id);
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline()) {
+                    plugin.getVoice().exit(p);
+                }
+            }
         }
     }
 
