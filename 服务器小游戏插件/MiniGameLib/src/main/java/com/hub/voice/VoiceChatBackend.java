@@ -22,6 +22,6 @@ interface VoiceChatBackend {
 
     void removeGroup(UUID groupId);
 
-    /** groupId 为 null 表示退出当前组。 */
-    void apply(UUID player, UUID groupId);
+    /** groupId 为 null 表示退出当前组。返回 false = 连接还没就绪（客户端没握手/没装模组），可稍后重试。 */
+    boolean apply(UUID player, UUID groupId);
 }

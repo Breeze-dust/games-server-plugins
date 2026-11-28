@@ -136,30 +136,31 @@ final class SvcBackend implements VoiceChatBackend {
     }
 
     @Override
-    public void apply(UUID playerId, UUID groupId) {
+    public boolean apply(UUID playerId, UUID groupId) {
         VoicechatServerApi server = api;
         if (server == null) {
-            return;
+            return false;
         }
         VoicechatConnection connection = server.getConnectionOf(playerId);
-        // 没装客户端模组时 isInstalled() 为 false：不建组、也不报错，到点了下次对账再试
+        // 刚进服时客户端还没完成语音握手：返回 false，让调用方过一会儿再试
         if (connection == null || !connection.isInstalled()) {
-            return;
+            return false;
         }
         if (groupId == null) {
             if (connection.isInGroup()) {
                 connection.setGroup(null);
             }
-            return;
+            return true;
         }
         Group group = groups.get(groupId);
         if (group == null) {
-            return;
+            return true;
         }
         Group current = connection.getGroup();
         if (current != null && current.getId().equals(groupId)) {
-            return;
+            return true;
         }
         connection.setGroup(group);
+        return true;
     }
 }

@@ -7,9 +7,7 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -39,6 +37,9 @@ public final class VoiceChat {
     /** 固定组 ID：MiniGameLib 重载后还能认出同一个组，不会建出同名的第二个。 */
     private static final UUID HUB_GROUP_ID = UUID.fromString("3f7c9d21-8b4e-4a6f-9c1d-2e5b7a8c9d10");
 
+    /** 刚进服的玩家语音握手还没完成，首次入组最多重试这么久。 */
+    private static final long HUB_RETRY_MS = 30_000L;
+
     private static VoiceChatBackend backend;
     private static Plugin owner;
     private static BukkitTask enforceTask;
@@ -47,8 +48,8 @@ public final class VoiceChat {
     private static boolean hubWarned;
     private static UUID hubGroupId;
     private static final Map<UUID, UUID> desired = new HashMap<>();
-    /** SVC 还没就绪时先记下要进公共组的人，就绪后补一次。 */
-    private static final Set<UUID> pendingHub = new HashSet<>();
+    /** 还没成功加入公共组的人 → 重试截止时间（毫秒）。成功后立刻移除，之后不再强制拉回。 */
+    private static final Map<UUID, Long> pendingHub = new HashMap<>();
 
     private VoiceChat() {
     }
@@ -95,16 +96,15 @@ public final class VoiceChat {
         }
         if (!available()) {
             if (backend != null) {
-                pendingHub.add(player);
+                pendingHub.put(player, System.currentTimeMillis() + HUB_RETRY_MS);
             }
             return;
         }
         ensureHubGroup();
-        if (hubGroupId == null) {
-            pendingHub.add(player);
-            return;
+        if (hubGroupId == null || !backend.apply(player, hubGroupId)) {
+            // 客户端语音还没握手（刚进服常见）：30 秒内每秒重试，成功一次就不再管
+            pendingHub.put(player, System.currentTimeMillis() + HUB_RETRY_MS);
         }
-        backend.apply(player, hubGroupId);
     }
 
     /** 把玩家移出主城公共组；如果他在队伍组里则不动。 */
@@ -211,17 +211,22 @@ public final class VoiceChat {
         }
     }
 
-    /** SVC 就绪前收到的入组请求，在这里补发一次。 */
+    /** 首次入组还没成功的人，在这里按秒重试。 */
     private static void flushPendingHub() {
         if (pendingHub.isEmpty() || hubGroupId == null) {
             return;
         }
-        for (UUID id : new ArrayList<>(pendingHub)) {
-            pendingHub.remove(id);
-            if (Bukkit.getPlayer(id) == null || desired.containsKey(id) || ArcadeBridge.isInRound(id)) {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<UUID, Long> entry : new ArrayList<>(pendingHub.entrySet())) {
+            UUID id = entry.getKey();
+            if (entry.getValue() < now || Bukkit.getPlayer(id) == null
+                    || desired.containsKey(id) || ArcadeBridge.isInRound(id)) {
+                pendingHub.remove(id);
                 continue;
             }
-            backend.apply(id, hubGroupId);
+            if (backend.apply(id, hubGroupId)) {
+                pendingHub.remove(id);
+            }
         }
     }
 
