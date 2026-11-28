@@ -9,7 +9,8 @@
   - **自动前进**：每 tick 按**水平朝向（yaw）**给速度（`movement.speed`，默认 0.28），所以低头看脚也照样向前走；玩家用鼠标转向；**不能跳跃**（纵向位移会被按回原地）。
   - **疾跑与体力**：原版疾跑被禁用；**经验条就是体力条**（`stamina.max`，默认 100）。按住 W 且有体力时按 `movement.boost-multiplier`（默认 1.7 倍）加速并每秒消耗 `stamina.drain-per-second`（默认 35）；**体力为 0 但仍按住 W** 时按 `movement.empty-w-multiplier`（默认 1.15 倍）走，比完全松开 W 的人稍快；松开 W 才恢复 `stamina.regen-per-second`（默认 18）。
   - **玻璃板**：玩家离开一格时，在**身后那一格的脚部高度**放一块**自己颜色的染色玻璃板**（`*_STAINED_GLASS_PANE`，`plate.colors` 顺序分配），相邻板子会自动连成一道墙。**板子不是立刻放**：等玩家离那一格 ≥ `plate.place-distance`（默认 1.2 格）才真正生成，所以快速左右转头也不会正好撞到自己刚铺的板；**斜着走时会补一个拐角格**，整条轨迹首尾相接、不会断节。按 `plate.lifetime-seconds`（默认 3 秒）消失，并**每过 1 秒存活时间增加 `plate.lifetime-growth-ms-per-second`（默认 150ms）**，封顶 `plate.max-lifetime-seconds`（默认 45 秒）。越到后面板子存在越久、越难躲。
-  - **淘汰**：走进已经有玻璃板的格子（无论谁的）→ 淘汰；**撞到方块（墙/障碍）→ 淘汰**；走出场地边界或掉到平台下方 6 格 → 淘汰。被淘汰的人留在场上的玻璃板不会消失，继续挡人。
+  - **缩圈**：开局 `shrink.start-seconds`（默认 45）秒后，安全区向场地中心线性收缩，`shrink.duration-seconds`（默认 60）秒收到 `shrink.min-radius`（默认 3）。**默认用世界边界做收缩墙**（`shrink.world-border: true`，客户端自带红/蓝边界，最明显）：开局把场地所在世界的边界设成场地大小并保存原值，结束/停服自动还原；崩服时下次启动会按 `plugins/SnakeParty/worldborder-backup.yml` 还原。边界比淘汰半径外扩 `shrink.border-margin`（默认 1 格），玩家越过淘汰线直接淘汰。旧的红色粉尘边界改成 `shrink.particles`（默认关）。
+  - **淘汰**：走进已经有玻璃板的格子（无论谁的）→ 淘汰；**撞到方块（墙/障碍）→ 淘汰**；走出场地边界/缩圈边界或掉到平台下方 6 格 → 淘汰。被淘汰的人留在场上的玻璃板不会消失，继续挡人。
   - **胜负**：场上剩 1 人 → 他获胜；时间到（`game-seconds`，默认 120 秒）仍有多人存活 → **共同获胜**；全员淘汰 → 无人获胜。
   - **前三名**：获胜者并列第一；被淘汰的按淘汰顺序倒序补第二、第三。前三名分别 **+3/+2/+1 积分**，同时累计 `firsts/seconds/thirds`；写入 `players.yml` 的 `games.snakeparty.points / firsts / seconds / thirds`。
   - 场内玩家无伤（PvP/摔落/火焰等全部取消，不会死），不会掉物品，不能破坏/放置方块。
@@ -21,6 +22,7 @@
   - `movement.speed`：每 tick 前进速度；`movement.boost-multiplier`：按住 W 有体力时的加速倍率；`movement.empty-w-multiplier`：体力为 0 仍按 W 时的倍率
   - `stamina.max` / `stamina.drain-per-second` / `stamina.regen-per-second`：体力上限、消耗、恢复
   - `plate.lifetime-seconds` / `plate.lifetime-growth-ms-per-second` / `plate.max-lifetime-seconds` / `plate.colors` / `plate.place-distance`（离开多少格后才铺板，默认 1.2；调大更不容易撞到自己的板，但轨迹出现更晚）
+  - `shrink.enabled` / `shrink.start-seconds` / `shrink.duration-seconds` / `shrink.min-radius` / `shrink.world-border`（世界边界收缩墙，默认开）/ `shrink.border-margin` / `shrink.particles`（旧粉尘边界，默认关）
   - `arena.center` / `arena.radius` / `arena.floor-material`（默认 `STONE`）/ `arena.floor-layers`（默认 2，两层同材质）/ `arena.lobby` / `arena.spawns`（用命令写，别手写坐标）
 - **建场步骤（OP，第一次上线）**：
   1. 站到场地中心执行 `/snake setarena 16`（半径 4~64，场地是边长 `2*半径+1` 的方形）：自动铺**两层石头**平台（`arena.floor-material` / `arena.floor-layers` 可调）并清掉上方 9 格。

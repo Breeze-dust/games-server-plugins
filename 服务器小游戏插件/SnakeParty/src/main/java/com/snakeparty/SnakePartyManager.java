@@ -19,6 +19,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -91,6 +92,15 @@ public final class SnakePartyManager {
     private double shrinkHalf;
     private boolean shrinkStarted;
     private BukkitTask borderTask;
+    /** 缩圈的可视边界：直接收缩场地所在世界的世界边界；开局保存原值，结束/停服时还原。 */
+    private WorldBorder border;
+    private boolean borderApplied;
+    private Location borderOldCenter;
+    private double borderOldSize;
+    private int borderOldWarningDistance;
+    private int borderOldWarningTime;
+    private double borderOldDamageAmount;
+    private double borderOldDamageBuffer;
     /** 临时诊断：本局前几次玻璃板放置/跳过的原因，只打前几条，排"玻璃板不出现"用。 */
     private int plateDebugCount;
     private boolean plateWarned;
@@ -270,6 +280,7 @@ public final class SnakePartyManager {
     // ---------- 生命周期 ----------
 
     public void load() {
+        restoreBorderBackupOnLoad();
         ensureDefaults();
         arena.load();
         stats = PlayerStats.load("snakeparty", new File(plugin.getDataFolder(), "data.yml"));
@@ -289,6 +300,7 @@ public final class SnakePartyManager {
 
     public void shutdown() {
         cancelTasks();
+        restoreWorldBorder();
         liveSidebar.hideAll();
         restorePlates();
         saveAll();
@@ -322,6 +334,9 @@ public final class SnakePartyManager {
         changed |= setDefault("shrink.start-seconds", 45);
         changed |= setDefault("shrink.duration-seconds", 60);
         changed |= setDefault("shrink.min-radius", 3.0);
+        changed |= setDefault("shrink.world-border", true);
+        changed |= setDefault("shrink.border-margin", 1.0);
+        changed |= setDefault("shrink.particles", false);
         changed |= setDefault("plate.colors", List.of("RED", "ORANGE", "YELLOW", "LIME",
                 "LIGHT_BLUE", "BLUE", "PURPLE", "MAGENTA", "PINK", "CYAN",
                 "WHITE", "GRAY", "BROWN", "GREEN", "BLACK", "LIGHT_GRAY"));
@@ -626,8 +641,13 @@ public final class SnakePartyManager {
         shrinkHalf = arena.getRadius();
         shrinkStarted = false;
         if (shrinkEnabled()) {
-            broadcast("&c&l缩圈：&f开局 &e" + shrinkStartSeconds() + " &f秒后场地开始向中心收缩，越过红色边界直接淘汰！");
-            borderTask = Bukkit.getScheduler().runTaskTimer(plugin, this::renderShrinkBorder, 10L, 10L);
+            if (worldBorderEnabled()) {
+                applyWorldBorder();
+            }
+            broadcast("&c&l缩圈：&f开局 &e" + shrinkStartSeconds() + " &f秒后场地开始向中心收缩，越过边界直接淘汰！");
+            if (shrinkParticlesEnabled()) {
+                borderTask = Bukkit.getScheduler().runTaskTimer(plugin, this::renderShrinkBorder, 10L, 10L);
+            }
         }
         updateActionBar();
         reportArena();
@@ -639,6 +659,7 @@ public final class SnakePartyManager {
     public void stopGame() {
         if (state == State.COUNTDOWN) {
             cancelTasks();
+            restoreWorldBorder();
             liveSidebar.hide("snakeparty");
             restorePlates();
             for (UUID id : new ArrayList<>(playing)) {
@@ -668,6 +689,7 @@ public final class SnakePartyManager {
             return;
         }
         cancelTasks();
+        restoreWorldBorder();
         liveSidebar.hide("snakeparty");
         restorePlates();
         state = State.WAITING;
@@ -936,6 +958,128 @@ public final class SnakePartyManager {
         return Math.max(1.0, plugin.getConfig().getDouble("shrink.min-radius", 3.0));
     }
 
+    /** 用世界边界做可见的收缩墙（默认开）；关掉后仍按缩圈半径判定淘汰，只是看不到墙。 */
+    private boolean worldBorderEnabled() {
+        return plugin.getConfig().getBoolean("shrink.world-border", true);
+    }
+
+    /** 世界边界比淘汰半径再外扩多少格：留一点空间让玩家能"越过边界"才被淘汰。 */
+    private double worldBorderMargin() {
+        return Math.max(0.0, Math.min(8.0, plugin.getConfig().getDouble("shrink.border-margin", 1.0)));
+    }
+
+    /** 旧的红色粉尘边界（默认关，世界边界已经足够明显）。 */
+    private boolean shrinkParticlesEnabled() {
+        return plugin.getConfig().getBoolean("shrink.particles", false);
+    }
+
+    /** 把场地世界的世界边界设成当前场地大小，并保存原值供还原。 */
+    private void applyWorldBorder() {
+        Location center = arena.center();
+        if (center == null || center.getWorld() == null) {
+            return;
+        }
+        border = center.getWorld().getWorldBorder();
+        if (!borderApplied) {
+            borderOldCenter = border.getCenter();
+            borderOldSize = border.getSize();
+            borderOldWarningDistance = border.getWarningDistance();
+            borderOldWarningTime = border.getWarningTime();
+            borderOldDamageAmount = border.getDamageAmount();
+            borderOldDamageBuffer = border.getDamageBuffer();
+            borderApplied = true;
+        }
+        border.setCenter(center.getBlockX() + 0.5, center.getBlockZ() + 0.5);
+        // 伤害由本局自己的"越界淘汰"处理，避免世界边界额外扣血/误伤候场玩家
+        border.setDamageAmount(0.0);
+        border.setDamageBuffer(0.0);
+        border.setWarningDistance(2); // 贴近边界时才泛红，别整局红光
+        border.setWarningTime(0);
+        border.setSize(borderSize(shrinkHalf), 1L);
+        persistBorderBackup();
+    }
+
+    private File borderBackupFile() {
+        return new File(plugin.getDataFolder(), "worldborder-backup.yml");
+    }
+
+    /** 开局改世界边界前，把原值写到磁盘：崩服时下次启动能还原，不会把整个世界卡在缩小状态。 */
+    private void persistBorderBackup() {
+        if (borderOldCenter == null || borderOldCenter.getWorld() == null) {
+            return;
+        }
+        YamlConfiguration yml = new YamlConfiguration();
+        yml.set("world", borderOldCenter.getWorld().getName());
+        yml.set("x", borderOldCenter.getX());
+        yml.set("z", borderOldCenter.getZ());
+        yml.set("size", borderOldSize);
+        yml.set("warning-distance", borderOldWarningDistance);
+        yml.set("warning-time", borderOldWarningTime);
+        yml.set("damage-amount", borderOldDamageAmount);
+        yml.set("damage-buffer", borderOldDamageBuffer);
+        try {
+            yml.save(borderBackupFile());
+        } catch (IOException exception) {
+            plugin.getLogger().warning("保存世界边界原值失败：" + exception.getMessage());
+        }
+    }
+
+    /** 启动时若发现上次没正常收尾，先把世界边界还原成缩小前的值。 */
+    private void restoreBorderBackupOnLoad() {
+        File file = borderBackupFile();
+        if (!file.isFile()) {
+            return;
+        }
+        YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
+        World world = Bukkit.getWorld(yml.getString("world", ""));
+        if (world != null) {
+            WorldBorder worldBorder = world.getWorldBorder();
+            worldBorder.setCenter(yml.getDouble("x"), yml.getDouble("z"));
+            worldBorder.setSize(yml.getDouble("size", worldBorder.getSize()));
+            worldBorder.setWarningDistance(yml.getInt("warning-distance", worldBorder.getWarningDistance()));
+            worldBorder.setWarningTime(yml.getInt("warning-time", worldBorder.getWarningTime()));
+            worldBorder.setDamageAmount(yml.getDouble("damage-amount", worldBorder.getDamageAmount()));
+            worldBorder.setDamageBuffer(yml.getDouble("damage-buffer", worldBorder.getDamageBuffer()));
+            plugin.getLogger().info("已还原上次未正常结束的蛇行派对世界边界（" + world.getName() + "）。");
+        }
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
+    }
+
+    private double borderSize(double half) {
+        return Math.max(2.0, (half + worldBorderMargin()) * 2.0);
+    }
+
+    /** 边界每秒跟着缩圈一起收；客户端会平滑动画。 */
+    private void updateWorldBorder() {
+        if (!borderApplied || border == null) {
+            return;
+        }
+        border.setSize(borderSize(shrinkHalf), 1L);
+    }
+
+    /** 结束/停服：世界边界还原成开局前的值（多面共用同一个世界时也不会留下缩小的边界）。 */
+    private void restoreWorldBorder() {
+        if (!borderApplied || border == null) {
+            return;
+        }
+        borderApplied = false;
+        if (borderOldCenter != null && borderOldCenter.getWorld() != null) {
+            border.setCenter(borderOldCenter);
+        }
+        border.setSize(borderOldSize);
+        border.setWarningDistance(borderOldWarningDistance);
+        border.setWarningTime(borderOldWarningTime);
+        border.setDamageAmount(borderOldDamageAmount);
+        border.setDamageBuffer(borderOldDamageBuffer);
+        border = null;
+        File backup = borderBackupFile();
+        if (backup.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            backup.delete();
+        }
+    }
+
     /** 每秒推进一次边界：开局 shrink.start-seconds 秒后开始，用 shrink.duration-seconds 秒线性收到最小半径。 */
     private void updateShrink() {
         if (!shrinkEnabled() || state != State.RUNNING) {
@@ -964,6 +1108,7 @@ public final class SnakePartyManager {
         if (target < shrinkHalf) {
             shrinkHalf = target;
         }
+        updateWorldBorder();
     }
 
     /** 沿当前边界画一圈红色粉尘（每 10 tick 一次）。 */
