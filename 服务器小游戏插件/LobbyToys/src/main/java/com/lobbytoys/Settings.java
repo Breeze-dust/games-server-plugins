@@ -28,6 +28,8 @@ public final class Settings {
     /** 头顶骑乘（右键玩家坐到对方头顶）。 */
     public final boolean headSitEnabled;
     public final double headSitMaxDistance;
+    /** 座位离被坐玩家头顶再往上的高度（格）。 */
+    public final double headSitHeight;
     /** 空手长按右键多久算「甩飞」（毫秒）。 */
     public final long headSitHoldMillis;
     public final double headSitThrowPower;
@@ -57,6 +59,7 @@ public final class Settings {
 
         this.headSitEnabled = config.getBoolean("head-sit.enabled", true);
         this.headSitMaxDistance = Math.max(1.0, config.getDouble("head-sit.max-distance", 5.0));
+        this.headSitHeight = Math.max(0.0, config.getDouble("head-sit.height", 0.7));
         this.headSitHoldMillis = Math.max(200L, config.getLong("head-sit.hold-millis", 600L));
         this.headSitThrowPower = Math.max(0.0, config.getDouble("head-sit.throw-power", 1.4));
         this.headSitThrowUp = Math.max(0.0, config.getDouble("head-sit.throw-up", 0.9));

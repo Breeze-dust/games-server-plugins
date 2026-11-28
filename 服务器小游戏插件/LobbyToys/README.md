@@ -18,14 +18,17 @@
   坐在方块上方 `seat-height`（默认 `0.45`）处，起身直接下车，不会卡进方块里。
   配置段 `chairs`：`enabled`、`seat-height`、`message`（动作栏提示，可留空）。
   实现：`ChairRegistry`（登记读/写 `chairs.yml`）+ `ChairManager`（工具道具、坐/起身/清理残留）+ `ChairListener`（右键、Shift、下坐骑、换世界、死亡、拆方块）。
-- **坐到别人头顶**：主城里**右键另一个玩家**就骑到对方头顶（只认玩家，NPC / 分身 / 其他实体都不行）；
-  被坐的人按 `Shift` 让头顶上的一串人全部下来；被坐的人**空手按住右键**（原版空手右键空气不上报，
-  要对着地面/方块按住）约 `hold-millis` 毫秒把头顶上的一串人一起甩飞。
+- **坐到别人头顶**：主城里**空手右键另一个玩家**就骑到对方头顶（只认玩家，NPC / 分身 / 其他实体都不行；
+  手里拿着东西右键不会上人）。被坐的人按 `Shift` 让头顶上的一串人全部下来；被坐的人**空手按住右键**
+  （原版空手右键空气不上报，要对着地面/方块按住）约 `hold-millis` 毫秒把头顶上的一串人一起甩飞。
   被坐的人也可以再坐到别人头顶，叠成一串；A 骑 B 时 B 不能再骑 A（防成环）。
+  座位是**逐刻跟随的隐形 marker 盔甲架**（`lobbytoys-headseat` 标签、不写盘）：不能直接用「玩家当载具」，
+  因为原版会再减去玩家自身的骑乘贴附点 0.6 格，乘客只能到对方脚上 1.2 格、碰撞箱会压住对方视线；
+  `head-sit.height`（默认 `0.7`）是座位离被坐玩家**头顶**再往上的高度，低于 0.5 会重新挡住对方右键交互。
   被坐的人或坐着的人进入**天坑 / 云中漫步 / 其他小游戏场地**、或离开 `worlds` 里的世界时自动下来；
-  `keep-games`（默认 `骗子酒馆`）里的游戏不自动下来。
-  实现：`HeadSitManager`（骑乘直接用原版「玩家当载具」，每 10 刻检查游戏状态）+ `HeadSitListener`（右键玩家、Shift、长按右键、下线/死亡/换世界）。
-  配置段 `head-sit`：`enabled`、`max-distance`、`hold-millis`、`throw-power`、`throw-up`、`keep-games`、`messages`。
+  `keep-games`（默认 `骗子酒馆`）里的游戏不自动下来。坐上/下来都没有音效提醒。
+  实现：`HeadSitManager`（座位实体、逐刻跟随、每刻检查游戏状态）+ `HeadSitListener`（右键玩家、Shift、长按右键、下坐骑、下线/死亡/换世界）。
+  配置段 `head-sit`：`enabled`、`max-distance`、`height`、`hold-millis`、`throw-power`、`throw-up`、`keep-games`、`messages`。
 - **刮刮乐（实验功能，不在菜单里）**：`/lobbytoys scratch [行 列]` 在玩家面前生成一个**固定的 item frame**，
   里面是一张 128×128 的地图：上层是灰色涂层，下层是 `行 × 列` 的奖品格子。**按住左键**在卡面上刮，
   涂层按笔刷半径被擦掉；某格被刮掉 `reveal-threshold` 比例后算揭开，立刻发该格奖品并触发事件效果。

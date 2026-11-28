@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -30,7 +31,7 @@ public final class HeadSitListener implements Listener {
         this.headSit = headSit;
     }
 
-    /** 右键另一个玩家：坐上去。只处理 Player，其他实体（NPC、分身、盔甲架）一概不理。 */
+    /** 空手右键另一个玩家：坐上去。只处理 Player，其他实体（NPC、分身、盔甲架）一概不理。 */
     @EventHandler(ignoreCancelled = true)
     public void onInteractEntity(PlayerInteractEntityEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
@@ -39,10 +40,15 @@ public final class HeadSitListener implements Listener {
         if (!(event.getRightClicked() instanceof Player mount)) {
             return;
         }
-        if (headSit.sit(event.getPlayer(), mount)) {
+        Player player = event.getPlayer();
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        if (!mainHand.getType().isAir()) {
+            return;
+        }
+        if (headSit.sit(player, mount)) {
             // 拦住原版/其他插件对这个玩家的右键效果
             event.setCancelled(true);
-            headSit.resetHold(event.getPlayer());
+            headSit.resetHold(player);
         }
     }
 
@@ -82,6 +88,14 @@ public final class HeadSitListener implements Listener {
         }
         if (headSit.mountOf(player) != null) {
             headSit.dropSelf(player);
+        }
+    }
+
+    /** 玩家从座位上下来（Shift 原生下车 / 座位被删）时把座位实体收掉。 */
+    @EventHandler
+    public void onDismount(EntityDismountEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            headSit.handleDismount(player, event.getDismounted());
         }
     }
 
