@@ -4,6 +4,7 @@ import com.hub.api.GameTitles;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
+import com.hub.voice.VoiceChat;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
@@ -506,6 +507,7 @@ public class CloudWalkManager {
         session.generated = path.size() - 1;
         sessions.put(id, session);
         HubAPI.setPlaying(id, "云中漫步");
+        VoiceChat.joinHub(id); // 云中漫步整局与主城共用公共语音组
         updateGlow(session, path.get(1));
 
         Chat.send(p, "&b&l云中漫步 &7· " + difficulty.color + difficulty.name

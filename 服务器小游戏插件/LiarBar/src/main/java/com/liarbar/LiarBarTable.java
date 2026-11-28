@@ -4,6 +4,7 @@ import com.hub.api.GameState;
 import com.hub.api.HubAPI;
 import com.hub.util.Chat;
 import com.hub.util.WaitCountdown;
+import com.hub.voice.VoiceChat;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -718,6 +719,7 @@ public final class LiarBarTable {
                 restoreReadyItem(p);
                 manager.captureSnapshot(p);
                 HubAPI.setPlaying(id, LiarBarManager.GAME);
+                VoiceChat.joinHub(id); // 骗子酒馆整局与主城共用公共语音组
                 p.setGameMode(GameMode.ADVENTURE);
                 p.setFoodLevel(20);
                 Chat.title(p, "&6&l骗子酒馆", "&f坐稳了，别被唬住", 3);

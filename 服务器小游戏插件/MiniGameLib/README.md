@@ -18,6 +18,7 @@
   - `com.hub.voice.VoiceChat`：Simple Voice Chat 队伍语音门面。`available()` / `createIsolatedGroup(名字)`（互相听不到的隔离组，返回组 id）/ `join(玩家UUID, 组id)` / `leave(玩家UUID)` / `deleteGroup(组id)`。**服务器没装 voicechat 插件时全部是空操作**，小游戏不用判断；没装客户端模组的玩家也不会被踢，只是听不到。SVC 的组可以被玩家自己退出，门面每秒对账一次把玩家拉回原组。
     - **初始化时序**：SVC 在 onEnable 只登记插件，`initialize()` 要等服务端启动后的下一个 tick 才回调，所以 `available()` 在刚开服时可能是 false；门面会每秒重试，就绪后打日志「已接入 Simple Voice Chat，队伍语音功能可用」。小游戏在「开局」时判断 `available()` 即可（服务端启动到开局早已就绪）。
     - **距离**：SVC 的语音距离（`plugins/voicechat/voicechat-server.properties` 的 `max_voice_distance`）是全局设置，不能按世界改。想「同队不受距离影响」就建隔离组（组内语音不看距离）；想「受距离影响」就不建组、用原版接近语音。是否这样做的开关放在**各游戏自己的 config.yml** 里（如 TNTBattle 的 `voice-chat.distance-based`），所以每个游戏可以不一样。
+    - **主城公共语音组（2026-11-28）**：SVC 就绪后自动建常驻组「大厅公共频道」（NORMAL、`persistent`、固定 UUID `3f7c9d21-8b4e-4a6f-9c1d-2e5b7a8c9d10`），空组也不会被回收，客户端组列表始终可见。`HubAPI.setGame`（进等待室）和 `HubCore#teleportToLobby`（回主城）调 `VoiceChat.joinHub` 加入一次；`HubAPI.setPlaying`（真正开局）调 `VoiceChat.leaveHub` 移出；云中漫步 / 箭术大师 / 骗子酒馆在 `setPlaying` 之后自己再 `joinHub`，整局留在公共组。公共组不写 `desired`，玩家手动退组后不会被对账拉回；街机派对参赛者（`ArcadeBridge.isInRound`）全程跳过。
 - **入口**：`MiniGameLib/src/main/java/com/hub/MiniGameLibPlugin.java#onEnable`（只打两行启动日志；`onDisable` 调 `SetupMode.exitAllRegistered()` 还原还停在建场模式里的 OP 背包）
 - **命令**：无
 - **配置**：无 config.yml（`src/main/resources/` 下只有 `plugin.yml`，且它不注册任何命令）

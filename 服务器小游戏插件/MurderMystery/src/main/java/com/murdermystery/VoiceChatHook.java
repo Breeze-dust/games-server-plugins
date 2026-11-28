@@ -10,6 +10,7 @@ import de.maxhenkel.voicechat.api.events.CreateGroupEvent;
 import de.maxhenkel.voicechat.api.events.EventRegistration;
 import de.maxhenkel.voicechat.api.events.JoinGroupEvent;
 import de.maxhenkel.voicechat.api.events.LeaveGroupEvent;
+import com.hub.voice.VoiceChat;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
@@ -62,6 +63,8 @@ final class VoiceChatHook implements VoiceChatBridge {
      * SVC 的事件在它自己的线程上跑，这里必须用并发集合。
      */
     private final Set<UUID> inGame = ConcurrentHashMap.newKeySet();
+    /** 还在等待室、尚未正式开局的玩家：这段时间放行主城公共语音组。 */
+    private final Set<UUID> waiting = ConcurrentHashMap.newKeySet();
     /** 已淘汰、被拉进「死人组」的玩家；SVC 的事件线程也要读，同样必须并发。 */
     private final Set<UUID> dead = ConcurrentHashMap.newKeySet();
     private volatile VoicechatServerApi api;
@@ -109,15 +112,25 @@ final class VoiceChatHook implements VoiceChatBridge {
         registered = true;
     }
 
-    /** 进局：先踢出现有语音组，再标记为局内（局内禁止建组 / 入组）。 */
+    /** 进局：先踢出现有语音组，再标记为局内（等待阶段放行主城公共组）。 */
     public void enter(UUID id) {
+        waiting.add(id);
         inGame.add(id);
         dead.remove(id); // 重新进局：先摘掉死者标记，再做「活人的规矩」
         release(id);
     }
 
+    /** 正式开局：等待结束，公共组放行失效，并把玩家从公共组踢回距离麦。 */
+    public void play(UUID id) {
+        waiting.remove(id);
+        inGame.add(id);
+        dead.remove(id);
+        release(id);
+    }
+
     /** 离开对局 / 退出服务器 / 结算：取消局内标记、摘掉死者标记，并放回自由状态（可以自己建组）。 */
     public void exit(UUID id) {
+        waiting.remove(id);
         inGame.remove(id);
         dead.remove(id); // 必须先摘标记：否则下面的 setGroup(null) 会被「死者不许退组」拦掉
         release(id);
@@ -143,6 +156,7 @@ final class VoiceChatHook implements VoiceChatBridge {
     public void shutdown() {
         api = null;
         inGame.clear();
+        waiting.clear();
         dead.clear();
     }
 
@@ -222,6 +236,16 @@ final class VoiceChatHook implements VoiceChatBridge {
         return c != null && c.getPlayer() != null && dead.contains(c.getPlayer().getUuid());
     }
 
+    private boolean isWaiting(VoicechatConnection c) {
+        return c != null && c.getPlayer() != null && waiting.contains(c.getPlayer().getUuid());
+    }
+
+    /** 主城公共语音组（MiniGameLib 建的常驻组）。 */
+    private static boolean isHubGroup(Group g) {
+        UUID hub = VoiceChat.hubGroupId();
+        return g != null && hub != null && hub.equals(g.getId());
+    }
+
     private static boolean isDeadGroup(Group g) {
         return g != null && DEAD_GROUP_ID.equals(g.getId());
     }
@@ -268,6 +292,9 @@ final class VoiceChatHook implements VoiceChatBridge {
             }
             if (isDeadGroup(e.getGroup()) && isDead(e.getConnection())) {
                 return; // 死人组豁免
+            }
+            if (isHubGroup(e.getGroup()) && isWaiting(e.getConnection())) {
+                return; // 等待阶段：主城公共组放行；开局 play() 后不再放行
             }
             if (isInGame(e.getConnection())) {
                 e.cancel();

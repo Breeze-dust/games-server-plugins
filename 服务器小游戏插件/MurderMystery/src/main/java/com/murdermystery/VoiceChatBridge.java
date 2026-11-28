@@ -32,6 +32,9 @@ interface VoiceChatBridge {
     /** 进局：先踢出现有语音组，再标记为局内。 */
     void enter(UUID id);
 
+    /** 正式开局：等待阶段结束，放开的主城公共组重新禁掉，并把玩家踢出公共组。 */
+    void play(UUID id);
+
     /** 离开对局 / 退出服务器 / 结算：解除局内标记，回到可以自由建组的状态。 */
     void exit(UUID id);
 
@@ -65,6 +68,10 @@ interface VoiceChatBridge {
 
         @Override
         public void enter(UUID id) {
+        }
+
+        @Override
+        public void play(UUID id) {
         }
 
         @Override

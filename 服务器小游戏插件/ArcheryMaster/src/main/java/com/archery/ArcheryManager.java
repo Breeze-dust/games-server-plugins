@@ -4,6 +4,7 @@ import com.hub.api.GameTitles;
 import com.hub.api.HubAPI;
 import com.hub.data.PlayerStats;
 import com.hub.util.Chat;
+import com.hub.voice.VoiceChat;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
@@ -331,6 +332,7 @@ public class ArcheryManager {
                 inventory, settings.gameSeconds * 20);
         sessions.put(id, session);
         HubAPI.setPlaying(id, GAME_NAME);
+        VoiceChat.joinHub(id); // 箭术大师整局与主城共用公共语音组
         resetScale(p);
         fillTargets(session);
 

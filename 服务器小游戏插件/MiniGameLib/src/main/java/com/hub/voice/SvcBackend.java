@@ -69,6 +69,45 @@ final class SvcBackend implements VoiceChatBackend {
     }
 
     @Override
+    public UUID createPersistentGroup(UUID groupId, String name) {
+        VoicechatServerApi server = api;
+        if (server == null) {
+            return null;
+        }
+        Group group = server.getGroup(groupId);
+        if (group == null) {
+            group = server.groupBuilder()
+                    .setId(groupId)
+                    .setName(name)
+                    .setType(Group.Type.NORMAL)
+                    .setPersistent(true)
+                    .build();
+        }
+        groups.put(group.getId(), group);
+        return group.getId();
+    }
+
+    @Override
+    public boolean groupExists(UUID groupId) {
+        VoicechatServerApi server = api;
+        return server != null && groupId != null && server.getGroup(groupId) != null;
+    }
+
+    @Override
+    public boolean inGroup(UUID playerId, UUID groupId) {
+        VoicechatServerApi server = api;
+        if (server == null || groupId == null) {
+            return false;
+        }
+        VoicechatConnection connection = server.getConnectionOf(playerId);
+        if (connection == null) {
+            return false;
+        }
+        Group current = connection.getGroup();
+        return current != null && groupId.equals(current.getId());
+    }
+
+    @Override
     public void removeGroup(UUID groupId) {
         VoicechatServerApi server = api;
         Group group = groups.remove(groupId);

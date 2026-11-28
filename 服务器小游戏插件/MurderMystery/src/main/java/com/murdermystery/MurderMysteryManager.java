@@ -1108,6 +1108,7 @@ public class MurderMysteryManager {
         int spawnIndex = 0;
         for (UUID id : new ArrayList<>(a.getPlayers())) {
             HubAPI.setPlaying(id, GAME_NAME);
+            voiceChat.play(id); // 等待结束：关闭公共组放行，并把玩家踢出公共组
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
                 resetPlayer(p);

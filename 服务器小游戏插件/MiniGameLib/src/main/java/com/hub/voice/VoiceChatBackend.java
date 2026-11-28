@@ -13,6 +13,13 @@ interface VoiceChatBackend {
 
     UUID createIsolatedGroup(String name);
 
+    /** 建一个常驻组：立刻登记并广播给客户端，空组也不会被 SVC 回收。 */
+    UUID createPersistentGroup(UUID groupId, String name);
+
+    boolean groupExists(UUID groupId);
+
+    boolean inGroup(UUID player, UUID groupId);
+
     void removeGroup(UUID groupId);
 
     /** groupId 为 null 表示退出当前组。 */

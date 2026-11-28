@@ -1,5 +1,6 @@
 package com.hub.api;
 
+import com.hub.voice.VoiceChat;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -63,6 +64,8 @@ public final class HubAPI {
         if (s != null) {
             s.setGame(player, gameName);
         }
+        // 所有等待室统一接入主城公共语音组；真正开局时由 setPlaying 移出
+        VoiceChat.joinHub(player);
     }
 
     /** 游戏正式开始，玩家已加入对局（tab 显示 [已加入·游戏名]）。 */
@@ -71,6 +74,8 @@ public final class HubAPI {
         if (s != null) {
             s.setPlaying(player, gameName);
         }
+        // 真正开局：离开主城公共组；整局共享公共组的游戏会在 setPlaying 之后自己 joinHub
+        VoiceChat.leaveHub(player);
     }
 
     /** 设置玩家在某游戏中的状态：WAITING = 等待中，PLAYING = 已加入。 */

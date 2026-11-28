@@ -10,6 +10,7 @@ import com.hub.menu.MenuLayout;
 import com.hub.util.Chat;
 import com.hub.util.ReadyItems;
 import com.hub.util.Titles;
+import com.hub.voice.VoiceChat;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
@@ -133,6 +134,8 @@ public class HubManager implements HubService {
         // 重连会原样恢复，光清药水效果摘不掉。回大厅时一律清掉。
         p.setInvisible(false);
         p.setGlowing(false);
+        // 回到主城：重新接入公共语音组（玩家可以自己退组，之后不会强制拉回）
+        VoiceChat.joinHub(p.getUniqueId());
     }
 
     public Material getMenuItemMaterial() {
